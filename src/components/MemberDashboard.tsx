@@ -1,0 +1,471 @@
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext.tsx';
+import { db } from '../firebase/config.ts';
+import { doc, updateDoc, setDoc } from 'firebase/firestore';
+import { DigitalCard } from './DigitalCard.tsx';
+import { MemberRegistrationForm } from './MemberRegistrationForm.tsx';
+import { VerificationModal } from './VerificationModal.tsx';
+import { generateViewToken, checkViewTokenStatus, checkOfficialCardStatus, DEFAULT_OFFICIAL_EXPIRY } from '../utils/security.ts';
+import { requestPushPermission, getPushPermissionStatus } from '../utils/pushNotification.ts';
+import {
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  Bell,
+  ShieldCheck,
+  Edit3,
+  Calendar,
+  Sparkles,
+  Download,
+  Info,
+  Crown,
+  User,
+  FlaskConical,
+} from 'lucide-react';
+
+export const MemberDashboard: React.FC = () => {
+  const { currentMember, activeTemplate, currentUser } = useAuth();
+  const [editing, setEditing] = useState(false);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [pushStatus, setPushStatus] = useState<NotificationPermission>(getPushPermissionStatus());
+  const [refreshingToken, setRefreshingToken] = useState(false);
+  const [seedingDemo, setSeedingDemo] = useState(false);
+
+  // Quick seed helper for testing the Member Dashboard
+  const handleSeedApprovedMember = async (category: 'SÓCIO' | 'MEMBRO DA DIRETORIA' = 'SÓCIO') => {
+    if (!currentUser) return;
+    setSeedingDemo(true);
+    try {
+      const memberId = `mem_${currentUser.uid}`;
+      const { token, generatedAt } = generateViewToken(memberId);
+      await setDoc(doc(db, 'members', memberId), {
+        id: memberId,
+        userId: currentUser.uid,
+        fullName: currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0].replace('.', ' ') : 'Associado Homologado'),
+        cpf: '123.456.789-00',
+        birthDate: '1987-08-25',
+        email: currentUser.email || 'socio@associacao.org.br',
+        phone: '(11) 98765-4321',
+        photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80',
+        category,
+        status: 'aprovado',
+        lgpdConsent: true,
+        lgpdConsentDate: new Date().toISOString(),
+        validUntil: DEFAULT_OFFICIAL_EXPIRY,
+        renewalCount: 0,
+        lastGeneratedAt: generatedAt,
+        lastViewToken: token,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Erro ao gerar sócio de teste:', err);
+    } finally {
+      setSeedingDemo(false);
+    }
+  };
+
+  // Switch category between SÓCIO and MEMBRO DA DIRETORIA directly in member view
+  const handleToggleMyCategory = async () => {
+    if (!currentMember) return;
+    const isDiretoria = currentMember.category?.trim().toUpperCase() === 'MEMBRO DA DIRETORIA';
+    const newCat = isDiretoria ? 'SÓCIO' : 'MEMBRO DA DIRETORIA';
+    try {
+      await updateDoc(doc(db, 'members', currentMember.id), {
+        category: newCat,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Erro ao alternar categoria:', err);
+    }
+  };
+
+  // If no member record exists yet, render registration form with quick-test option
+  if (!currentMember) {
+    return (
+      <div className="py-6 px-4 max-w-4xl mx-auto space-y-6">
+        {/* Helper Banner for Testers and New Visitors */}
+        <div className="p-5 rounded-3xl bg-gradient-to-r from-emerald-950/70 via-zinc-900 to-zinc-950 border border-emerald-500/40 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 shadow-inner">
+              <FlaskConical className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                Modo de Visualização do Sócio
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-900/60 text-emerald-300 border border-emerald-500/40">
+                  {currentUser?.email}
+                </span>
+              </h4>
+              <p className="text-xs text-zinc-300 mt-0.5 leading-relaxed">
+                Você ainda não possui um cadastro submetido nesta conta. Você pode preencher os dados abaixo para aprovação do administrador ou carregar uma carteirinha homologada instantânea para testar!
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-2 shrink-0 w-full sm:w-auto">
+            <button
+              onClick={() => handleSeedApprovedMember('SÓCIO')}
+              disabled={seedingDemo}
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs tracking-wide shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>{seedingDemo ? 'Carregando...' : 'Testar Carteirinha (SÓCIO)'}</span>
+            </button>
+
+            <button
+              onClick={() => handleSeedApprovedMember('MEMBRO DA DIRETORIA')}
+              disabled={seedingDemo}
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs tracking-wide shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Crown className="w-3.5 h-3.5" />
+              <span>Testar como DIRETORIA</span>
+            </button>
+          </div>
+        </div>
+
+        <MemberRegistrationForm />
+      </div>
+    );
+  }
+
+  // If editing form is opened
+  if (editing) {
+    return (
+      <div className="py-6 px-4">
+        <div className="max-w-2xl mx-auto mb-4">
+          <button
+            onClick={() => setEditing(false)}
+            className="text-xs text-zinc-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+          >
+            ← Voltar ao painel
+          </button>
+        </div>
+        <MemberRegistrationForm
+          isEditing={true}
+          initialData={currentMember}
+          onSuccess={() => setEditing(false)}
+        />
+      </div>
+    );
+  }
+
+  // Ensure fresh 24h view token is generated if member is approved (never crash unhandled)
+  const ensureFreshToken = async () => {
+    if (!currentMember || currentMember.status !== 'aprovado') return;
+    const tokenStatus = checkViewTokenStatus(currentMember.lastGeneratedAt);
+
+    if (tokenStatus.isExpired || !currentMember.lastViewToken) {
+      setRefreshingToken(true);
+      try {
+        const { token, generatedAt } = generateViewToken(currentMember.id);
+        const path = 'members';
+        await updateDoc(doc(db, path, currentMember.id), {
+          lastGeneratedAt: generatedAt,
+          lastViewToken: token,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn('Atualização de token de visualização 24h:', err);
+      } finally {
+        setRefreshingToken(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    ensureFreshToken();
+  }, [currentMember?.status]);
+
+  const handleRequestPush = async () => {
+    const res = await requestPushPermission();
+    setPushStatus(res);
+  };
+
+  const handleRequestRenewal = async () => {
+    if (!currentMember) return;
+    try {
+      const path = 'members';
+      await updateDoc(doc(db, path, currentMember.id), {
+        status: 'pendente',
+        updatedAt: new Date().toISOString(),
+      });
+      alert('Solicitação de renovação enviada para aprovação da administração!');
+    } catch (err: any) {
+      console.warn('Erro ao solicitar renovação:', err);
+      alert('Erro ao enviar solicitação: ' + (err.message || 'Erro temporário de conexão.'));
+    }
+  };
+
+  const officialStatus = checkOfficialCardStatus(currentMember.validUntil);
+  const tokenStatus = checkViewTokenStatus(currentMember.lastGeneratedAt);
+
+  const isDiretoria = currentMember.category?.trim().toUpperCase() === 'MEMBRO DA DIRETORIA';
+
+  return (
+    <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 space-y-8">
+      {/* Push Notification Opt-in Prompt */}
+      {pushStatus !== 'granted' && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/60 to-zinc-900 border border-emerald-500/30 flex flex-col sm:flex-row items-center justify-between gap-4 text-zinc-200 shadow-md">
+          <div className="flex items-center gap-3 text-center sm:text-left">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <Bell className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white">Ativar Notificações Push no Aparelho</h4>
+              <p className="text-xs text-zinc-400">
+                Receba avisos instantâneos com som na tela quando seu cadastro for aprovado ou o status for atualizado.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleRequestPush}
+            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-colors shrink-0 shadow-sm cursor-pointer"
+          >
+            Permitir Notificações
+          </button>
+        </div>
+      )}
+
+      {/* STATUS: PENDENTE */}
+      {currentMember.status === 'pendente' && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8 shadow-xl text-center max-w-xl mx-auto space-y-6">
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto shadow-inner">
+            <Clock className="w-8 h-8 animate-spin" style={{ animationDuration: '6s' }} />
+          </div>
+
+          <div>
+            <span className="px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              Cadastro em Análise
+            </span>
+            <h2 className="text-2xl font-bold text-white mt-3">Aguardando Homologação da Diretoria</h2>
+            <p className="text-sm text-zinc-400 mt-2 max-w-md mx-auto">
+              Seus dados foram enviados com sucesso e estão na fila de conferência pelo administrador da associação.
+              Você receberá uma notificação assim que sua carteirinha for liberada!
+            </p>
+          </div>
+
+          {/* Workflow Steps Tracker */}
+          <div className="bg-zinc-950/60 p-4 rounded-2xl border border-zinc-800 text-left space-y-3">
+            <div className="flex items-center gap-3 text-xs text-emerald-400">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>1. Cadastro preenchido e termo LGPD aceito</span>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-amber-300 font-medium">
+              <span className="w-4 h-4 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
+              <span>2. Análise documental da administração (em andamento)</span>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-zinc-500">
+              <span className="w-4 h-4 rounded-full border border-zinc-700 shrink-0" />
+              <span>3. Emissão da Carteirinha Digital com Selo 24h</span>
+            </div>
+          </div>
+
+          {/* Member Summary */}
+          <div className="text-left text-xs bg-zinc-950/40 p-4 rounded-xl border border-zinc-800/80 space-y-1.5 text-zinc-300">
+            <div><strong>Nome:</strong> {currentMember.fullName}</div>
+            <div><strong>CPF:</strong> {currentMember.cpf}</div>
+            <div><strong>Data de Nascimento:</strong> {currentMember.birthDate}</div>
+            <div><strong>Classificação:</strong> {currentMember.category}</div>
+          </div>
+
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              onClick={() => setEditing(true)}
+              className="text-xs text-zinc-400 hover:text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Corrigir dados digitados</span>
+            </button>
+
+            <span className="text-zinc-600 hidden sm:inline">•</span>
+
+            <button
+              onClick={() => handleSeedApprovedMember('SÓCIO')}
+              className="text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors cursor-pointer"
+            >
+              Aprovar este cadastro imediatamente (Modo Demonstração)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STATUS: REJEITADO */}
+      {currentMember.status === 'rejeitado' && (
+        <div className="bg-zinc-900 border border-red-500/30 rounded-3xl p-6 sm:p-8 shadow-xl text-center max-w-xl mx-auto space-y-6">
+          <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto">
+            <AlertTriangle className="w-8 h-8" />
+          </div>
+
+          <div>
+            <span className="px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider bg-red-500/20 text-red-300 border border-red-500/30">
+              Necessita Ajuste Cadastral
+            </span>
+            <h2 className="text-2xl font-bold text-white mt-3">Cadastro Não Aprovado</h2>
+            <div className="mt-3 p-4 rounded-xl bg-red-950/40 border border-red-500/20 text-xs text-red-200 text-left">
+              <strong>Motivo apontado pelo administrador:</strong>
+              <p className="mt-1 text-zinc-200">{currentMember.rejectionReason || 'Dados divergentes ou pendência de comprovação.'}</p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setEditing(true)}
+            className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider transition-colors shadow-md cursor-pointer"
+          >
+            Corrigir e Reenviar Cadastro
+          </button>
+        </div>
+      )}
+
+      {/* STATUS: EXPIRADO (After October 2027) */}
+      {currentMember.status === 'expirado' && (
+        <div className="bg-zinc-900 border border-amber-500/40 rounded-3xl p-6 sm:p-8 shadow-xl text-center max-w-xl mx-auto space-y-6">
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
+            <Calendar className="w-8 h-8" />
+          </div>
+
+          <div>
+            <span className="px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              Vigência Expirada
+            </span>
+            <h2 className="text-2xl font-bold text-white mt-3">Validade da Carteirinha Expirada</h2>
+            <p className="text-sm text-zinc-400 mt-2">
+              A vigência oficial da sua credencial social atingiu o limite estatutário de <strong>Outubro de 2027</strong>.
+              Para reativar a carteirinha por mais 1 (um) ano, solicite uma nova aprovação da administração.
+            </p>
+          </div>
+
+          <div className="p-4 rounded-xl bg-zinc-950/60 border border-zinc-800 text-xs text-zinc-300 text-left space-y-1">
+            <div><strong>Validade anterior:</strong> {officialStatus.formattedDate}</div>
+            <div><strong>Renovações realizadas:</strong> {currentMember.renewalCount || 0}</div>
+            <div><strong>Status atual:</strong> Aguardando solicitação de prorrogação anual</div>
+          </div>
+
+          <button
+            onClick={handleRequestRenewal}
+            className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider transition-colors shadow-md flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Solicitar Renovação da Carteirinha (+1 Ano)</span>
+          </button>
+        </div>
+      )}
+
+      {/* STATUS: APROVADO -> DIGITAL MEMBERSHIP CARD */}
+      {currentMember.status === 'aprovado' && (
+        <div className="space-y-6">
+          {/* Header Title & Status */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-800 pb-5">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Associado Homologado
+                </span>
+
+                {isDiretoria ? (
+                  <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider bg-amber-400 text-zinc-950 border border-amber-300 flex items-center gap-1">
+                    <Crown className="w-3 h-3" /> MEMBRO DA DIRETORIA
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider bg-zinc-800 text-emerald-300 border border-zinc-700 flex items-center gap-1">
+                    <User className="w-3 h-3" /> SÓCIO
+                  </span>
+                )}
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
+                Carteirinha Digital do Associado
+              </h2>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Quick toggle category for testing */}
+              <button
+                onClick={handleToggleMyCategory}
+                className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium flex items-center gap-1.5 transition-colors border border-zinc-700 shadow-xs cursor-pointer"
+                title="Alternar entre Sócio e Membro da Diretoria"
+              >
+                {isDiretoria ? <User className="w-3.5 h-3.5 text-emerald-400" /> : <Crown className="w-3.5 h-3.5 text-amber-400" />}
+                <span>Alternar para {isDiretoria ? 'Sócio' : 'Diretoria'}</span>
+              </button>
+
+              <button
+                onClick={ensureFreshToken}
+                disabled={refreshingToken}
+                className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium flex items-center gap-1.5 transition-colors border border-zinc-700 shadow-xs cursor-pointer"
+                title="Gera novo carimbo de segurança 24h"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshingToken ? 'animate-spin' : ''}`} />
+                <span>Atualizar Carimbo 24h</span>
+              </button>
+
+              <button
+                onClick={() => setEditing(true)}
+                className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium flex items-center gap-1.5 transition-colors border border-zinc-700 shadow-xs cursor-pointer"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Editar Dados</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Card Presentation Stage */}
+          <div className="bg-zinc-950/70 border border-zinc-800 rounded-3xl p-6 sm:p-10 flex flex-col items-center justify-center shadow-2xl relative overflow-hidden">
+            {/* Background ambient glow */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
+
+            <DigitalCard
+              member={currentMember}
+              template={activeTemplate}
+              onVerify={() => setShowVerifyModal(true)}
+            />
+          </div>
+
+          {/* Security & Expiration Info Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* 24h Verification Token Details */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-md space-y-2">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                <ShieldCheck className="w-4 h-4" />
+                <span>Segurança Dinâmica de Visualização (24h)</span>
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                Cada visualização da sua credencial emite um comprovante com data/hora e token criptográfico com validade de 24 horas.
+                Isso impede fraudes por impressões antigas ou capturas de tela repassadas.
+              </p>
+              <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono">
+                <span className="text-zinc-500">Geração desta exibição:</span>
+                <span className="text-white font-semibold">{tokenStatus.generatedDateStr}</span>
+              </div>
+            </div>
+
+            {/* Official Expiration (Outubro de 2027) */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-md space-y-2">
+              <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                <Calendar className="w-4 h-4" />
+                <span>Validade Estatutária Oficial da Associação</span>
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                A sua filiação possui vigência oficial garantida até <strong>Outubro de 2027</strong> ({officialStatus.formattedDate}).
+                Após essa data, o estatuto exige reavaliação anual pela administração.
+              </p>
+              <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono">
+                <span className="text-zinc-500">Dias de vigência restante:</span>
+                <span className="text-emerald-400 font-semibold">{officialStatus.daysRemaining} dias</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Verification Modal for QR / live preview inspection */}
+      {showVerifyModal && currentMember && (
+        <VerificationModal
+          member={currentMember}
+          template={activeTemplate}
+          onClose={() => setShowVerifyModal(false)}
+        />
+      )}
+    </div>
+  );
+};

@@ -1,0 +1,131 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Security Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() && request.auth.token.email == 'rafa.marciooliveira@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isSignedIn() && (
+          exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+          (request.auth.token.email != null && exists(/databases/$(database)/documents/admins/$(request.auth.token.email)))
+        )
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Member Validation Helper
+    function isValidMember(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 150 &&
+             data.cpf is string && data.cpf.size() <= 20 &&
+             data.email is string && data.email.size() <= 120 &&
+             data.status in ['pendente', 'aprovado', 'rejeitado', 'expirado'] &&
+             data.lgpdConsent == true;
+    }
+
+    // Card Template Validation Helper
+    function isValidCardTemplate(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.associationName is string && data.associationName.size() > 0 && data.associationName.size() <= 300 &&
+             data.primaryColor is string && data.primaryColor.size() <= 100;
+    }
+
+    // Members collection
+    match /members/{memberId} {
+      // Allows member to view their own profile, or admins to view all, or public read for QR card verification
+      allow get: if isValidId(memberId) && (
+        isAdmin() ||
+        (isSignedIn() && existing().userId == request.auth.uid) ||
+        // Permit checking card authenticity if approved
+        existing().status == 'aprovado'
+      );
+
+      allow list: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid
+      );
+
+      // Create: Member can register their own profile with 'pendente' status
+      allow create: if isSignedIn() &&
+        isValidId(memberId) &&
+        isValidMember(incoming()) &&
+        (
+          isAdmin() ||
+          (
+            incoming().userId == request.auth.uid &&
+            incoming().status == 'pendente'
+          )
+        );
+
+      // Update: Admin can update any field (including category, approval and renewal).
+      // Member can update their own contact/photo info OR generate the 24h view token, but CANNOT self-approve.
+      allow update: if isSignedIn() &&
+        isValidId(memberId) &&
+        isValidMember(incoming()) &&
+        (
+          isAdmin() ||
+          (
+            existing().userId == request.auth.uid &&
+            incoming().userId == request.auth.uid &&
+            // Cannot self-approve status
+            (incoming().status == existing().status || (existing().status == 'expirado' && incoming().status == 'pendente')) &&
+            // Cannot alter validUntil directly unless admin
+            incoming().validUntil == existing().validUntil
+          )
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // Admin accounts
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Card templates for customizer
+    match /cardTemplates/{templateId} {
+      // Any authenticated user or visitor can read the visual template to display the card
+      allow read: if true;
+      allow write: if isAdmin() && isValidCardTemplate(incoming());
+    }
+
+    // Push and in-app notifications
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid
+      );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (resource.data.userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['read']))
+      );
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+  }
+}

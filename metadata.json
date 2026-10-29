@@ -1,0 +1,6 @@
+{
+  "name": "Portal do Associado - Gestão de Sócios & Carteirinha Digital",
+  "description": "Sistema completo de cadastro de sócios de associação sem fins lucrativos com conformidade LGPD, aprovação por administrador, carteirinha digital dinâmica com validade 24h e customizador visual de templates.",
+  "requestFramePermissions": ["notifications"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
