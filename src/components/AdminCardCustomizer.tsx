@@ -79,6 +79,7 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
   const [newFieldName, setNewFieldName] = useState('');
   const [newFieldValue, setNewFieldValue] = useState('');
   const [mobilePreviewMode, setMobilePreviewMode] = useState(true);
+  const [mobileTab, setMobileTab] = useState<'settings' | 'preview'>('settings');
 
   // NOVO: Modo de configuração de cores baseado na Logo
   const [colorMode, setColorMode] = useState<'logo' | 'custom' | 'presets'>('logo');
@@ -255,7 +256,7 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8 pb-24 lg:pb-8">
       {/* Top Banner: Quick Template Selector & Save Action */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-6 shadow-xl">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
@@ -299,8 +300,8 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
           </div>
         )}
 
-        {/* Templates presets list */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {/* Templates presets list - Horizontal scroll on mobile, grid on desktop */}
+        <div className="overflow-x-auto flex lg:grid lg:grid-cols-5 gap-3 pb-2 custom-scrollbar">
           {DEFAULT_TEMPLATES.map(t => {
             const isSelected = currentEdit.name === t.name;
             return (
@@ -308,7 +309,7 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
                 key={t.id}
                 type="button"
                 onClick={() => handleSelectTemplate(t)}
-                className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden group cursor-pointer ${
+                className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden group cursor-pointer min-w-[170px] lg:min-w-0 shrink-0 lg:shrink ${
                   isSelected
                     ? 'border-emerald-500 bg-emerald-950/40 shadow-lg ring-1 ring-emerald-500'
                     : 'border-zinc-800 bg-zinc-950/60 hover:border-zinc-700'
@@ -337,13 +338,46 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
         </div>
       </div>
 
+      {/* Mobile Tab Switcher between Form Settings and Card Preview */}
+      <div className="lg:hidden flex items-center p-1.5 bg-zinc-900 border border-zinc-800 rounded-2xl gap-1 shadow-lg">
+        <button
+          type="button"
+          onClick={() => setMobileTab('settings')}
+          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            mobileTab === 'settings'
+              ? 'bg-emerald-600 text-white shadow-md'
+              : 'text-zinc-400 hover:text-white'
+          }`}
+        >
+          <Sliders className="w-4 h-4" />
+          <span>⚙️ Ajustes & Conteúdo</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab('preview')}
+          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            mobileTab === 'preview'
+              ? 'bg-emerald-600 text-white shadow-md'
+              : 'text-zinc-400 hover:text-white'
+          }`}
+        >
+          <Eye className="w-4 h-4" />
+          <span>👁️ Ver Carteirinha</span>
+        </button>
+      </div>
+
       {/* Main Split Grid: Controls on Left, Mobile-Optimized Live Preview on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* LEFT: Customizer Form Controls (7 cols) */}
-        <div className="lg:col-span-7 bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-7 shadow-xl space-y-6">
-          <div className="flex items-center gap-2 border-b border-zinc-800 pb-4">
-            <Sliders className="w-5 h-5 text-emerald-400" />
-            <h4 className="font-extrabold text-lg text-white">Configuração Visual da Carteirinha</h4>
+        {/* LEFT: Customizer Form Controls (7 cols) with Internal Scrollbar */}
+        <div className={`lg:col-span-7 ${mobileTab === 'preview' ? 'hidden lg:block' : 'block'} bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-7 shadow-xl space-y-6 max-h-[72vh] lg:max-h-[82vh] overflow-y-auto pr-3 custom-scrollbar`}>
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+            <div className="flex items-center gap-2">
+              <Sliders className="w-5 h-5 text-emerald-400" />
+              <h4 className="font-extrabold text-base sm:text-lg text-white">Configuração Visual da Carteirinha</h4>
+            </div>
+            <span className="hidden sm:inline-block text-[11px] text-zinc-500 bg-zinc-950 px-2.5 py-1 rounded-full border border-zinc-800">
+              Role para ver todos os campos ↓
+            </span>
           </div>
 
           {/* NOVO: Configurador de Posição & Alinhamento das Informações */}
@@ -1162,7 +1196,7 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
         </div>
 
         {/* RIGHT: Live Interactive Preview Optimized for Mobile Device Screen (5 cols) */}
-        <div className="lg:col-span-5 sticky top-20 space-y-4">
+        <div className={`lg:col-span-5 ${mobileTab === 'settings' ? 'hidden lg:block' : 'block'} sticky top-20 space-y-4`}>
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col items-center">
             {/* Header controls for preview */}
             <div className="w-full flex items-center justify-between mb-4 border-b border-zinc-800 pb-3">
@@ -1201,6 +1235,37 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Floating Mobile Bottom Action Bar */}
+      <div className="lg:hidden fixed bottom-4 left-4 right-4 z-40 bg-zinc-950/95 backdrop-blur-md border border-zinc-700/80 rounded-2xl p-2.5 shadow-2xl flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setMobileTab(mobileTab === 'settings' ? 'preview' : 'settings')}
+          className="flex-1 py-2.5 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold flex items-center justify-center gap-1.5 border border-zinc-700 cursor-pointer shadow-sm"
+        >
+          {mobileTab === 'settings' ? (
+            <>
+              <Eye className="w-4 h-4 text-emerald-400" />
+              <span>Ver Carteirinha</span>
+            </>
+          ) : (
+            <>
+              <Sliders className="w-4 h-4 text-emerald-400" />
+              <span>Voltar aos Ajustes</span>
+            </>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSaveTemplate(false)}
+          disabled={saving}
+          className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/60 cursor-pointer disabled:opacity-50"
+        >
+          <Save className="w-4 h-4" />
+          <span>{saving ? 'Gravando...' : 'Salvar no Banco'}</span>
+        </button>
       </div>
     </div>
   );

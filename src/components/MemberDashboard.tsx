@@ -12,6 +12,7 @@ import { maskCPF } from '../utils/cpf.ts';
 import { requestPushPermission, getPushPermissionStatus } from '../utils/pushNotification.ts';
 import { OfflineCardModal } from './OfflineCardModal.tsx';
 import { FullScreenCardModal } from './FullScreenCardModal.tsx';
+import { EditMemberProfileModal } from './EditMemberProfileModal.tsx';
 import {
   Clock,
   CheckCircle2,
@@ -73,6 +74,7 @@ export const MemberDashboard: React.FC = () => {
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [showOfflineModal, setShowOfflineModal] = useState(false);
   const [showFullScreenModal, setShowFullScreenModal] = useState(false);
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [pushStatus, setPushStatus] = useState<NotificationPermission>(getPushPermissionStatus());
   const [refreshingToken, setRefreshingToken] = useState(false);
   const [seedingDemo, setSeedingDemo] = useState(false);
@@ -348,11 +350,11 @@ export const MemberDashboard: React.FC = () => {
 
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
             <button
-              onClick={() => setEditing(true)}
-              className="text-xs text-zinc-400 hover:text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              onClick={() => setShowEditProfileModal(true)}
+              className="text-xs text-zinc-300 hover:text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer bg-zinc-800/80 hover:bg-zinc-800 px-3 py-1.5 rounded-lg border border-zinc-700"
             >
-              <Edit3 className="w-3.5 h-3.5" />
-              <span>Corrigir dados digitados</span>
+              <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Editar Nome, Ano e Foto</span>
             </button>
 
             <span className="text-zinc-600 hidden sm:inline">•</span>
@@ -582,11 +584,12 @@ export const MemberDashboard: React.FC = () => {
               </button>
 
               <button
-                onClick={() => setEditing(true)}
+                onClick={() => setShowEditProfileModal(true)}
                 className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium flex items-center gap-1.5 transition-colors border border-zinc-700 shadow-xs cursor-pointer"
+                title="Editar Nome, Ano/Data de Nascimento ou Trocar Foto"
               >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>Editar Dados</span>
+                <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Editar Nome, Ano e Foto</span>
               </button>
             </div>
           </div>
@@ -690,6 +693,15 @@ export const MemberDashboard: React.FC = () => {
           template={activeTemplate}
           onClose={() => setShowFullScreenModal(false)}
           onVerify={() => setShowVerifyModal(true)}
+        />
+      )}
+
+      {/* Quick Edit Profile Modal (Name, Year/BirthDate, Photo) */}
+      {showEditProfileModal && currentMember && (
+        <EditMemberProfileModal
+          isOpen={showEditProfileModal}
+          member={currentMember}
+          onClose={() => setShowEditProfileModal(false)}
         />
       )}
     </div>

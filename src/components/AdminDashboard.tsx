@@ -353,9 +353,9 @@ export const AdminDashboard: React.FC = () => {
   const expiredCount = members.filter(m => m.status === 'expirado').length;
 
   return (
-    <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 space-y-8">
-      {/* Top Banner & Tab Navigation */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-800 pb-5">
+    <div className="w-full max-w-7xl mx-auto py-6 sm:py-8 px-3 sm:px-6 space-y-6 sm:space-y-8 overflow-x-hidden">
+      {/* Top Banner */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-zinc-800/80 pb-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 uppercase tracking-wider">
@@ -370,11 +370,26 @@ export const AdminDashboard: React.FC = () => {
           </h1>
         </div>
 
-        {/* Tab Controls */}
-        <div className="flex items-center gap-1 bg-zinc-900 p-1.5 rounded-2xl border border-zinc-800 shadow-md">
+        {/* Quick info chips */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-zinc-400 bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-xl">
+            Total de Sócios: <strong className="text-emerald-400">{totalCount}</strong>
+          </span>
+          {pendingCount > 0 && (
+            <span className="text-xs text-amber-300 bg-amber-950/60 border border-amber-500/40 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 animate-pulse">
+              <Clock className="w-3.5 h-3.5 text-amber-400" />
+              {pendingCount} Pendente(s)
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Tab Navigation with Dedicated Horizontal Scroll Container (prevents page dragging) */}
+      <div className="w-full overflow-x-auto custom-scrollbar pb-2">
+        <div className="inline-flex min-w-full sm:min-w-0 items-center gap-1.5 bg-zinc-900/90 p-1.5 rounded-2xl border border-zinc-800 shadow-md">
           <button
             onClick={() => setActiveTab('members')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'members'
                 ? 'bg-emerald-600 text-white shadow-sm'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
@@ -391,31 +406,31 @@ export const AdminDashboard: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('customizer')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'customizer'
                 ? 'bg-emerald-600 text-white shadow-sm'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
             }`}
           >
             <Sliders className="w-3.5 h-3.5" />
-            <span>Formatador de Carteirinha</span>
+            <span>Formatador da Carteirinha</span>
           </button>
 
           <button
             onClick={() => setActiveTab('logo')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'logo'
                 ? 'bg-emerald-600 text-white shadow-sm'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
             }`}
           >
             <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Logo da Associação</span>
+            <span>Logotipo da Associação</span>
           </button>
 
           <button
             onClick={() => setActiveTab('rejectionEmail')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'rejectionEmail'
                 ? 'bg-emerald-600 text-white shadow-sm'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
@@ -427,7 +442,7 @@ export const AdminDashboard: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('admins')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'admins'
                 ? 'bg-emerald-600 text-white shadow-sm'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
@@ -439,7 +454,7 @@ export const AdminDashboard: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('lgpd')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'lgpd'
                 ? 'bg-emerald-600 text-white shadow-sm'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
@@ -556,7 +571,7 @@ export const AdminDashboard: React.FC = () => {
                 Nenhum sócio encontrado para os filtros selecionados.
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full text-left text-xs text-zinc-300">
                   <thead className="bg-zinc-950/80 text-[11px] uppercase tracking-wider text-zinc-400 border-b border-zinc-800">
                     <tr>

@@ -12,7 +12,6 @@ import { AdminDashboard } from './components/AdminDashboard.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
 import { NotificationToastContainer } from './components/NotificationToast.tsx';
 import { VerificationModal } from './components/VerificationModal.tsx';
-import { DigitalCard } from './components/DigitalCard.tsx';
 import { AssociationLogo } from './components/AssociationLogos.tsx';
 import { Member } from './types/index.ts';
 import { db } from './firebase/config.ts';
@@ -29,28 +28,6 @@ import {
   ArrowRight,
   CheckCircle2,
 } from 'lucide-react';
-
-// Hero sample card preview
-const HERO_SAMPLE: Member = {
-  id: 'preview_hero',
-  userId: 'usr_hero',
-  fullName: 'Dr. Roberto Mendes de Oliveira',
-  cpf: '123.456.789-00',
-  birthDate: '1985-04-12',
-  email: 'roberto.mendes@associacao.org.br',
-  phone: '(11) 99876-5432',
-  photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
-  category: 'MEMBRO DA DIRETORIA',
-  status: 'aprovado',
-  lgpdConsent: true,
-  lgpdConsentDate: new Date().toISOString(),
-  validUntil: '2027-10-31',
-  renewalCount: 0,
-  lastGeneratedAt: new Date().toISOString(),
-  lastViewToken: 'AUTH-SAMPLE-24H',
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-};
 
 function MainContent() {
   const { currentUser, activeRole, loading, activeTemplate } = useAuth();
@@ -89,7 +66,7 @@ function MainContent() {
       <NotificationToastContainer />
 
       {/* Main View Router */}
-      <main className="flex-1">
+      <main className="flex-1 w-full max-w-full overflow-x-hidden">
         {currentUser ? (
           activeRole === 'admin' ? (
             <ErrorBoundary resetKey="admin" fallbackTitle="Painel de Administração">
@@ -102,7 +79,7 @@ function MainContent() {
           )
         ) : (
           /* Landing Hero / Public Presentation */
-          <div className="py-12 px-4 sm:px-6 max-w-6xl mx-auto space-y-16">
+          <div className="py-12 px-4 sm:px-6 max-w-6xl mx-auto space-y-12 sm:space-y-16">
             {/* Hero Top */}
             <div className="text-center max-w-3xl mx-auto space-y-5">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold uppercase tracking-wider shadow-sm">
@@ -144,22 +121,47 @@ function MainContent() {
               </div>
             </div>
 
-            {/* Interactive Card Stage Preview */}
-            <div className="bg-zinc-900/60 border border-zinc-800 rounded-3xl p-6 sm:p-12 shadow-2xl flex flex-col items-center justify-center relative overflow-hidden">
-              <div className="w-full max-w-md mb-4 flex items-center justify-between text-xs text-zinc-400">
-                <span className="flex items-center gap-1.5 font-bold text-emerald-400">
-                  <Sparkles className="w-4 h-4" /> Modelo de Carteirinha da Associação
-                </span>
-                <span className="font-mono text-[11px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-300">
-                  {activeTemplate?.name || 'Modelo Padrão'}
-                </span>
+            {/* Secure Portal Access Banner (Card is only displayed after login) */}
+            <div className="bg-gradient-to-b from-zinc-900 to-zinc-950 border border-zinc-800 rounded-3xl p-6 sm:p-10 shadow-2xl max-w-3xl mx-auto text-center space-y-6 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto shadow-inner">
+                <ShieldCheck className="w-8 h-8" />
               </div>
 
-              <DigitalCard member={HERO_SAMPLE} template={activeTemplate} />
+              <div className="space-y-2 max-w-xl mx-auto">
+                <h2 className="text-xl sm:text-2xl font-bold text-white">
+                  Identificação Digital Segura & Exclusiva
+                </h2>
+                <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">
+                  A carteirinha digital da associação é pessoal, intransferível e protegida nos termos da LGPD.
+                  Para visualizar seu documento oficial com foto, selo dinâmico de 24 horas e QR Code de autenticidade, acesse sua conta.
+                </p>
+              </div>
 
-              <div className="mt-6 text-center text-xs text-zinc-400 max-w-md">
-                👆 Esta credencial digital possui selo dinâmico de <strong>24 horas</strong> para impedir falsificações
-                por captura de tela e validade estatutária oficial até <strong>31 de Outubro de 2027</strong>.
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                <button
+                  onClick={() => setShowAuthModal(true)}
+                  className="w-full sm:w-auto px-7 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-emerald-950/60 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>Fazer Login para Ver Carteirinha</span>
+                </button>
+              </div>
+
+              <div className="pt-4 border-t border-zinc-800/80 flex flex-wrap items-center justify-center gap-4 text-[11px] text-zinc-400">
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  Ambiente Protegido por Criptografia
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  Selo Dinâmico de 24 Horas
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  Conformidade LGPD
+                </span>
               </div>
             </div>
 
