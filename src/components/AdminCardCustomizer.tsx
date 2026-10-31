@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { CardTemplate, CustomCardField, Member, InfoAlignment, FontSizeOption } from '../types/index.ts';
 import { DigitalCard } from './DigitalCard.tsx';
-import { PRESET_LOGOS } from './AssociationLogos.tsx';
+import { AssociationLogo, PRESET_LOGOS } from './AssociationLogos.tsx';
 import { DEFAULT_TEMPLATES } from '../data/defaultTemplates.ts';
+import { extractPaletteFromLogo, ExtractedLogoPalette } from '../utils/logoColorExtractor.ts';
 import {
   Palette,
   Layout,
@@ -24,6 +25,10 @@ import {
   Layers,
   Shield,
   Sparkles,
+  Wand2,
+  RefreshCw,
+  CheckCircle2,
+  Pipette,
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext.tsx';
@@ -74,6 +79,49 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
   const [newFieldName, setNewFieldName] = useState('');
   const [newFieldValue, setNewFieldValue] = useState('');
   const [mobilePreviewMode, setMobilePreviewMode] = useState(true);
+
+  // NOVO: Modo de configuração de cores baseado na Logo
+  const [colorMode, setColorMode] = useState<'logo' | 'custom' | 'presets'>('logo');
+  const [extractedPalette, setExtractedPalette] = useState<ExtractedLogoPalette | null>(null);
+  const [extractingColors, setExtractingColors] = useState(false);
+  const [paletteAppliedToast, setPaletteAppliedToast] = useState(false);
+
+  // Auto-extração das cores da logo ativa
+  React.useEffect(() => {
+    let isCurrent = true;
+    const analyze = async () => {
+      if (!currentEdit.logoUrl) return;
+      setExtractingColors(true);
+      try {
+        const palette = await extractPaletteFromLogo(currentEdit.logoUrl);
+        if (isCurrent) {
+          setExtractedPalette(palette);
+        }
+      } catch (e) {
+        console.warn('Erro ao analisar paleta da logo:', e);
+      } finally {
+        if (isCurrent) setExtractingColors(false);
+      }
+    };
+    analyze();
+    return () => {
+      isCurrent = false;
+    };
+  }, [currentEdit.logoUrl]);
+
+  const handleApplyLogoPalette = (palette?: ExtractedLogoPalette | null) => {
+    const target = palette || extractedPalette;
+    if (!target) return;
+    setCurrentEdit(prev => ({
+      ...prev,
+      primaryColor: target.primaryColor,
+      secondaryColor: target.secondaryColor,
+      accentColor: target.accentColor,
+      textColor: target.textColor || '#ffffff',
+    }));
+    setPaletteAppliedToast(true);
+    setTimeout(() => setPaletteAppliedToast(false), 3500);
+  };
 
   // Keep editor in sync if activeTemplate changes from Firestore snapshot
   React.useEffect(() => {
@@ -148,6 +196,22 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
           logoUrl: result,
           logoBgTransparent: true, // Transparent by default
         }));
+
+        // Sincroniza automaticamente a paleta com a nova logo anexada
+        extractPaletteFromLogo(result).then(pal => {
+          setExtractedPalette(pal);
+          if (colorMode === 'logo') {
+            setCurrentEdit(prev => ({
+              ...prev,
+              primaryColor: pal.primaryColor,
+              secondaryColor: pal.secondaryColor,
+              accentColor: pal.accentColor,
+              textColor: pal.textColor || '#ffffff',
+            }));
+            setPaletteAppliedToast(true);
+            setTimeout(() => setPaletteAppliedToast(false), 3500);
+          }
+        });
       }
     };
     reader.readAsDataURL(file);
@@ -599,65 +663,349 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
             </div>
           </div>
 
-          {/* Section: Cores & Gradiente */}
-          <div className="space-y-3 pt-3 border-t border-zinc-800">
-            <h5 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-              <Palette className="w-4 h-4" /> Paleta de Cores da Carteirinha
-            </h5>
+          {/* Section: Cores & Gradiente - Padrão Cores da Logo & Customizador */}
+          <div className="space-y-4 pt-3 border-t border-zinc-800">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <h5 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                <Palette className="w-4 h-4" /> Configuração de Cores da Carteirinha
+              </h5>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-[11px] text-zinc-400 mb-1">Cor Primária</label>
-                <div className="flex items-center gap-2 bg-zinc-950 p-1.5 rounded-xl border border-zinc-800">
-                  <input
-                    type="color"
-                    value={currentEdit.primaryColor}
-                    onChange={e => setCurrentEdit(prev => ({ ...prev, primaryColor: e.target.value }))}
-                    className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
-                  />
-                  <span className="text-xs font-mono text-zinc-300">{currentEdit.primaryColor}</span>
-                </div>
-              </div>
+              {/* Mode Switcher Tabs */}
+              <div className="flex items-center bg-zinc-950 p-1 rounded-xl border border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setColorMode('logo');
+                    if (extractedPalette) {
+                      handleApplyLogoPalette(extractedPalette);
+                    }
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    colorMode === 'logo'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                  title="Configuração automática baseada na logo anexada"
+                >
+                  <Wand2 className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Padrão Cores da Logo</span>
+                </button>
 
-              <div>
-                <label className="block text-[11px] text-zinc-400 mb-1">Gradiente Fim</label>
-                <div className="flex items-center gap-2 bg-zinc-950 p-1.5 rounded-xl border border-zinc-800">
-                  <input
-                    type="color"
-                    value={currentEdit.secondaryColor}
-                    onChange={e => setCurrentEdit(prev => ({ ...prev, secondaryColor: e.target.value }))}
-                    className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
-                  />
-                  <span className="text-xs font-mono text-zinc-300">{currentEdit.secondaryColor}</span>
-                </div>
-              </div>
+                <button
+                  type="button"
+                  onClick={() => setColorMode('custom')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    colorMode === 'custom'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <span>Manual</span>
+                </button>
 
-              <div>
-                <label className="block text-[11px] text-zinc-400 mb-1">Destaque / Bordas</label>
-                <div className="flex items-center gap-2 bg-zinc-950 p-1.5 rounded-xl border border-zinc-800">
-                  <input
-                    type="color"
-                    value={currentEdit.accentColor}
-                    onChange={e => setCurrentEdit(prev => ({ ...prev, accentColor: e.target.value }))}
-                    className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
-                  />
-                  <span className="text-xs font-mono text-zinc-300">{currentEdit.accentColor}</span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] text-zinc-400 mb-1">Cor do Texto</label>
-                <div className="flex items-center gap-2 bg-zinc-950 p-1.5 rounded-xl border border-zinc-800">
-                  <input
-                    type="color"
-                    value={currentEdit.textColor}
-                    onChange={e => setCurrentEdit(prev => ({ ...prev, textColor: e.target.value }))}
-                    className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
-                  />
-                  <span className="text-xs font-mono text-zinc-300">{currentEdit.textColor}</span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setColorMode('presets')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    colorMode === 'presets'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <span>Paletas Clássicas</span>
+                </button>
               </div>
             </div>
+
+            {/* Toast when palette from logo is applied */}
+            {paletteAppliedToast && (
+              <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 text-xs flex items-center gap-2 animate-fade-in shadow-md">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
+                  <strong>Cores da Logo Aplicadas!</strong> A carteirinha foi harmonizada com a paleta encontrada na logo anexada.
+                </span>
+              </div>
+            )}
+
+            {/* MODE 1: PADRÃO CORES DA LOGO (Principal funcionalidade solicitada) */}
+            {colorMode === 'logo' && (
+              <div className="p-4 rounded-2xl bg-zinc-950/90 border border-emerald-500/30 space-y-4 shadow-inner">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-700 p-1.5 flex items-center justify-center shrink-0 shadow-sm overflow-hidden">
+                      <AssociationLogo logoKeyOrUrl={currentEdit.logoUrl} className="w-full h-full object-contain" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-xs text-white">
+                          Cores Encontradas na Logo Anexada
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          {extractedPalette?.sourceName || 'Logo Oficial'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400">
+                        Os tons da carteirinha são calculados automaticamente para combinar com a sua logo.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleApplyLogoPalette(extractedPalette)}
+                    disabled={extractingColors}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-emerald-950/60 cursor-pointer hover:scale-102 self-stretch sm:self-auto justify-center"
+                    title="Aplica a paleta harmonizada extraída da logo"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${extractingColors ? 'animate-spin' : ''}`} />
+                    <span>Sincronizar Cores da Logo</span>
+                  </button>
+                </div>
+
+                {/* Swatches detectados na logo */}
+                {extractedPalette && extractedPalette.detectedSwatches && extractedPalette.detectedSwatches.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-zinc-400 font-medium flex items-center gap-1">
+                        <Pipette className="w-3.5 h-3.5 text-emerald-400" />
+                        Tons Detectados na Imagem da Logo:
+                      </span>
+                      <span className="text-[10px] text-zinc-500">
+                        Clique em um tom para atribuir à carteirinha
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {extractedPalette.detectedSwatches.map((hex, idx) => (
+                        <div key={idx} className="group relative">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurrentEdit(prev => ({
+                                ...prev,
+                                accentColor: hex,
+                              }));
+                            }}
+                            className="w-8 h-8 rounded-xl border border-white/20 transition-transform group-hover:scale-110 shadow-sm cursor-pointer flex items-center justify-center"
+                            style={{ backgroundColor: hex }}
+                            title={`Cor da logo: ${hex} (Clique para usar como Destaque)`}
+                          >
+                            {(currentEdit.accentColor === hex || currentEdit.primaryColor === hex) && (
+                              <Check className="w-3.5 h-3.5 text-white drop-shadow-md" />
+                            )}
+                          </button>
+
+                          {/* Quick assign buttons on hover */}
+                          <div className="hidden group-hover:flex absolute -top-9 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-700 px-1.5 py-0.5 rounded-lg shadow-xl text-[9px] gap-1 z-20 whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCurrentEdit(prev => ({ ...prev, primaryColor: hex }));
+                              }}
+                              className="px-1 py-0.5 rounded bg-zinc-800 hover:bg-emerald-600 text-zinc-200 hover:text-white"
+                              title="Definir como Cor de Fundo Primária"
+                            >
+                              Fundo
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCurrentEdit(prev => ({ ...prev, secondaryColor: hex }));
+                              }}
+                              className="px-1 py-0.5 rounded bg-zinc-800 hover:bg-emerald-600 text-zinc-200 hover:text-white"
+                              title="Definir como Gradiente Fim"
+                            >
+                              Gradiente
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCurrentEdit(prev => ({ ...prev, accentColor: hex }));
+                              }}
+                              className="px-1 py-0.5 rounded bg-zinc-800 hover:bg-emerald-600 text-zinc-200 hover:text-white"
+                              title="Definir como Destaque / Bordas"
+                            >
+                              Destaque
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Cores ativas da carteirinha (sincronizadas com a logo) */}
+                <div className="pt-2 border-t border-zinc-800/80">
+                  <span className="block text-[11px] font-semibold text-zinc-400 mb-2">
+                    Cores Ativas da Carteirinha (Baseadas na Logo):
+                  </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <div className="bg-zinc-900/80 p-2 rounded-xl border border-zinc-800 flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={currentEdit.primaryColor}
+                        onChange={e => setCurrentEdit(prev => ({ ...prev, primaryColor: e.target.value }))}
+                        className="w-6 h-6 rounded-md border-0 cursor-pointer bg-transparent shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <span className="text-[10px] text-zinc-400 block truncate">Fundo Primário</span>
+                        <span className="text-xs font-mono text-white block">{currentEdit.primaryColor}</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-900/80 p-2 rounded-xl border border-zinc-800 flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={currentEdit.secondaryColor}
+                        onChange={e => setCurrentEdit(prev => ({ ...prev, secondaryColor: e.target.value }))}
+                        className="w-6 h-6 rounded-md border-0 cursor-pointer bg-transparent shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <span className="text-[10px] text-zinc-400 block truncate">Gradiente Fim</span>
+                        <span className="text-xs font-mono text-white block">{currentEdit.secondaryColor}</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-900/80 p-2 rounded-xl border border-zinc-800 flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={currentEdit.accentColor}
+                        onChange={e => setCurrentEdit(prev => ({ ...prev, accentColor: e.target.value }))}
+                        className="w-6 h-6 rounded-md border-0 cursor-pointer bg-transparent shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <span className="text-[10px] text-zinc-400 block truncate">Destaque da Logo</span>
+                        <span className="text-xs font-mono text-white block">{currentEdit.accentColor}</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-900/80 p-2 rounded-xl border border-zinc-800 flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={currentEdit.textColor}
+                        onChange={e => setCurrentEdit(prev => ({ ...prev, textColor: e.target.value }))}
+                        className="w-6 h-6 rounded-md border-0 cursor-pointer bg-transparent shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <span className="text-[10px] text-zinc-400 block truncate">Texto</span>
+                        <span className="text-xs font-mono text-white block">{currentEdit.textColor}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* MODE 2: PERSONALIZADO MANUAL */}
+            {colorMode === 'custom' && (
+              <div className="p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800 space-y-3">
+                <span className="block text-xs font-semibold text-zinc-400">
+                  Ajuste Livre dos Tons da Carteirinha:
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-zinc-400 mb-1">Cor Primária</label>
+                    <div className="flex items-center gap-2 bg-zinc-900 p-1.5 rounded-xl border border-zinc-800">
+                      <input
+                        type="color"
+                        value={currentEdit.primaryColor}
+                        onChange={e => setCurrentEdit(prev => ({ ...prev, primaryColor: e.target.value }))}
+                        className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
+                      />
+                      <span className="text-xs font-mono text-zinc-300">{currentEdit.primaryColor}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-zinc-400 mb-1">Gradiente Fim</label>
+                    <div className="flex items-center gap-2 bg-zinc-900 p-1.5 rounded-xl border border-zinc-800">
+                      <input
+                        type="color"
+                        value={currentEdit.secondaryColor}
+                        onChange={e => setCurrentEdit(prev => ({ ...prev, secondaryColor: e.target.value }))}
+                        className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
+                      />
+                      <span className="text-xs font-mono text-zinc-300">{currentEdit.secondaryColor}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-zinc-400 mb-1">Destaque / Bordas</label>
+                    <div className="flex items-center gap-2 bg-zinc-900 p-1.5 rounded-xl border border-zinc-800">
+                      <input
+                        type="color"
+                        value={currentEdit.accentColor}
+                        onChange={e => setCurrentEdit(prev => ({ ...prev, accentColor: e.target.value }))}
+                        className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
+                      />
+                      <span className="text-xs font-mono text-zinc-300">{currentEdit.accentColor}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-zinc-400 mb-1">Cor do Texto</label>
+                    <div className="flex items-center gap-2 bg-zinc-900 p-1.5 rounded-xl border border-zinc-800">
+                      <input
+                        type="color"
+                        value={currentEdit.textColor}
+                        onChange={e => setCurrentEdit(prev => ({ ...prev, textColor: e.target.value }))}
+                        className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
+                      />
+                      <span className="text-xs font-mono text-zinc-300">{currentEdit.textColor}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* MODE 3: PALETAS INSTITUCIONAIS PRONTAS */}
+            {colorMode === 'presets' && (
+              <div className="p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800 space-y-3">
+                <span className="block text-xs font-semibold text-zinc-400">
+                  Selecione uma Paleta Institucional Consagrada:
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {[
+                    { label: 'Verde Esmeralda Nobre', primary: '#064e3b', secondary: '#022c22', accent: '#10b981', text: '#ffffff' },
+                    { label: 'Azul Marinho Real', primary: '#0f172a', secondary: '#1e293b', accent: '#38bdf8', text: '#ffffff' },
+                    { label: 'Dourado Imperial', primary: '#1c1917', secondary: '#292524', accent: '#fbbf24', text: '#ffffff' },
+                    { label: 'Rubi & Vinho Social', primary: '#4c0519', secondary: '#881337', accent: '#fb7185', text: '#ffffff' },
+                    { label: 'Grafite Titânio', primary: '#18181b', secondary: '#09090b', accent: '#f59e0b', text: '#ffffff' },
+                    { label: 'Safira Atlântica', primary: '#082f49', secondary: '#0c4a6e', accent: '#0284c7', text: '#ffffff' },
+                  ].map(pal => (
+                    <button
+                      key={pal.label}
+                      type="button"
+                      onClick={() => {
+                        setCurrentEdit(prev => ({
+                          ...prev,
+                          primaryColor: pal.primary,
+                          secondaryColor: pal.secondary,
+                          accentColor: pal.accent,
+                          textColor: pal.text,
+                        }));
+                      }}
+                      className="p-2.5 rounded-xl border border-zinc-800 hover:border-emerald-500 bg-zinc-900 text-left transition-all cursor-pointer flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-6 h-6 rounded-lg border border-white/20 shadow-xs"
+                          style={{
+                            background: `linear-gradient(135deg, ${pal.primary}, ${pal.secondary})`,
+                            borderColor: pal.accent,
+                          }}
+                        />
+                        <span className="text-xs font-semibold text-white">{pal.label}</span>
+                      </div>
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: pal.accent }} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Section: Layout, Orientação e Padrão de Fundo */}

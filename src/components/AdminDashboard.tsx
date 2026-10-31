@@ -19,6 +19,7 @@ import { AdminManagementView } from './AdminManagementView.tsx';
 import { RejectionEmailConfig } from './RejectionEmailConfig.tsx';
 import { RejectMemberModal } from './RejectMemberModal.tsx';
 import { maskCPF } from '../utils/cpf.ts';
+import { formatDateBR } from '../utils/date.ts';
 import { triggerPushNotification } from '../utils/pushNotification.ts';
 import { DEFAULT_OFFICIAL_EXPIRY, checkOfficialCardStatus } from '../utils/security.ts';
 import {
@@ -601,7 +602,7 @@ export const AdminDashboard: React.FC = () => {
 
                           {/* BirthDate & Contact */}
                           <td className="py-3 px-4">
-                            <div>{m.birthDate || 'Não informado'}</div>
+                            <div className="font-mono text-zinc-200">{formatDateBR(m.birthDate)}</div>
                             <div className="text-zinc-400 text-[11px]">{m.phone || '-'}</div>
                           </td>
 

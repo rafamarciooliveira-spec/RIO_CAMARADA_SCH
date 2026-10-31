@@ -25,12 +25,15 @@ import {
   Wifi,
   WifiOff,
   AlertCircle,
+  Maximize2,
 } from 'lucide-react';
+import { formatDateBR } from '../utils/date.ts';
 
 interface DigitalCardProps {
   member: Member;
   template: CardTemplate;
   onVerify?: () => void;
+  onOpenFullscreen?: () => void;
   allowFlip?: boolean;
   compact?: boolean;
   forceOffline?: boolean;
@@ -40,6 +43,7 @@ export const DigitalCard: React.FC<DigitalCardProps> = ({
   member,
   template,
   onVerify,
+  onOpenFullscreen,
   allowFlip = true,
   compact = false,
   forceOffline = false,
@@ -398,7 +402,7 @@ export const DigitalCard: React.FC<DigitalCardProps> = ({
                         Nascimento
                       </span>
                       <span className={`font-mono text-white ${getDetailsFontClass(safeTemplate.detailsFontSize)}`}>
-                        {safeMember.birthDate || 'Não informado'}
+                        {formatDateBR(safeMember.birthDate)}
                       </span>
                     </div>
                   )}
@@ -509,6 +513,17 @@ export const DigitalCard: React.FC<DigitalCardProps> = ({
           )}
 
           <div className="flex items-center gap-2">
+            {onOpenFullscreen && (
+              <button
+                onClick={onOpenFullscreen}
+                className="px-3 py-2 rounded-xl bg-zinc-850 hover:bg-zinc-800 text-emerald-400 hover:text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition-colors border border-emerald-500/30 shadow-xs cursor-pointer"
+                title="Visualizar a carteira no tamanho total da tela do celular"
+              >
+                <Maximize2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Tela Cheia</span>
+              </button>
+            )}
+
             {onVerify && (
               <button
                 onClick={onVerify}

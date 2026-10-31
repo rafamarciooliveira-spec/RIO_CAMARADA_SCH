@@ -11,6 +11,7 @@ import { generateViewToken, checkViewTokenStatus, checkOfficialCardStatus, DEFAU
 import { maskCPF } from '../utils/cpf.ts';
 import { requestPushPermission, getPushPermissionStatus } from '../utils/pushNotification.ts';
 import { OfflineCardModal } from './OfflineCardModal.tsx';
+import { FullScreenCardModal } from './FullScreenCardModal.tsx';
 import {
   Clock,
   CheckCircle2,
@@ -31,6 +32,7 @@ import {
   Mail,
   ChevronDown,
   ChevronUp,
+  Maximize2,
 } from 'lucide-react';
 
 function formatDateSafe(val: any, fallback = 'Data recente'): string {
@@ -70,6 +72,7 @@ export const MemberDashboard: React.FC = () => {
   const [editing, setEditing] = useState(false);
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [showOfflineModal, setShowOfflineModal] = useState(false);
+  const [showFullScreenModal, setShowFullScreenModal] = useState(false);
   const [pushStatus, setPushStatus] = useState<NotificationPermission>(getPushPermissionStatus());
   const [refreshingToken, setRefreshingToken] = useState(false);
   const [seedingDemo, setSeedingDemo] = useState(false);
@@ -534,6 +537,16 @@ export const MemberDashboard: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
+              {/* NOVO: Botão para Visualizar a Carteira no Tamanho Total da Tela do Celular */}
+              <button
+                onClick={() => setShowFullScreenModal(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-xs font-black flex items-center gap-1.5 transition-all shadow-md shadow-emerald-950/60 cursor-pointer hover:scale-102"
+                title="Visualizar a carteira no tamanho total da tela do celular"
+              >
+                <Maximize2 className="w-3.5 h-3.5 text-zinc-950" />
+                <span>📱 Tela Cheia no Celular</span>
+              </button>
+
               <button
                 onClick={() => {
                   if (currentMember) {
@@ -541,11 +554,11 @@ export const MemberDashboard: React.FC = () => {
                   }
                   setShowOfflineModal(true);
                 }}
-                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-102"
+                className="px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
                 title="Salvar carteirinha no aparelho para uso offline sem internet por 24h"
               >
-                <HardDriveDownload className="w-3.5 h-3.5" />
-                <span>Salvar Carteirinha Offline (24h)</span>
+                <HardDriveDownload className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Salvar Offline (24h)</span>
               </button>
 
               {/* Quick toggle category for testing */}
@@ -587,6 +600,7 @@ export const MemberDashboard: React.FC = () => {
               member={currentMember}
               template={activeTemplate}
               onVerify={() => setShowVerifyModal(true)}
+              onOpenFullscreen={() => setShowFullScreenModal(true)}
             />
           </div>
 
@@ -665,6 +679,17 @@ export const MemberDashboard: React.FC = () => {
           template={activeTemplate}
           onClose={() => setShowOfflineModal(false)}
           onRefreshOnline={ensureFreshToken}
+        />
+      )}
+
+      {/* Fullscreen Mobile View Modal */}
+      {showFullScreenModal && currentMember && (
+        <FullScreenCardModal
+          isOpen={showFullScreenModal}
+          member={currentMember}
+          template={activeTemplate}
+          onClose={() => setShowFullScreenModal(false)}
+          onVerify={() => setShowVerifyModal(true)}
         />
       )}
     </div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Member } from '../types/index.ts';
 import { maskCPF } from '../utils/cpf.ts';
+import { formatDateBR, maskDateBR, dateBRToISO, isValidDateBR } from '../utils/date.ts';
 import {
   CheckCircle2,
   Crown,
@@ -39,7 +40,7 @@ export const ApproveMemberModal: React.FC<ApproveModalProps> = ({
   );
 
   const [fullName, setFullName] = useState(member.fullName);
-  const [birthDate, setBirthDate] = useState(member.birthDate);
+  const [birthDateBR, setBirthDateBR] = useState(formatDateBR(member.birthDate));
   const [photoUrl, setPhotoUrl] = useState(member.photoUrl || '');
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -75,7 +76,7 @@ export const ApproveMemberModal: React.FC<ApproveModalProps> = ({
       await onConfirmApprove({
         category: finalCategory,
         fullName: fullName.trim(),
-        birthDate,
+        birthDate: dateBRToISO(birthDateBR),
         photoUrl,
       });
       onClose();
@@ -258,13 +259,28 @@ export const ApproveMemberModal: React.FC<ApproveModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-[11px] text-zinc-400 mb-1">Data de Nascimento</label>
-                <input
-                  type="date"
-                  value={birthDate}
-                  onChange={e => setBirthDate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-white outline-hidden focus:border-emerald-500 font-mono"
-                />
+                <label className="block text-[11px] text-zinc-400 mb-1">Data de Nascimento (DD/MM/AAAA)</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    maxLength={10}
+                    value={birthDateBR}
+                    onChange={e => setBirthDateBR(maskDateBR(e.target.value))}
+                    placeholder="DD/MM/AAAA"
+                    className="w-full pl-3 pr-8 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-white outline-hidden focus:border-emerald-500 font-mono"
+                  />
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
+                    <label className="text-zinc-400 hover:text-emerald-400 cursor-pointer" title="Selecionar no calendário">
+                      <Calendar className="w-3.5 h-3.5" />
+                      <input
+                        type="date"
+                        onChange={e => e.target.value && setBirthDateBR(formatDateBR(e.target.value))}
+                        className="sr-only"
+                        tabIndex={-1}
+                      />
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
 

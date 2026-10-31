@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext.tsx';
 import { db, handleFirestoreError, OperationType } from '../firebase/config.ts';
 import { doc, setDoc } from 'firebase/firestore';
 import { validateCPF, formatCPF } from '../utils/cpf.ts';
+import { formatDateBR, maskDateBR, dateBRToISO, isValidDateBR } from '../utils/date.ts';
 import { DEFAULT_OFFICIAL_EXPIRY } from '../utils/security.ts';
 import {
   UserCheck,
@@ -14,6 +15,7 @@ import {
   Lock,
   Info,
   Upload,
+  Calendar,
 } from 'lucide-react';
 
 interface FormProps {
@@ -48,7 +50,12 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
 
   const [fullName, setFullName] = useState(initialData?.fullName || currentUser?.displayName || '');
   const [cpf, setCpf] = useState(initialData?.cpf || '');
-  const [birthDate, setBirthDate] = useState(initialData?.birthDate || '');
+  const [birthDateBR, setBirthDateBR] = useState(() => {
+    if (initialData?.birthDate) {
+      return formatDateBR(initialData.birthDate);
+    }
+    return '';
+  });
   const [email, setEmail] = useState(initialData?.email || currentUser?.email || '');
   const [phone, setPhone] = useState(initialData?.phone || '');
   const [photoUrl, setPhotoUrl] = useState(initialData?.photoUrl || currentUser?.photoURL || PRESET_AVATARS[0]);
@@ -61,6 +68,17 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
 
   const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setCpf(formatCPF(e.target.value));
+  };
+
+  const handleBirthDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const masked = maskDateBR(e.target.value);
+    setBirthDateBR(masked);
+  };
+
+  const handlePickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.value) {
+      setBirthDateBR(formatDateBR(e.target.value));
+    }
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -97,8 +115,8 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
       return;
     }
 
-    if (!birthDate) {
-      setErrorMsg('Por favor, selecione sua data de nascimento.');
+    if (!birthDateBR || !isValidDateBR(birthDateBR)) {
+      setErrorMsg('Por favor, informe uma data de nascimento válida no padrão brasileiro (DD/MM/AAAA).');
       return;
     }
 
@@ -112,13 +130,14 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
     try {
       const memberId = currentMember?.id || currentUser.uid;
       const path = 'members';
+      const normalizedBirthDate = dateBRToISO(birthDateBR);
 
       const payload = {
         id: memberId,
         userId: currentUser.uid,
         fullName: fullName.trim(),
         cpf: cpf.trim(),
-        birthDate,
+        birthDate: normalizedBirthDate,
         email: email.trim().toLowerCase(),
         phone: phone.trim(),
         photoUrl,
@@ -299,16 +318,50 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300 mb-1.5">
-              Data de Nascimento *
-            </label>
-            <input
-              type="date"
-              required
-              value={birthDate}
-              onChange={e => setBirthDate(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-zinc-950/80 border border-zinc-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-hidden text-sm text-white font-mono"
-            />
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                Data de Nascimento (DD/MM/AAAA) *
+              </label>
+              {birthDateBR && (
+                <span className="text-[11px] font-mono flex items-center gap-1">
+                  {isValidDateBR(birthDateBR) ? (
+                    <span className="text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Padrão BR
+                    </span>
+                  ) : (
+                    <span className="text-amber-400">Formato: DD/MM/AAAA</span>
+                  )}
+                </span>
+              )}
+            </div>
+
+            <div className="relative">
+              <input
+                type="text"
+                required
+                maxLength={10}
+                value={birthDateBR}
+                onChange={handleBirthDateChange}
+                placeholder="DD/MM/AAAA"
+                className="w-full pl-4 pr-11 py-2.5 rounded-xl bg-zinc-950/80 border border-zinc-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-hidden text-sm text-white font-mono"
+              />
+
+              {/* Native Date Picker trigger overlay */}
+              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center">
+                <label className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-emerald-400 transition-colors cursor-pointer" title="Abrir calendário">
+                  <Calendar className="w-4 h-4" />
+                  <input
+                    type="date"
+                    onChange={handlePickerChange}
+                    className="sr-only"
+                    tabIndex={-1}
+                  />
+                </label>
+              </div>
+            </div>
+            <span className="text-[10px] text-zinc-500 mt-1 block">
+              Padrão Brasil: dia / mês / ano (Ex: 15/04/1985)
+            </span>
           </div>
         </div>
 
