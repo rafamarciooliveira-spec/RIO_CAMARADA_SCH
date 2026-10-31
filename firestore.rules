@@ -127,5 +127,22 @@ service cloud.firestore {
       );
       allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
     }
+
+    // System Settings (e.g. rejection email template)
+    match /systemSettings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Email dispatches and audit log of communications
+    match /emailDispatches/{dispatchId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid ||
+        (request.auth.token.email != null && resource.data.toEmail == request.auth.token.email)
+      );
+      allow create: if isAdmin() || isSignedIn();
+      allow update, delete: if isAdmin();
+    }
   }
 }

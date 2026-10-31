@@ -2,11 +2,13 @@
  * Brazilian CPF validation and formatting utility (LGPD and accuracy compliance)
  */
 
-export function cleanCPF(cpf: string): string {
+export function cleanCPF(cpf?: string | null): string {
+  if (!cpf || typeof cpf !== 'string') return '';
   return cpf.replace(/\D/g, '');
 }
 
-export function formatCPF(value: string): string {
+export function formatCPF(value?: string | null): string {
+  if (!value || typeof value !== 'string') return '';
   const digits = cleanCPF(value).slice(0, 11);
   if (digits.length <= 3) return digits;
   if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
@@ -14,13 +16,16 @@ export function formatCPF(value: string): string {
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
 }
 
-export function maskCPF(cpf: string): string {
+export function maskCPF(cpf?: string | null): string {
+  if (!cpf || typeof cpf !== 'string') return '***.***.***-**';
   const digits = cleanCPF(cpf);
+  if (digits.length === 0) return '***.***.***-**';
   if (digits.length < 11) return formatCPF(cpf);
   return `***.${digits.slice(3, 6)}.${digits.slice(6, 9)}-**`;
 }
 
-export function validateCPF(cpf: string): boolean {
+export function validateCPF(cpf?: string | null): boolean {
+  if (!cpf || typeof cpf !== 'string') return false;
   const clean = cleanCPF(cpf);
   if (clean.length !== 11) return false;
 

@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
-import { CardTemplate, CustomCardField, Member } from '../types/index.ts';
+import { CardTemplate, CustomCardField, Member, InfoAlignment, FontSizeOption } from '../types/index.ts';
 import { DigitalCard } from './DigitalCard.tsx';
 import { PRESET_LOGOS } from './AssociationLogos.tsx';
 import { DEFAULT_TEMPLATES } from '../data/defaultTemplates.ts';
-import { db, handleFirestoreError, OperationType } from '../firebase/config.ts';
-import { doc, setDoc, updateDoc } from 'firebase/firestore';
 import {
   Palette,
   Layout,
@@ -12,16 +10,20 @@ import {
   Trash2,
   Check,
   Save,
-  RotateCw,
-  Sparkles,
-  Shield,
-  Layers,
   Sliders,
   Type,
   FileCheck,
   Eye,
   Upload,
   Image as ImageIcon,
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  AlignJustify,
+  Smartphone,
+  Layers,
+  Shield,
+  Sparkles,
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext.tsx';
@@ -58,14 +60,20 @@ const SAMPLE_MEMBER: Member = {
 export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
   activeTemplate,
   onUpdateActiveTemplate,
-  templates,
 }) => {
   const { saveActiveTemplate } = useAuth();
-  const [currentEdit, setCurrentEdit] = useState<CardTemplate>({ ...activeTemplate });
+  const [currentEdit, setCurrentEdit] = useState<CardTemplate>({
+    ...activeTemplate,
+    logoBgTransparent: activeTemplate.logoBgTransparent !== false,
+    infoAlignment: activeTemplate.infoAlignment || 'center',
+    nameFontSize: activeTemplate.nameFontSize || 'lg',
+    detailsFontSize: activeTemplate.detailsFontSize || 'xs',
+  });
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [newFieldName, setNewFieldName] = useState('');
   const [newFieldValue, setNewFieldValue] = useState('');
+  const [mobilePreviewMode, setMobilePreviewMode] = useState(true);
 
   // Keep editor in sync if activeTemplate changes from Firestore snapshot
   React.useEffect(() => {
@@ -73,40 +81,28 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
       if (prev.id === activeTemplate.id && prev.updatedAt === activeTemplate.updatedAt) {
         return prev;
       }
-      return { ...activeTemplate };
+      return {
+        ...activeTemplate,
+        logoBgTransparent: activeTemplate.logoBgTransparent !== false,
+        infoAlignment: activeTemplate.infoAlignment || 'center',
+        nameFontSize: activeTemplate.nameFontSize || 'lg',
+        detailsFontSize: activeTemplate.detailsFontSize || 'xs',
+      };
     });
   }, [activeTemplate.id, activeTemplate.updatedAt]);
 
   // Handle template selection from preset models
   const handleSelectTemplate = (template: CardTemplate) => {
-    const updated = {
+    const updated: CardTemplate = {
       ...template,
       logoSize: template.logoSize || 76,
+      logoBgTransparent: template.logoBgTransparent !== false,
+      infoAlignment: template.infoAlignment || 'center',
+      nameFontSize: template.nameFontSize || 'lg',
+      detailsFontSize: template.detailsFontSize || 'xs',
     };
     setCurrentEdit(updated);
     onUpdateActiveTemplate(updated);
-  };
-
-  const handleApplyPresetAsActive = async (template: CardTemplate) => {
-    setSaving(true);
-    try {
-      const updated: CardTemplate = {
-        ...template,
-        logoSize: template.logoSize || 76,
-        isDefault: true,
-        updatedAt: new Date().toISOString(),
-      };
-      setCurrentEdit(updated);
-      onUpdateActiveTemplate(updated);
-      await saveActiveTemplate(updated);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3500);
-    } catch (err: any) {
-      console.warn('Erro ao ativar preset no banco:', err);
-      alert('Erro ao ativar modelo no banco: ' + (err.message || 'Erro temporário.'));
-    } finally {
-      setSaving(false);
-    }
   };
 
   const handleFieldToggle = (fieldKey: keyof CardTemplate, val: boolean) => {
@@ -147,13 +143,17 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
     reader.onload = ev => {
       const result = ev.target?.result as string;
       if (result) {
-        setCurrentEdit(prev => ({ ...prev, logoUrl: result }));
+        setCurrentEdit(prev => ({
+          ...prev,
+          logoUrl: result,
+          logoBgTransparent: true, // Transparent by default
+        }));
       }
     };
     reader.readAsDataURL(file);
   };
 
-  // Save template to Firestore (both canonical active_template and template entry)
+  // Save template to Firestore (persists both to canonical active_template and Firestore collection)
   const handleSaveTemplate = async (isNew = false) => {
     setSaving(true);
     setSaveSuccess(false);
@@ -169,6 +169,10 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
         ...currentEdit,
         id: templateId,
         logoSize: currentEdit.logoSize || 76,
+        logoBgTransparent: currentEdit.logoBgTransparent !== false,
+        infoAlignment: currentEdit.infoAlignment || 'center',
+        nameFontSize: currentEdit.nameFontSize || 'lg',
+        detailsFontSize: currentEdit.detailsFontSize || 'xs',
         isDefault: true,
         updatedAt: new Date().toISOString(),
       };
@@ -177,7 +181,7 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
       onUpdateActiveTemplate(updatedTemplate);
       setCurrentEdit(updatedTemplate);
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3500);
+      setTimeout(() => setSaveSuccess(false), 4000);
     } catch (err: any) {
       console.error('Erro ao salvar template:', err);
       alert('Erro ao salvar no banco de dados: ' + (err.message || 'Verifique sua conexão.'));
@@ -188,16 +192,16 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
 
   return (
     <div className="space-y-8">
-      {/* Top Banner: Quick Template Selector */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-lg">
+      {/* Top Banner: Quick Template Selector & Save Action */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-6 shadow-xl">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
           <div>
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <h3 className="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
               <Layers className="w-5 h-5 text-emerald-400" />
-              Modelos de Carteirinha Salvos (Presets Prontos)
+              Formatador Visual da Carteirinha & Banco de Dados
             </h3>
-            <p className="text-xs text-zinc-400">
-              Alterne entre layouts rápidos ou personalize todos os elementos visuais abaixo:
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Personalize o layout para celulares, posições, tamanhos, logo com fundo transparente e cores. Tudo é salvo no Firebase.
             </p>
           </div>
 
@@ -205,57 +209,63 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
             <button
               onClick={() => handleSaveTemplate(false)}
               disabled={saving}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-md cursor-pointer disabled:opacity-50"
+              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all flex items-center gap-2 shadow-lg shadow-emerald-950/60 cursor-pointer disabled:opacity-50 hover:scale-102"
             >
               <Save className="w-4 h-4" />
-              <span>{saving ? 'Gravando...' : 'Salvar Alterações'}</span>
+              <span>{saving ? 'Gravando no Banco...' : 'Salvar no Banco de Dados'}</span>
             </button>
             <button
               onClick={() => handleSaveTemplate(true)}
               disabled={saving}
-              className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold text-xs transition-colors flex items-center gap-1.5 border border-zinc-700 shadow-md cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold text-xs transition-colors flex items-center gap-1.5 border border-zinc-700 shadow-sm cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>Salvar Novo Modelo</span>
+              <span>Criar Novo Modelo</span>
             </button>
           </div>
         </div>
 
         {saveSuccess && (
-          <div className="mb-4 p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-200 text-xs flex items-center gap-2">
-            <Check className="w-4 h-4 text-emerald-400" />
-            <span>Configurações visuais e template salvos no banco de dados com sucesso!</span>
+          <div className="mb-4 p-3.5 rounded-2xl bg-emerald-950/70 border border-emerald-500/50 text-emerald-200 text-xs flex items-center gap-2.5 shadow-md animate-fade-in">
+            <Check className="w-5 h-5 text-emerald-400 shrink-0" />
+            <div>
+              <strong className="block font-bold">Salvo com Sucesso no Banco de Dados!</strong>
+              <span className="opacity-90">Todas as configurações visuais, logotipos, fontes e alinhamentos estão ativos e sincronizados.</span>
+            </div>
           </div>
         )}
 
-        {/* Templates cards list */}
+        {/* Templates presets list */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {DEFAULT_TEMPLATES.map(t => {
             const isSelected = currentEdit.name === t.name;
             return (
               <button
                 key={t.id}
+                type="button"
                 onClick={() => handleSelectTemplate(t)}
-                className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden group cursor-pointer ${
+                className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden group cursor-pointer ${
                   isSelected
-                    ? 'border-emerald-500 bg-emerald-950/30 shadow-md'
-                    : 'border-zinc-800 bg-zinc-950/50 hover:border-zinc-700'
+                    ? 'border-emerald-500 bg-emerald-950/40 shadow-lg ring-1 ring-emerald-500'
+                    : 'border-zinc-800 bg-zinc-950/60 hover:border-zinc-700'
                 }`}
               >
                 <div
-                  className="w-full h-8 rounded-md mb-2 flex items-center justify-center text-xs font-bold shadow-inner"
+                  className="w-full h-8 rounded-lg mb-2 flex items-center justify-center text-xs font-bold shadow-inner"
                   style={{
                     background: `linear-gradient(135deg, ${t.primaryColor}, ${t.secondaryColor})`,
                     color: t.textColor,
                     border: `1px solid ${t.accentColor}40`,
                   }}
                 >
-                  <span className="text-[10px] tracking-wider truncate px-1">{t.orientation.toUpperCase()}</span>
+                  <span className="text-[10px] tracking-wider truncate px-1">
+                    {t.orientation === 'vertical' ? '📱 CELULAR (VERTICAL)' : 'HORIZONTAL'}
+                  </span>
                 </div>
                 <h5 className="font-bold text-xs text-white truncate">{t.name}</h5>
                 <span className="text-[10px] text-zinc-400 block truncate">{t.associationName}</span>
                 {isSelected && (
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-400" />
+                  <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-emerald-400" />
                 )}
               </button>
             );
@@ -263,13 +273,119 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
         </div>
       </div>
 
-      {/* Main Split Grid: Controls on Left, Live Preview on Right */}
+      {/* Main Split Grid: Controls on Left, Mobile-Optimized Live Preview on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* LEFT: Customizer Form Controls (7 cols) */}
         <div className="lg:col-span-7 bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-7 shadow-xl space-y-6">
           <div className="flex items-center gap-2 border-b border-zinc-800 pb-4">
             <Sliders className="w-5 h-5 text-emerald-400" />
-            <h4 className="font-bold text-lg text-white">Configuração Visual da Carteirinha</h4>
+            <h4 className="font-extrabold text-lg text-white">Configuração Visual da Carteirinha</h4>
+          </div>
+
+          {/* NOVO: Configurador de Posição & Alinhamento das Informações */}
+          <div className="p-4 rounded-2xl bg-zinc-950/80 border border-emerald-500/30 space-y-4">
+            <div className="flex items-center justify-between">
+              <h5 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                <Sliders className="w-4 h-4" /> Posição & Alinhamento das Informações
+              </h5>
+              <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded-full border border-emerald-500/40">
+                Alinhamento: {currentEdit.infoAlignment === 'center' ? 'Centralizado' : currentEdit.infoAlignment === 'left' ? 'À Esquerda' : currentEdit.infoAlignment === 'right' ? 'À Direita' : 'Justificado'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { id: 'center' as InfoAlignment, label: 'Centralizado', icon: AlignCenter },
+                { id: 'left' as InfoAlignment, label: 'À Esquerda', icon: AlignLeft },
+                { id: 'right' as InfoAlignment, label: 'À Direita', icon: AlignRight },
+                { id: 'justify' as InfoAlignment, label: 'Justificado', icon: AlignJustify },
+              ].map(opt => {
+                const Icon = opt.icon;
+                const isSelected = (currentEdit.infoAlignment || 'center') === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setCurrentEdit(prev => ({ ...prev, infoAlignment: opt.id }))}
+                    className={`py-2 px-3 rounded-xl border flex items-center justify-center gap-2 text-xs font-semibold transition-all cursor-pointer ${
+                      isSelected
+                        ? 'border-emerald-500 bg-emerald-950/70 text-emerald-300 shadow-md font-bold'
+                        : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span>{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Configurador de Tamanho do Nome do Sócio */}
+            <div className="pt-2 border-t border-zinc-800 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-white flex items-center gap-1.5">
+                  <Type className="w-3.5 h-3.5 text-emerald-400" />
+                  Tamanho do Nome do Sócio
+                </span>
+                <span className="font-mono text-emerald-300 text-xs">
+                  {currentEdit.nameFontSize === 'sm' ? 'Pequeno (14px)' : currentEdit.nameFontSize === 'base' ? 'Médio (16px)' : currentEdit.nameFontSize === 'xl' ? 'Destaque (20px)' : currentEdit.nameFontSize === '2xl' ? 'Máximo (24px)' : 'Grande (18px)'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-5 gap-1.5">
+                {[
+                  { id: 'sm' as FontSizeOption, label: 'P' },
+                  { id: 'base' as FontSizeOption, label: 'M' },
+                  { id: 'lg' as FontSizeOption, label: 'G (Padrão)' },
+                  { id: 'xl' as FontSizeOption, label: 'GG' },
+                  { id: '2xl' as FontSizeOption, label: 'XG' },
+                ].map(sz => (
+                  <button
+                    key={sz.id}
+                    type="button"
+                    onClick={() => setCurrentEdit(prev => ({ ...prev, nameFontSize: sz.id }))}
+                    className={`py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer text-center ${
+                      (currentEdit.nameFontSize || 'lg') === sz.id
+                        ? 'border-emerald-500 bg-emerald-950/70 text-emerald-300 font-bold'
+                        : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {sz.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Configurador de Tamanho dos Detalhes (CPF, Nascimento, Campos) */}
+            <div className="pt-2 border-t border-zinc-800 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-white">Tamanho dos Dados Adicionais (CPF, Nascimento, Campos)</span>
+                <span className="font-mono text-emerald-300 text-xs">
+                  {currentEdit.detailsFontSize === 'sm' ? 'Médio (12px)' : currentEdit.detailsFontSize === 'base' ? 'Aumentado (14px)' : 'Compacto (10px)'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'xs' as const, label: 'Compacto' },
+                  { id: 'sm' as const, label: 'Médio / Legível' },
+                  { id: 'base' as const, label: 'Aumentado' },
+                ].map(sz => (
+                  <button
+                    key={sz.id}
+                    type="button"
+                    onClick={() => setCurrentEdit(prev => ({ ...prev, detailsFontSize: sz.id }))}
+                    className={`py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                      (currentEdit.detailsFontSize || 'xs') === sz.id
+                        ? 'border-emerald-500 bg-emerald-950/70 text-emerald-300 font-bold'
+                        : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {sz.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Section: Identidade & Associação */}
@@ -309,11 +425,11 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
             </div>
           </div>
 
-          {/* Section: Símbolo / Logo da Associação */}
+          {/* Section: Símbolo / Logo da Associação com Fundo Transparente */}
           <div className="space-y-4 pt-4 border-t border-zinc-800">
             <div className="flex items-center justify-between">
               <h5 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-                <ImageIcon className="w-4 h-4" /> Logotipo & Brasão Oficial da Associação
+                <ImageIcon className="w-4 h-4" /> Logotipo Oficial da Associação (Fundo Transparente)
               </h5>
               {currentEdit.logoUrl.startsWith('data:image') || currentEdit.logoUrl.startsWith('http') ? (
                 <button
@@ -322,44 +438,48 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
                   className="text-[11px] text-red-400 hover:text-red-300 font-semibold flex items-center gap-1 cursor-pointer"
                 >
                   <Trash2 className="w-3 h-3" />
-                  <span>Restaurar Padrão</span>
+                  <span>Restaurar Emblema</span>
                 </button>
               ) : null}
             </div>
 
             {/* Logo Preview & File Upload Box */}
-            <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800 flex flex-col sm:flex-row items-center gap-4">
+            <div className="p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800 flex flex-col sm:flex-row items-center gap-4">
               <div
-                className="w-16 h-16 rounded-xl bg-black/40 border border-white/20 p-2 flex items-center justify-center shrink-0 shadow-inner overflow-hidden"
+                className={`w-18 h-18 rounded-2xl flex items-center justify-center shrink-0 shadow-inner overflow-hidden ${
+                  currentEdit.logoBgTransparent !== false
+                    ? 'bg-transparent border-0'
+                    : 'bg-white/10 border border-white/20'
+                }`}
                 style={{ color: currentEdit.accentColor }}
               >
                 {currentEdit.logoUrl.startsWith('http') || currentEdit.logoUrl.startsWith('data:image') ? (
                   <img
                     src={currentEdit.logoUrl}
                     alt="Logo da Associação"
-                    className="w-full h-full object-contain"
+                    className="w-full h-full object-contain drop-shadow-md"
                   />
                 ) : (
-                  <Shield className="w-8 h-8" />
+                  <Shield className="w-10 h-10 drop-shadow-md" />
                 )}
               </div>
 
               <div className="space-y-2 flex-1 text-center sm:text-left">
                 <span className="text-xs font-bold text-white block">
                   {currentEdit.logoUrl.startsWith('data:image')
-                    ? 'Logotipo Personalizado Carregado'
+                    ? 'Logotipo Personalizado Carregado (Base64)'
                     : currentEdit.logoUrl.startsWith('http')
                     ? 'Logotipo Carregado via URL'
-                    : 'Emblema Vetorial Selecionado'}
+                    : 'Emblema Oficial Selecionado'}
                 </span>
                 <p className="text-[11px] text-zinc-400">
-                  Faça o upload do emblema ou logo oficial (PNG transparente, SVG ou JPG).
+                  Carregue um arquivo PNG com fundo transparente ou selecione um brasão vetorial.
                 </p>
 
                 <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
                   <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold cursor-pointer shadow-sm transition-colors">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>Carregar Logo do Arquivo</span>
+                    <span>Carregar Logo do Dispositivo</span>
                     <input
                       type="file"
                       accept="image/png, image/jpeg, image/jpg, image/svg+xml, image/webp"
@@ -371,10 +491,29 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
               </div>
             </div>
 
+            {/* Fundo Transparente Toggle */}
+            <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-white block">Fundo da Logo Transparente</span>
+                <span className="text-[11px] text-zinc-400">Remove qualquer fundo branco ou cinza por trás do logotipo</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCurrentEdit(prev => ({ ...prev, logoBgTransparent: !prev.logoBgTransparent }))}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  currentEdit.logoBgTransparent !== false
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-zinc-800 text-zinc-400'
+                }`}
+              >
+                {currentEdit.logoBgTransparent !== false ? 'Transparente (Ativo)' : 'Com Moldura'}
+              </button>
+            </div>
+
             {/* Presets Gallery */}
             <div>
               <span className="block text-[11px] font-mono uppercase text-zinc-400 mb-2">
-                Ou selecione um brasão vetorial da galeria:
+                Ou selecione um emblema vetorial institucional:
               </span>
               <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                 {PRESET_LOGOS.map(logo => {
@@ -411,12 +550,12 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
               />
             </div>
 
-            {/* Controle de Tamanho e Destaque da Logo */}
+            {/* Controle de Tamanho da Logo */}
             <div className="pt-2 bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-white flex items-center gap-1.5">
                   <Sliders className="w-4 h-4 text-emerald-400" />
-                  Tamanho e Destaque Visual da Logo
+                  Tamanho e Destaque da Logo na Carteirinha
                 </span>
                 <span className="font-mono text-emerald-300 font-extrabold bg-emerald-950/80 px-2.5 py-1 rounded-lg border border-emerald-500/40 text-xs">
                   {currentEdit.logoSize || 76}px
@@ -426,8 +565,8 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
                   { label: 'Médio', px: 64 },
-                  { label: 'Grande (Padrão)', px: 76 },
-                  { label: 'Destaque Nobre', px: 96 },
+                  { label: 'Padrão', px: 76 },
+                  { label: 'Destaque', px: 96 },
                   { label: 'Imponente', px: 120 },
                 ].map(sz => (
                   <button
@@ -524,13 +663,25 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
           {/* Section: Layout, Orientação e Padrão de Fundo */}
           <div className="space-y-3 pt-3 border-t border-zinc-800">
             <h5 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-              <Layout className="w-4 h-4" /> Formato & Textura Antifraude
+              <Layout className="w-4 h-4" /> Formato & Textura de Segurança
             </h5>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs text-zinc-400 mb-1">Orientação do Documento</label>
                 <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentEdit(prev => ({ ...prev, orientation: 'vertical' }))}
+                    className={`py-2 px-3 rounded-xl border text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      currentEdit.orientation === 'vertical'
+                        ? 'border-emerald-500 bg-emerald-950/40 text-emerald-300 font-bold'
+                        : 'border-zinc-800 bg-zinc-950 text-zinc-400'
+                    }`}
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    <span>Vertical (Celular)</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setCurrentEdit(prev => ({ ...prev, orientation: 'horizontal' }))}
@@ -541,17 +692,6 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
                     }`}
                   >
                     Horizontal (Cartão)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentEdit(prev => ({ ...prev, orientation: 'vertical' }))}
-                    className={`py-2 px-3 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
-                      currentEdit.orientation === 'vertical'
-                        ? 'border-emerald-500 bg-emerald-950/40 text-emerald-300 font-bold'
-                        : 'border-zinc-800 bg-zinc-950 text-zinc-400'
-                    }`}
-                  >
-                    Vertical (Crachá)
                   </button>
                 </div>
               </div>
@@ -576,7 +716,7 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
           {/* Section: Toggles de Campos Pré-Definidos */}
           <div className="space-y-3 pt-3 border-t border-zinc-800">
             <h5 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-              <FileCheck className="w-4 h-4" /> Campos Pré-definidos & Elementos de Segurança
+              <FileCheck className="w-4 h-4" /> Elementos Exibidos na Carteirinha
             </h5>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -673,24 +813,43 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
           </div>
         </div>
 
-        {/* RIGHT: Live Interactive Preview (5 cols) */}
-        <div className="lg:col-span-5 sticky top-24 space-y-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-xl flex flex-col items-center">
+        {/* RIGHT: Live Interactive Preview Optimized for Mobile Device Screen (5 cols) */}
+        <div className="lg:col-span-5 sticky top-20 space-y-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col items-center">
+            {/* Header controls for preview */}
             <div className="w-full flex items-center justify-between mb-4 border-b border-zinc-800 pb-3">
               <div className="flex items-center gap-2">
                 <Eye className="w-4 h-4 text-emerald-400" />
-                <h4 className="font-bold text-sm text-white">Visualização em Tempo Real</h4>
+                <h4 className="font-bold text-sm text-white">Prévia em Tempo Real</h4>
               </div>
-              <span className="text-[10px] font-mono text-zinc-400 bg-zinc-950 px-2 py-0.5 rounded-md border border-zinc-800">
-                Sócio de Exemplo
-              </span>
+
+              <button
+                type="button"
+                onClick={() => setMobilePreviewMode(!mobilePreviewMode)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  mobilePreviewMode
+                    ? 'bg-emerald-950 border border-emerald-500/40 text-emerald-300'
+                    : 'bg-zinc-800 text-zinc-400'
+                }`}
+              >
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>{mobilePreviewMode ? 'Moldura Celular Ativa' : 'Exibição Livre'}</span>
+              </button>
             </div>
 
-            <DigitalCard member={SAMPLE_MEMBER} template={currentEdit} />
+            {/* Mobile frame wrapper */}
+            <div
+              className={`w-full flex justify-center transition-all ${
+                mobilePreviewMode
+                  ? 'max-w-[370px] p-4 bg-zinc-950/90 rounded-[40px] border-4 border-zinc-800 shadow-2xl'
+                  : ''
+              }`}
+            >
+              <DigitalCard member={SAMPLE_MEMBER} template={currentEdit} />
+            </div>
 
             <div className="mt-4 text-[11px] text-zinc-400 text-center leading-relaxed">
-              💡 As mudanças feitas nos controles acima refletem imediatamente nesta prévia.
-              Clique em <strong>Salvar Alterações</strong> para atualizar a carteirinha de todos os associados homologados.
+              📱 <strong>Visualização otimizada para smartphones:</strong> A carteirinha tem a logo no topo com fundo transparente, nome da associação abaixo, foto do sócio, nome, categoria, validade até Outubro/2027 e selo de 24 horas.
             </div>
           </div>
         </div>

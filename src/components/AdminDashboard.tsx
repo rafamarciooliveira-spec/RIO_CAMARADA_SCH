@@ -16,6 +16,8 @@ import { VerificationModal } from './VerificationModal.tsx';
 import { DigitalCard } from './DigitalCard.tsx';
 import { ApproveMemberModal } from './ApproveMemberModal.tsx';
 import { AdminManagementView } from './AdminManagementView.tsx';
+import { RejectionEmailConfig } from './RejectionEmailConfig.tsx';
+import { RejectMemberModal } from './RejectMemberModal.tsx';
 import { maskCPF } from '../utils/cpf.ts';
 import { triggerPushNotification } from '../utils/pushNotification.ts';
 import { DEFAULT_OFFICIAL_EXPIRY, checkOfficialCardStatus } from '../utils/security.ts';
@@ -40,12 +42,13 @@ import {
   Crown,
   Key,
   User,
+  Mail,
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
   const { activeTemplate, setActiveTemplate, templates, currentUser, adminList } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'members' | 'customizer' | 'logo' | 'admins' | 'lgpd'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'customizer' | 'logo' | 'rejectionEmail' | 'admins' | 'lgpd'>('members');
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -56,7 +59,6 @@ export const AdminDashboard: React.FC = () => {
   // Modals
   const [approvingMember, setApprovingMember] = useState<Member | null>(null);
   const [rejectingMember, setRejectingMember] = useState<Member | null>(null);
-  const [rejectionReason, setRejectionReason] = useState('');
   const [previewingMember, setPreviewingMember] = useState<Member | null>(null);
   const [verifyingMember, setVerifyingMember] = useState<Member | null>(null);
 
@@ -74,7 +76,13 @@ export const AdminDashboard: React.FC = () => {
         list.sort((a, b) => {
           if (a.status === 'pendente' && b.status !== 'pendente') return -1;
           if (a.status !== 'pendente' && b.status === 'pendente') return 1;
-          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+          const getTime = (val: any) => {
+            if (!val) return 0;
+            if (typeof val === 'object' && val !== null && 'seconds' in val) return val.seconds * 1000;
+            const t = new Date(val).getTime();
+            return isNaN(t) ? 0 : t;
+          };
+          return getTime(b.createdAt) - getTime(a.createdAt);
         });
         setMembers(list);
         setLoading(false);
@@ -154,12 +162,16 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  // Reject Member Action
-  const handleConfirmReject = async () => {
+  // Reject Member Action with Email Dispatch
+  const handleConfirmReject = async (data: {
+    reason: string;
+    emailSubject: string;
+    emailBody: string;
+  }) => {
     if (!rejectingMember) return;
     try {
       const path = 'members';
-      const reason = rejectionReason.trim() || 'Ajuste cadastral solicitado pela administração.';
+      const reason = data.reason.trim() || 'Ajuste cadastral solicitado pela administração.';
 
       await updateDoc(doc(db, path, rejectingMember.id), {
         status: 'rejeitado' as MemberStatus,
@@ -167,14 +179,28 @@ export const AdminDashboard: React.FC = () => {
         updatedAt: new Date().toISOString(),
       });
 
-      // Send notification
+      // Save email dispatch record for applicant & audit trail
+      const dispatchId = `dispatch_${Date.now()}`;
+      await setDoc(doc(db, 'emailDispatches', dispatchId), {
+        id: dispatchId,
+        toEmail: rejectingMember.email,
+        toName: rejectingMember.fullName,
+        memberId: rejectingMember.id,
+        userId: rejectingMember.userId,
+        subject: data.emailSubject,
+        body: data.emailBody,
+        status: 'enviado',
+        sentAt: new Date().toISOString(),
+      });
+
+      // Send in-app notification
       const notifPath = 'notifications';
       const notifId = `notif_${Date.now()}`;
       await setDoc(doc(db, notifPath, notifId), {
         id: notifId,
         userId: rejectingMember.userId,
         title: 'Ajuste Solicitado no Cadastro',
-        message: `A administração solicitou uma correção: "${reason}". Acesse o portal para atualizar.`,
+        message: `A administração enviou orientações por e-mail: "${reason}". Acesse o portal para atualizar.`,
         type: 'rejection',
         read: false,
         createdAt: new Date().toISOString(),
@@ -187,7 +213,6 @@ export const AdminDashboard: React.FC = () => {
       );
 
       setRejectingMember(null);
-      setRejectionReason('');
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `members/${rejectingMember.id}`);
     }
@@ -388,6 +413,18 @@ export const AdminDashboard: React.FC = () => {
           </button>
 
           <button
+            onClick={() => setActiveTab('rejectionEmail')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'rejectionEmail'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+            }`}
+          >
+            <Mail className="w-3.5 h-3.5 text-red-400" />
+            <span>Texto de Rejeição (E-mail)</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('admins')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'admins'
@@ -571,7 +608,7 @@ export const AdminDashboard: React.FC = () => {
                           {/* Category (SÓCIO vs MEMBRO DA DIRETORIA) */}
                           <td className="py-3 px-4">
                             <div className="flex flex-col gap-1 items-start">
-                              {m.category?.trim().toUpperCase() === 'MEMBRO DA DIRETORIA' ? (
+                              {String(m.category || '').trim().toUpperCase() === 'MEMBRO DA DIRETORIA' ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-400 text-zinc-950 border border-amber-300 shadow-xs">
                                   <Crown className="w-2.5 h-2.5" />
                                   <span>DIRETORIA</span>
@@ -589,7 +626,7 @@ export const AdminDashboard: React.FC = () => {
                                   onClick={() =>
                                     handleQuickChangeCategory(
                                       m.id,
-                                      m.category?.trim().toUpperCase() === 'MEMBRO DA DIRETORIA'
+                                      String(m.category || '').trim().toUpperCase() === 'MEMBRO DA DIRETORIA'
                                         ? 'SÓCIO'
                                         : 'MEMBRO DA DIRETORIA'
                                     )
@@ -597,7 +634,7 @@ export const AdminDashboard: React.FC = () => {
                                   className="text-[9px] text-zinc-400 hover:text-emerald-400 underline cursor-pointer transition-colors"
                                   title="Alternar categoria no banco de dados"
                                 >
-                                  Mudar para {m.category?.trim().toUpperCase() === 'MEMBRO DA DIRETORIA' ? 'Sócio' : 'Diretoria'}
+                                  Mudar para {String(m.category || '').trim().toUpperCase() === 'MEMBRO DA DIRETORIA' ? 'Sócio' : 'Diretoria'}
                                 </button>
                               )}
                             </div>
@@ -800,6 +837,9 @@ export const AdminDashboard: React.FC = () => {
       {/* TAB: GESTÃO DE ADMINISTRADORES */}
       {activeTab === 'admins' && <AdminManagementView />}
 
+      {/* TAB: TEXTO PADRÃO DE REJEIÇÃO / E-MAIL */}
+      {activeTab === 'rejectionEmail' && <RejectionEmailConfig />}
+
       {/* TAB 3: LGPD & AUDIT TRAIL */}
       {activeTab === 'lgpd' && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
@@ -857,7 +897,15 @@ export const AdminDashboard: React.FC = () => {
                         <span className="text-emerald-400">✓ Válido & Gravado</span>
                       </td>
                       <td className="py-2.5 px-4 text-zinc-400">
-                        {m.lgpdConsentDate ? new Date(m.lgpdConsentDate).toLocaleString('pt-BR') : 'No cadastro'}
+                        {(() => {
+                          if (!m.lgpdConsentDate) return 'No cadastro';
+                          try {
+                            const d = new Date(m.lgpdConsentDate);
+                            return isNaN(d.getTime()) ? 'No cadastro' : d.toLocaleString('pt-BR');
+                          } catch {
+                            return 'No cadastro';
+                          }
+                        })()}
                       </td>
                     </tr>
                   ))}
@@ -868,43 +916,14 @@ export const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Reject Modal */}
+      {/* Reject Modal with Email Dispatch & Live Preview */}
       {rejectingMember && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-red-500/40 rounded-3xl max-w-md w-full p-6 shadow-2xl text-zinc-100">
-            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2 text-red-400">
-              <AlertTriangle className="w-5 h-5" />
-              Solicitar Ajuste / Rejeitar Cadastro
-            </h3>
-            <p className="text-xs text-zinc-400 mb-4 leading-relaxed">
-              Informe o motivo da não aprovação para que <strong>{rejectingMember.fullName}</strong> seja notificado
-              via push e possa reenviar a informação corrigida.
-            </p>
-
-            <textarea
-              rows={4}
-              value={rejectionReason}
-              onChange={e => setRejectionReason(e.target.value)}
-              placeholder="Ex: Foto de perfil não atende aos padrões 3x4 / CPF divergente do comprovante..."
-              className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-white outline-hidden focus:border-red-500 mb-4"
-            />
-
-            <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => setRejectingMember(null)}
-                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleConfirmReject}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-semibold shadow-md cursor-pointer"
-              >
-                Confirmar Ajuste
-              </button>
-            </div>
-          </div>
-        </div>
+        <RejectMemberModal
+          member={rejectingMember}
+          activeTemplate={activeTemplate}
+          onConfirmReject={handleConfirmReject}
+          onClose={() => setRejectingMember(null)}
+        />
       )}
 
       {/* Preview Card Modal */}

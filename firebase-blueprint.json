@@ -82,6 +82,36 @@
         "createdAt": { "type": "string", "maxLength": 40, "description": "Creation timestamp" }
       },
       "required": ["userId", "title", "message"]
+    },
+    "SystemSetting": {
+      "title": "SystemSetting",
+      "description": "Global association settings such as customizable default rejection emails.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Setting ID e.g. rejection_email" },
+        "subject": { "type": "string", "maxLength": 200, "description": "Email subject" },
+        "body": { "type": "string", "maxLength": 5000, "description": "Customizable email template body with tags" },
+        "updatedAt": { "type": "string", "maxLength": 40, "description": "Last updated timestamp" },
+        "updatedBy": { "type": "string", "maxLength": 120, "description": "Admin email who updated the template" }
+      },
+      "required": ["subject", "body"]
+    },
+    "EmailDispatch": {
+      "title": "EmailDispatch",
+      "description": "Log of dispatched emails to applicant members upon rejection or status change.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Dispatch record ID" },
+        "toEmail": { "type": "string", "maxLength": 120, "description": "Recipient email address" },
+        "toName": { "type": "string", "maxLength": 150, "description": "Recipient member full name" },
+        "memberId": { "type": "string", "description": "Associated member ID" },
+        "userId": { "type": "string", "description": "Auth UID of the recipient" },
+        "subject": { "type": "string", "maxLength": 200, "description": "Subject line delivered" },
+        "body": { "type": "string", "maxLength": 5000, "description": "Delivered message body" },
+        "status": { "type": "string", "enum": ["enviado", "pendente"], "description": "Delivery status" },
+        "sentAt": { "type": "string", "maxLength": 40, "description": "Timestamp of email dispatch" }
+      },
+      "required": ["toEmail", "subject", "body", "sentAt"]
     }
   },
   "firestore": {
@@ -100,6 +130,14 @@
     "/notifications/{notificationId}": {
       "schema": "UserNotification",
       "description": "Stores status update notifications delivered to members."
+    },
+    "/systemSettings/{settingId}": {
+      "schema": "SystemSetting",
+      "description": "Stores association global configurations, including editable rejection email templates."
+    },
+    "/emailDispatches/{dispatchId}": {
+      "schema": "EmailDispatch",
+      "description": "Stores logged email communications delivered to rejected/pending members."
     }
   }
 }

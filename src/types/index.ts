@@ -42,6 +42,9 @@ export interface AdminUser {
   createdAt: string;
 }
 
+export type InfoAlignment = 'center' | 'left' | 'right' | 'justify';
+export type FontSizeOption = 'sm' | 'base' | 'lg' | 'xl' | '2xl';
+
 export interface CardTemplate {
   id: string;
   name: string;
@@ -50,6 +53,10 @@ export interface CardTemplate {
   logoUrl: string;
   logoSize?: number; // Size in pixels (default: 76, range: 48-140)
   logoPosition?: 'left' | 'center';
+  logoBgTransparent?: boolean; // Fundo transparente da logo (sem quadrado branco/opaco)
+  infoAlignment?: InfoAlignment; // Alinhamento das informações (centralizado, esquerda, direita, justificado)
+  nameFontSize?: FontSizeOption; // Tamanho da fonte do nome do associado
+  detailsFontSize?: 'xs' | 'sm' | 'base'; // Tamanho da fonte dos dados adicionais
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
@@ -88,3 +95,23 @@ export interface UserNotification {
 }
 
 export type ViewRole = 'admin' | 'member';
+
+export interface RejectionEmailTemplate {
+  id: string; // 'rejection_email'
+  subject: string;
+  body: string;
+  updatedAt: string;
+  updatedBy?: string;
+}
+
+export interface EmailDispatchRecord {
+  id: string;
+  toEmail: string;
+  toName: string;
+  memberId: string;
+  userId: string;
+  subject: string;
+  body: string;
+  status: 'enviado' | 'pendente';
+  sentAt: string;
+}

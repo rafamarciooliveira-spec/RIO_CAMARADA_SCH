@@ -4,15 +4,16 @@
 
 export const DEFAULT_OFFICIAL_EXPIRY = '2027-10-31';
 
-export function generateViewToken(memberId: string): {
+export function generateViewToken(memberId?: string | null): {
   token: string;
   generatedAt: string;
   expiresAt: string;
 } {
   const now = new Date();
   const expires = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const safeId = (memberId && typeof memberId === 'string') ? memberId : `mem_${Date.now().toString(36)}`;
   const randomSalt = Math.random().toString(36).substring(2, 10).toUpperCase();
-  const token = `AUTH-${memberId.slice(0, 6).toUpperCase()}-${Date.now().toString(36).toUpperCase()}-${randomSalt}`;
+  const token = `AUTH-${safeId.slice(0, 6).toUpperCase()}-${Date.now().toString(36).toUpperCase()}-${randomSalt}`;
 
   return {
     token,
@@ -21,7 +22,7 @@ export function generateViewToken(memberId: string): {
   };
 }
 
-export function checkViewTokenStatus(generatedAtIso?: string): {
+export function checkViewTokenStatus(generatedAtIso?: string | null): {
   isValid: boolean;
   generatedDateStr: string;
   expiryDateStr: string;
@@ -29,7 +30,7 @@ export function checkViewTokenStatus(generatedAtIso?: string): {
   formattedRemaining: string;
   isExpired: boolean;
 } {
-  if (!generatedAtIso) {
+  if (!generatedAtIso || typeof generatedAtIso !== 'string') {
     return {
       isValid: false,
       generatedDateStr: '--/--/---- --:--',
@@ -41,6 +42,17 @@ export function checkViewTokenStatus(generatedAtIso?: string): {
   }
 
   const generatedTime = new Date(generatedAtIso).getTime();
+  if (isNaN(generatedTime)) {
+    return {
+      isValid: false,
+      generatedDateStr: '--/--/---- --:--',
+      expiryDateStr: '--/--/---- --:--',
+      remainingMs: 0,
+      formattedRemaining: '00h 00m 00s',
+      isExpired: true,
+    };
+  }
+
   const expiryTime = generatedTime + 24 * 60 * 60 * 1000;
   const now = Date.now();
   const diff = expiryTime - now;
@@ -57,54 +69,71 @@ export function checkViewTokenStatus(generatedAtIso?: string): {
   const generatedDate = new Date(generatedTime);
   const expiryDate = new Date(expiryTime);
 
+  let generatedDateStr = '--/--/---- --:--';
+  let expiryDateStr = '--/--/---- --:--';
+  try {
+    generatedDateStr = generatedDate.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    expiryDateStr = expiryDate.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  } catch (e) {}
+
   return {
     isValid,
-    generatedDateStr: generatedDate.toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    }),
-    expiryDateStr: expiryDate.toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    }),
+    generatedDateStr,
+    expiryDateStr,
     remainingMs,
     formattedRemaining: `${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`,
     isExpired: !isValid,
   };
 }
 
-export function checkOfficialCardStatus(validUntilStr: string = DEFAULT_OFFICIAL_EXPIRY): {
+export function checkOfficialCardStatus(validUntilStr?: string | null): {
   isExpired: boolean;
   formattedDate: string;
   daysRemaining: number;
 } {
-  const parts = validUntilStr.split('-');
+  const safeStr = (typeof validUntilStr === 'string' && validUntilStr.trim()) ? validUntilStr.trim() : DEFAULT_OFFICIAL_EXPIRY;
+  const parts = safeStr.split('-');
   let expiryDate: Date;
   if (parts.length === 3) {
-    expiryDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 23, 59, 59);
+    const y = parseInt(parts[0], 10) || 2027;
+    const m = (parseInt(parts[1], 10) || 10) - 1;
+    const d = parseInt(parts[2], 10) || 31;
+    expiryDate = new Date(y, m, d, 23, 59, 59);
   } else {
-    expiryDate = new Date(validUntilStr);
+    const parsed = new Date(safeStr);
+    expiryDate = isNaN(parsed.getTime()) ? new Date(2027, 9, 31, 23, 59, 59) : parsed;
   }
 
   const now = new Date();
   const isExpired = now.getTime() > expiryDate.getTime();
   const daysRemaining = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-  return {
-    isExpired,
-    formattedDate: expiryDate.toLocaleDateString('pt-BR', {
+  let formattedDate = '31 de outubro de 2027';
+  try {
+    formattedDate = expiryDate.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: 'long',
       year: 'numeric',
-    }),
+    });
+  } catch (e) {}
+
+  return {
+    isExpired,
+    formattedDate,
     daysRemaining: Math.max(0, daysRemaining),
   };
 }

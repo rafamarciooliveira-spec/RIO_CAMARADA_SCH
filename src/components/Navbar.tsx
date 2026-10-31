@@ -52,13 +52,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
         <div className="flex items-center gap-3">
           <div
             className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shadow-xs overflow-hidden p-1 shrink-0"
-            style={{ color: activeTemplate.accentColor }}
+            style={{ color: activeTemplate?.accentColor || '#10b981' }}
           >
-            <AssociationLogo logoKeyOrUrl={activeTemplate.logoUrl} className="w-full h-full object-contain" />
+            <AssociationLogo logoKeyOrUrl={activeTemplate?.logoUrl} className="w-full h-full object-contain" />
           </div>
           <div>
             <h1 className="text-sm font-bold text-white tracking-tight leading-tight line-clamp-1">
-              {activeTemplate.associationName || 'Portal do Associado'}
+              {activeTemplate?.associationName || 'Portal do Associado'}
             </h1>
             <p className="text-[10px] text-zinc-400 leading-tight">
               Gestão de Sócios & Carteirinha Digital (LGPD)
@@ -136,26 +136,42 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
                       {notifications.length === 0 ? (
                         <p className="text-zinc-500 text-center py-4">Nenhuma notificação registrada.</p>
                       ) : (
-                        notifications.map(n => (
-                          <div
-                            key={n.id}
-                            onClick={() => !n.read && markNotificationRead(n.id)}
-                            className={`p-2.5 rounded-xl border transition-colors cursor-pointer ${
-                              n.read
-                                ? 'bg-zinc-950/40 border-zinc-800/80 text-zinc-400'
-                                : 'bg-emerald-950/30 border-emerald-500/40 text-zinc-100 shadow-xs'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <h5 className="font-bold text-xs text-white leading-tight">{n.title}</h5>
-                              {!n.read && <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 mt-1" />}
+                        notifications.map(n => {
+                          let formattedTime = '';
+                          try {
+                            if (n.createdAt) {
+                              const d = new Date(n.createdAt);
+                              if (!isNaN(d.getTime())) {
+                                formattedTime = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                              }
+                            }
+                          } catch (e) {
+                            formattedTime = '';
+                          }
+
+                          return (
+                            <div
+                              key={n.id}
+                              onClick={() => !n.read && markNotificationRead(n.id)}
+                              className={`p-2.5 rounded-xl border transition-colors cursor-pointer ${
+                                n.read
+                                  ? 'bg-zinc-950/40 border-zinc-800/80 text-zinc-400'
+                                  : 'bg-emerald-950/30 border-emerald-500/40 text-zinc-100 shadow-xs'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <h5 className="font-bold text-xs text-white leading-tight">{n.title}</h5>
+                                {!n.read && <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 mt-1" />}
+                              </div>
+                              <p className="text-[11px] mt-1 opacity-90 leading-normal">{n.message}</p>
+                              {formattedTime && (
+                                <span className="text-[9px] text-zinc-500 mt-1 block font-mono">
+                                  {formattedTime}
+                                </span>
+                              )}
                             </div>
-                            <p className="text-[11px] mt-1 opacity-90 leading-normal">{n.message}</p>
-                            <span className="text-[9px] text-zinc-500 mt-1 block font-mono">
-                              {new Date(n.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </div>

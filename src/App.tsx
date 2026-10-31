@@ -92,9 +92,13 @@ function MainContent() {
       <main className="flex-1">
         {currentUser ? (
           activeRole === 'admin' ? (
-            <AdminDashboard />
+            <ErrorBoundary resetKey="admin" fallbackTitle="Painel de Administração">
+              <AdminDashboard />
+            </ErrorBoundary>
           ) : (
-            <MemberDashboard />
+            <ErrorBoundary resetKey="member" fallbackTitle="Painel do Associado">
+              <MemberDashboard />
+            </ErrorBoundary>
           )
         ) : (
           /* Landing Hero / Public Presentation */
@@ -147,7 +151,7 @@ function MainContent() {
                   <Sparkles className="w-4 h-4" /> Modelo de Carteirinha da Associação
                 </span>
                 <span className="font-mono text-[11px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-300">
-                  {activeTemplate.name}
+                  {activeTemplate?.name || 'Modelo Padrão'}
                 </span>
               </div>
 
@@ -202,8 +206,8 @@ function MainContent() {
       <footer className="border-t border-zinc-800/80 bg-zinc-950 py-6 text-center text-xs text-zinc-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <AssociationLogo logoKeyOrUrl={activeTemplate.logoUrl} className="w-4 h-4 text-emerald-400" />
-            <span className="text-zinc-400">{activeTemplate.associationName}</span>
+            <AssociationLogo logoKeyOrUrl={activeTemplate?.logoUrl} className="w-4 h-4 text-emerald-400" />
+            <span className="text-zinc-400">{activeTemplate?.associationName || 'Portal do Associado'}</span>
           </div>
           <div>
             Em estrita conformidade com a Lei Geral de Proteção de Dados (LGPD - Lei nº 13.709/2018).

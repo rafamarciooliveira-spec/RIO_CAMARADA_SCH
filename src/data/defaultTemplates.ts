@@ -8,12 +8,16 @@ export const DEFAULT_TEMPLATES: CardTemplate[] = [
     associationSubtitle: 'Entidade Sem Fins Lucrativos • Fundada em 1984 • CNPJ 12.345.678/0001-90',
     logoUrl: 'shield',
     logoSize: 76,
-    logoPosition: 'left',
+    logoPosition: 'center',
+    logoBgTransparent: true,
+    infoAlignment: 'center',
+    nameFontSize: 'lg',
+    detailsFontSize: 'xs',
     primaryColor: '#064e3b', // emerald-900
     secondaryColor: '#022c22', // emerald-950
     accentColor: '#fbbf24', // amber-400
     textColor: '#ffffff',
-    orientation: 'horizontal',
+    orientation: 'vertical',
     backgroundPattern: 'guilloche',
     showQrCode: true,
     showPhoto: true,
