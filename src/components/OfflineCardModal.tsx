@@ -42,6 +42,15 @@ export const OfflineCardModal: React.FC<OfflineCardModalProps> = ({
     return () => clearInterval(interval);
   }, []);
 
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   // Handler to refresh/save the 24h offline snapshot
   const handleSaveOrRenew = () => {
     const res = saveOfflineCard(member, template);
@@ -61,8 +70,14 @@ export const OfflineCardModal: React.FC<OfflineCardModalProps> = ({
   const cardTemplate = offlineState.card?.template || template;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md overflow-y-auto">
-      <div className="bg-zinc-900 border border-zinc-700/80 rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden my-auto animate-scale-in">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md overflow-y-auto cursor-pointer animate-fade-in"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-zinc-900 border border-zinc-700/80 rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden my-auto animate-scale-in cursor-default"
+      >
         {/* Top Header */}
         <div className="bg-gradient-to-r from-emerald-950 via-zinc-900 to-zinc-900 border-b border-zinc-800 p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">

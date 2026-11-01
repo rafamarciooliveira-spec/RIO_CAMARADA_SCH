@@ -25,9 +25,12 @@ import { deleteDoc } from 'firebase/firestore';
 
 const BOOTSTRAP_ADMIN_EMAIL = 'rafa.marciooliveira@gmail.com';
 
+export type PortalTab = 'card' | 'events' | 'culture' | 'socials';
+
 interface AuthContextType {
   currentUser: User | null;
   currentMember: Member | null;
+  memberLoading: boolean;
   isAdmin: boolean;
   isSuperAdmin: boolean;
   adminList: AdminUser[];
@@ -35,6 +38,8 @@ interface AuthContextType {
   removeAdmin: (adminId: string) => Promise<void>;
   activeRole: ViewRole;
   setActiveRole: (role: ViewRole) => void;
+  activePortalTab: PortalTab;
+  setActivePortalTab: (tab: PortalTab) => void;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, pass: string) => Promise<void>;
@@ -54,19 +59,39 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentMember, setCurrentMember] = useState<Member | null>(null);
+  const [memberLoading, setMemberLoading] = useState<boolean>(true);
   const [adminList, setAdminList] = useState<AdminUser[]>([]);
-  const [activeRole, setActiveRole] = useState<ViewRole>('member');
+  const [activePortalTab, setActivePortalTab] = useState<PortalTab>('card');
+  const [activeRole, setActiveRoleState] = useState<ViewRole>(() => {
+    try {
+      const saved = localStorage.getItem('associacao_active_role');
+      if (saved === 'admin' || saved === 'member') return saved as ViewRole;
+    } catch (e) {}
+    return 'member';
+  });
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [templates, setTemplates] = useState<CardTemplate[]>(DEFAULT_TEMPLATES);
   const [activeTemplate, setActiveTemplate] = useState<CardTemplate>(() => {
     try {
       const cached = localStorage.getItem('associacao_active_template_cache');
-      if (cached) return JSON.parse(cached);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.name && parsed.primaryColor) {
+          return parsed;
+        }
+      }
     } catch (e) {}
     return DEFAULT_TEMPLATES[0];
   });
   const [previousStatus, setPreviousStatus] = useState<string | null>(null);
+
+  const setActiveRole = (role: ViewRole) => {
+    setActiveRoleState(role);
+    try {
+      localStorage.setItem('associacao_active_role', role);
+    } catch (e) {}
+  };
 
   // Super admin is uniquely rafa.marciooliveira@gmail.com
   const isSuperAdmin = useMemo(() => {
@@ -106,14 +131,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  // Sync active role with admin status initially
+  // Sync active role with admin status
   useEffect(() => {
-    if (isAdmin) {
-      setActiveRole('admin');
+    if (!currentUser) return;
+    const saved = localStorage.getItem('associacao_active_role');
+    if (!isAdmin) {
+      setActiveRoleState('member');
     } else {
-      setActiveRole('member');
+      if (saved === 'member' || saved === 'admin') {
+        setActiveRoleState(saved as ViewRole);
+      } else {
+        setActiveRoleState('admin');
+      }
     }
-  }, [isAdmin]);
+  }, [isAdmin, currentUser]);
 
   // Auth state listener
   useEffect(() => {
@@ -129,8 +160,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!currentUser) {
       setCurrentMember(null);
       setPreviousStatus(null);
+      setMemberLoading(false);
       return;
     }
+
+    setMemberLoading(true);
+    const cacheKey = `associacao_cached_member_${currentUser.uid}`;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.userId === currentUser.uid) {
+          setCurrentMember(parsed);
+        }
+      }
+    } catch (e) {}
 
     const path = 'members';
     const q = query(collection(db, path), where('userId', '==', currentUser.uid));
@@ -139,12 +183,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       q,
       snapshot => {
         if (!snapshot.empty) {
-          const docData = snapshot.docs[0].data() as Member;
+          // Sort documents by updatedAt or createdAt descending so the latest registered/edited member data is always loaded
+          const sortedDocs = [...snapshot.docs].sort((a, b) => {
+            const dataA = a.data();
+            const dataB = b.data();
+            const timeA = new Date(dataA.updatedAt || dataA.createdAt || 0).getTime();
+            const timeB = new Date(dataB.updatedAt || dataB.createdAt || 0).getTime();
+            return timeB - timeA;
+          });
+          const bestDoc = sortedDocs[0];
+          const docData = bestDoc.data() as Member;
           const member: Member = {
             ...docData,
-            id: snapshot.docs[0].id,
+            id: bestDoc.id,
           };
           setCurrentMember(member);
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify(member));
+          } catch (e) {}
 
           // Detect status change to fire Push Notification
           if (previousStatus && previousStatus !== member.status) {
@@ -173,10 +229,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setPreviousStatus(member.status);
         } else {
           setCurrentMember(null);
+          try {
+            localStorage.removeItem(cacheKey);
+          } catch (e) {}
         }
+        setMemberLoading(false);
       },
       error => {
         console.warn('Firestore snapshot sync notice for members:', error.message);
+        setMemberLoading(false);
       }
     );
 
@@ -226,9 +287,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (foundActiveFromList) {
             setActiveTemplate(foundActiveFromList);
-          } else if (fetched.length > 0) {
-            const def = fetched.find(t => t.isDefault) || fetched[0];
-            setActiveTemplate(def);
+            try {
+              localStorage.setItem('associacao_active_template_cache', JSON.stringify(foundActiveFromList));
+            } catch (e) {}
           }
         } else {
           setTemplates(DEFAULT_TEMPLATES);
@@ -375,6 +436,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         currentUser,
         currentMember,
+        memberLoading,
         isAdmin,
         isSuperAdmin,
         adminList,
@@ -382,6 +444,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         removeAdmin,
         activeRole,
         setActiveRole,
+        activePortalTab,
+        setActivePortalTab,
         loading,
         signInWithGoogle,
         signInWithEmail,

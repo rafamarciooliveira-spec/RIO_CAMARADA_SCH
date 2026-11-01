@@ -116,9 +116,24 @@ export const RejectMemberModal: React.FC<RejectMemberModalProps> = ({
     }
   };
 
+  // Close modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="bg-zinc-900 border border-red-500/40 rounded-3xl max-w-2xl w-full p-6 shadow-2xl text-zinc-100 flex flex-col max-h-[92vh] overflow-y-auto">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in cursor-pointer"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-zinc-900 border border-red-500/40 rounded-3xl max-w-2xl w-full p-6 shadow-2xl text-zinc-100 flex flex-col max-h-[92vh] overflow-y-auto cursor-default animate-scale-in"
+      >
         {/* Modal Header */}
         <div className="flex items-start justify-between border-b border-zinc-800 pb-4">
           <div className="flex items-center gap-3">

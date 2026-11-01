@@ -87,9 +87,24 @@ export const ApproveMemberModal: React.FC<ApproveModalProps> = ({
     }
   };
 
+  // Close modal on Escape key
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl text-zinc-100 max-h-[90vh] overflow-y-auto relative">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md cursor-pointer animate-fade-in"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-zinc-900 border border-zinc-700 rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl text-zinc-100 max-h-[90vh] overflow-y-auto relative cursor-default animate-scale-in"
+      >
         <button
           onClick={onClose}
           className="absolute top-5 right-5 text-zinc-400 hover:text-white transition-colors"
@@ -254,6 +269,9 @@ export const ApproveMemberModal: React.FC<ApproveModalProps> = ({
                   type="text"
                   value={fullName}
                   onChange={e => setFullName(e.target.value)}
+                  autoComplete="name"
+                  autoCorrect="off"
+                  spellCheck={false}
                   className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-white outline-hidden focus:border-emerald-500"
                 />
               </div>

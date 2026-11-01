@@ -13,6 +13,9 @@ import { requestPushPermission, getPushPermissionStatus } from '../utils/pushNot
 import { OfflineCardModal } from './OfflineCardModal.tsx';
 import { FullScreenCardModal } from './FullScreenCardModal.tsx';
 import { EditMemberProfileModal } from './EditMemberProfileModal.tsx';
+import { EventsCalendarView } from './EventsCalendarView.tsx';
+import { CultureArticlesView } from './CultureArticlesView.tsx';
+import { SocialLinksView } from './SocialLinksView.tsx';
 import {
   Clock,
   CheckCircle2,
@@ -34,6 +37,9 @@ import {
   ChevronDown,
   ChevronUp,
   Maximize2,
+  CalendarDays,
+  BookOpen,
+  Share2,
 } from 'lucide-react';
 
 function formatDateSafe(val: any, fallback = 'Data recente'): string {
@@ -69,7 +75,14 @@ function formatDateTimeSafe(val: any, fallback = 'Data recente'): string {
 }
 
 export const MemberDashboard: React.FC = () => {
-  const { currentMember, activeTemplate, currentUser } = useAuth();
+  const {
+    currentMember,
+    activeTemplate,
+    currentUser,
+    memberLoading,
+    activePortalTab,
+    setActivePortalTab,
+  } = useAuth();
   const [editing, setEditing] = useState(false);
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [showOfflineModal, setShowOfflineModal] = useState(false);
@@ -120,7 +133,7 @@ export const MemberDashboard: React.FC = () => {
       await setDoc(doc(db, 'members', memberId), {
         id: memberId,
         userId: currentUser.uid,
-        fullName: currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0].replace('.', ' ') : 'Associado Homologado'),
+        fullName: currentMember?.fullName || (currentUser.email ? currentUser.email.split('@')[0].replace('.', ' ') : 'Associado Homologado'),
         cpf: '123.456.789-00',
         birthDate: '1987-08-25',
         email: currentUser.email || 'socio@associacao.org.br',
@@ -159,10 +172,105 @@ export const MemberDashboard: React.FC = () => {
     }
   };
 
+  // Top tab bar switcher between "Minha Carteirinha", "Calendário de Eventos", "Espaço Cultural" and "Redes Sociais"
+  const renderTopNavTabs = () => (
+    <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 p-1.5 rounded-2xl w-full sm:w-fit overflow-x-auto shadow-md">
+      <button
+        onClick={() => setActivePortalTab('card')}
+        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+          activePortalTab === 'card'
+            ? 'bg-emerald-600 text-white shadow-sm'
+            : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+        }`}
+      >
+        <ShieldCheck className="w-4 h-4 text-emerald-400" />
+        <span>Minha Carteirinha</span>
+      </button>
+
+      <button
+        onClick={() => setActivePortalTab('events')}
+        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+          activePortalTab === 'events'
+            ? 'bg-emerald-600 text-white shadow-sm'
+            : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+        }`}
+      >
+        <Calendar className="w-4 h-4 text-emerald-400" />
+        <span>Calendário de Eventos</span>
+      </button>
+
+      <button
+        onClick={() => setActivePortalTab('culture')}
+        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+          activePortalTab === 'culture'
+            ? 'bg-emerald-600 text-white shadow-sm'
+            : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+        }`}
+      >
+        <BookOpen className="w-4 h-4 text-amber-400" />
+        <span>Espaço Cultural</span>
+      </button>
+
+      <button
+        onClick={() => setActivePortalTab('socials')}
+        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+          activePortalTab === 'socials'
+            ? 'bg-emerald-600 text-white shadow-sm'
+            : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+        }`}
+      >
+        <Share2 className="w-4 h-4 text-pink-400" />
+        <span>Redes Sociais</span>
+      </button>
+    </div>
+  );
+
+  // If user selected Events tab, show the Events Calendar directly
+  if (activePortalTab === 'events') {
+    return (
+      <div className="max-w-6xl mx-auto py-6 px-4 sm:px-6 space-y-6">
+        {renderTopNavTabs()}
+        <EventsCalendarView />
+      </div>
+    );
+  }
+
+  // If user selected Culture tab, show Culture Articles directly
+  if (activePortalTab === 'culture') {
+    return (
+      <div className="max-w-6xl mx-auto py-6 px-4 sm:px-6 space-y-6">
+        {renderTopNavTabs()}
+        <CultureArticlesView />
+      </div>
+    );
+  }
+
+  // If user selected Socials tab, show Social Links directly
+  if (activePortalTab === 'socials') {
+    return (
+      <div className="max-w-5xl mx-auto py-6 px-4 sm:px-6 space-y-6">
+        {renderTopNavTabs()}
+        <SocialLinksView />
+      </div>
+    );
+  }
+
+  // Graceful loading state to prevent flickering empty/example forms on reload
+  if (memberLoading && !currentMember) {
+    return (
+      <div className="py-24 text-center text-zinc-400 space-y-3 max-w-md mx-auto">
+        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-xs font-mono tracking-wider">Conectando aos dados do associado...</p>
+      </div>
+    );
+  }
+
   // If no member record exists yet, render registration form with quick-test option
   if (!currentMember) {
     return (
       <div className="py-6 px-4 max-w-4xl mx-auto space-y-6">
+        {renderTopNavTabs()}
+
         {/* Helper Banner for Testers and New Visitors */}
         <div className="p-5 rounded-3xl bg-gradient-to-r from-emerald-950/70 via-zinc-900 to-zinc-950 border border-emerald-500/40 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -283,6 +391,9 @@ export const MemberDashboard: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 space-y-8">
+      {/* Top Nav Switcher */}
+      {renderTopNavTabs()}
+
       {/* Push Notification Opt-in Prompt */}
       {pushStatus !== 'granted' && (
         <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/60 to-zinc-900 border border-emerald-500/30 flex flex-col sm:flex-row items-center justify-between gap-4 text-zinc-200 shadow-md">

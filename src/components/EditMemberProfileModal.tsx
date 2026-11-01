@@ -49,6 +49,16 @@ export const EditMemberProfileModal: React.FC<EditModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
+  // Close modal on Escape key
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -128,8 +138,14 @@ export const EditMemberProfileModal: React.FC<EditModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md overflow-y-auto">
-      <div className="bg-zinc-900 border border-zinc-700/80 rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden my-auto animate-scale-in text-zinc-100">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md overflow-y-auto cursor-pointer animate-fade-in"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-zinc-900 border border-zinc-700/80 rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden my-auto animate-scale-in text-zinc-100 cursor-default"
+      >
         {/* Header */}
         <div className="bg-gradient-to-r from-emerald-950 via-zinc-900 to-zinc-900 border-b border-zinc-800 p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -239,17 +255,26 @@ export const EditMemberProfileModal: React.FC<EditModalProps> = ({
 
           {/* 2. NOME COMPLETO */}
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300 mb-1.5">
-              Nome Completo Oficial *
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                Nome Completo Oficial *
+              </label>
+              <span className="text-[10px] text-emerald-400">Exatamente como cadastrado</span>
+            </div>
             <input
               type="text"
               required
               value={fullName}
               onChange={e => setFullName(e.target.value)}
               placeholder="Digite seu nome completo..."
+              autoComplete="name"
+              autoCorrect="off"
+              spellCheck={false}
               className="w-full px-4 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-hidden text-sm text-white font-medium"
             />
+            <p className="text-[11px] text-zinc-500 mt-1">
+              O nome é levado para a carteirinha rigorosamente da mesma forma que digitado aqui (sem correções automáticas ou inclusão de acentos).
+            </p>
           </div>
 
           {/* 3. DATA / ANO DE NASCIMENTO */}

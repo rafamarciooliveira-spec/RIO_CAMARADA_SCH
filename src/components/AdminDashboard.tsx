@@ -18,6 +18,9 @@ import { ApproveMemberModal } from './ApproveMemberModal.tsx';
 import { AdminManagementView } from './AdminManagementView.tsx';
 import { RejectionEmailConfig } from './RejectionEmailConfig.tsx';
 import { RejectMemberModal } from './RejectMemberModal.tsx';
+import { EventsCalendarView } from './EventsCalendarView.tsx';
+import { AdminCultureManager } from './AdminCultureManager.tsx';
+import { AdminSocialsManager } from './AdminSocialsManager.tsx';
 import { maskCPF } from '../utils/cpf.ts';
 import { formatDateBR } from '../utils/date.ts';
 import { triggerPushNotification } from '../utils/pushNotification.ts';
@@ -44,12 +47,14 @@ import {
   Key,
   User,
   Mail,
+  BookOpen,
+  Share2,
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
   const { activeTemplate, setActiveTemplate, templates, currentUser, adminList } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'members' | 'customizer' | 'logo' | 'rejectionEmail' | 'admins' | 'lgpd'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'events' | 'culture' | 'socials' | 'customizer' | 'logo' | 'rejectionEmail' | 'admins' | 'lgpd'>('members');
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -96,6 +101,20 @@ export const AdminDashboard: React.FC = () => {
 
     return () => unsubscribe();
   }, []);
+
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (previewingMember) setPreviewingMember(null);
+        if (verifyingMember) setVerifyingMember(null);
+        if (approvingMember) setApprovingMember(null);
+        if (rejectingMember) setRejectingMember(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewingMember, verifyingMember, approvingMember, rejectingMember]);
 
   // Quick category switch in the table
   const handleQuickChangeCategory = async (memberId: string, newCategory: 'SÓCIO' | 'MEMBRO DA DIRETORIA') => {
@@ -402,6 +421,42 @@ export const AdminDashboard: React.FC = () => {
                 {pendingCount}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('events')}
+            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'events'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Eventos & Agenda da Sociedade</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('culture')}
+            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'culture'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+            }`}
+          >
+            <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+            <span>Espaço Cultural</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('socials')}
+            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'socials'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+            }`}
+          >
+            <Share2 className="w-3.5 h-3.5 text-pink-400" />
+            <span>Redes Sociais</span>
           </button>
 
           <button
@@ -850,6 +905,15 @@ export const AdminDashboard: React.FC = () => {
         </div>
       )}
 
+      {/* TAB: EVENTOS & AGENDA DA SOCIEDADE */}
+      {activeTab === 'events' && <EventsCalendarView />}
+
+      {/* TAB: ESPAÇO CULTURAL & HISTÓRICO */}
+      {activeTab === 'culture' && <AdminCultureManager />}
+
+      {/* TAB: REDES SOCIAIS */}
+      {activeTab === 'socials' && <AdminSocialsManager />}
+
       {/* TAB: GESTÃO DE ADMINISTRADORES */}
       {activeTab === 'admins' && <AdminManagementView />}
 
@@ -944,13 +1008,20 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Preview Card Modal */}
       {previewingMember && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-3xl max-w-lg w-full p-6 shadow-2xl text-zinc-100 flex flex-col items-center">
+        <div
+          onClick={() => setPreviewingMember(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md cursor-pointer animate-fade-in"
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="bg-zinc-900 border border-zinc-700 rounded-3xl max-w-lg w-full p-6 shadow-2xl text-zinc-100 flex flex-col items-center cursor-default animate-scale-in"
+          >
             <div className="w-full flex items-center justify-between border-b border-zinc-800 pb-3 mb-5">
               <h4 className="font-bold text-sm text-white">Visualização da Carteirinha Oficial</h4>
               <button
                 onClick={() => setPreviewingMember(null)}
-                className="text-zinc-400 hover:text-white"
+                className="text-zinc-400 hover:text-white p-1 cursor-pointer"
+                title="Fechar"
               >
                 ✕
               </button>

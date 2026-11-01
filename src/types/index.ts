@@ -115,3 +115,61 @@ export interface EmailDispatchRecord {
   status: 'enviado' | 'pendente';
   sentAt: string;
 }
+
+export type SocietyEventType = 'sociedade' | 'terceiro';
+
+export interface SocietyEvent {
+  id: string;
+  title: string;
+  date: string; // YYYY-MM-DD
+  startTime?: string; // HH:mm
+  endTime?: string; // HH:mm
+  type: SocietyEventType;
+  notes?: string;
+  location?: string;
+  createdBy?: string;
+  createdByName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SocialPlatform = 'facebook' | 'instagram' | 'youtube' | 'whatsapp' | 'tiktok' | 'website' | 'other';
+
+export interface SocialLink {
+  id: string;
+  platform: SocialPlatform;
+  title: string;
+  url: string;
+  username?: string;
+  description?: string;
+  order: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CultureCategory =
+  | 'tiro_ao_alvo'
+  | 'festas_de_rei'
+  | 'modalidades'
+  | 'schutzenfest'
+  | 'sociedade_rio_camarada'
+  | 'outros';
+
+export interface CultureArticle {
+  id: string;
+  slug: string;
+  title: string;
+  subtitle?: string;
+  category: CultureCategory;
+  categoryLabel: string;
+  content: string; // rich markdown / paragraphs
+  summary: string;
+  imageUrl?: string;
+  order: number;
+  highlighted?: boolean;
+  published: boolean;
+  updatedAt: string;
+  updatedBy?: string;
+}
+

@@ -144,5 +144,32 @@ service cloud.firestore {
       allow create: if isAdmin() || isSignedIn();
       allow update, delete: if isAdmin();
     }
+
+    // Helper for society events
+    function isValidSocietyEvent(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.date is string && data.date.size() >= 8 && data.date.size() <= 30 &&
+             data.type in ['sociedade', 'terceiro'];
+    }
+
+    // Society Events (Agenda da Sociedade e Ocupações de Terceiros)
+    match /events/{eventId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidSocietyEvent(incoming());
+      allow update: if isSignedIn() && isValidSocietyEvent(incoming());
+      allow delete: if isSignedIn();
+    }
+
+    // Social Media Links (Facebook, Instagram, etc.)
+    match /socialLinks/{linkId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Culture Articles & Historical Records
+    match /cultureArticles/{articleId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
   }
 }

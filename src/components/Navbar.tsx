@@ -12,6 +12,11 @@ import {
   Clock,
   Sparkles,
   ChevronDown,
+  X,
+  Calendar,
+  BookOpen,
+  Share2,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -25,6 +30,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
     isAdmin,
     activeRole,
     setActiveRole,
+    activePortalTab,
+    setActivePortalTab,
     logout,
     notifications,
     markNotificationRead,
@@ -37,6 +44,18 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
   useEffect(() => {
     setPushStatus(getPushPermissionStatus());
   }, []);
+
+  // Close notifications popover on Escape key
+  useEffect(() => {
+    if (!showNotifMenu) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowNotifMenu(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showNotifMenu]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -65,6 +84,59 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
             </p>
           </div>
         </div>
+
+        {/* Navigation Tabs for Sócios */}
+        {currentUser && activeRole === 'member' && (
+          <nav className="hidden lg:flex items-center gap-1 bg-zinc-900 border border-zinc-800 p-1 rounded-xl">
+            <button
+              onClick={() => setActivePortalTab('card')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                activePortalTab === 'card'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Carteirinha</span>
+            </button>
+
+            <button
+              onClick={() => setActivePortalTab('events')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                activePortalTab === 'events'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Eventos</span>
+            </button>
+
+            <button
+              onClick={() => setActivePortalTab('culture')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                activePortalTab === 'culture'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+              <span>Cultura</span>
+            </button>
+
+            <button
+              onClick={() => setActivePortalTab('socials')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                activePortalTab === 'socials'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <Share2 className="w-3.5 h-3.5 text-pink-400" />
+              <span>Redes Sociais</span>
+            </button>
+          </nav>
+        )}
 
         {/* Center / Right controls */}
         <div className="flex items-center gap-2 sm:gap-3">
@@ -103,8 +175,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
               <div className="relative">
                 <button
                   onClick={() => setShowNotifMenu(!showNotifMenu)}
-                  className="relative p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition-colors cursor-pointer"
-                  title="Notificações de status"
+                  className={`relative p-2 rounded-xl border transition-colors cursor-pointer ${
+                    showNotifMenu
+                      ? 'bg-zinc-800 border-emerald-500/50 text-white'
+                      : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300 hover:text-white'
+                  }`}
+                  title="Avisos e Notificações"
+                  aria-label="Abrir central de avisos"
                 >
                   <Bell className="w-4 h-4" />
                   {unreadCount > 0 && (
@@ -114,27 +191,54 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
                   )}
                 </button>
 
-                {/* Notifications Popover */}
+                {/* Click outside backdrop overlay to close automatically */}
                 {showNotifMenu && (
-                  <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl p-4 text-xs text-zinc-200 z-50">
-                    <div className="flex items-center justify-between border-b border-zinc-800 pb-2 mb-3">
-                      <div className="flex items-center gap-2">
-                        <Bell className="w-4 h-4 text-emerald-400" />
-                        <span className="font-bold text-white text-sm">Notificações Push</span>
+                  <div
+                    className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] sm:bg-black/10 transition-opacity"
+                    onClick={() => setShowNotifMenu(false)}
+                    aria-label="Fechar avisos ao clicar fora"
+                  />
+                )}
+
+                {/* Notifications / Avisos Popover */}
+                {showNotifMenu && (
+                  <div
+                    onClick={e => e.stopPropagation()}
+                    className="fixed left-3 right-3 top-16 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 w-auto sm:w-96 max-w-[calc(100vw-1.5rem)] bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl p-4 text-xs text-zinc-200 z-50 animate-scale-in"
+                  >
+                    <div className="flex items-center justify-between border-b border-zinc-800 pb-2.5 mb-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Bell className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span className="font-bold text-white text-sm truncate">Central de Avisos</span>
+                        {unreadCount > 0 && (
+                          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
+                            {unreadCount} novo{unreadCount > 1 ? 's' : ''}
+                          </span>
+                        )}
                       </div>
-                      {pushStatus !== 'granted' && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {pushStatus !== 'granted' && (
+                          <button
+                            onClick={handleTogglePush}
+                            className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-colors cursor-pointer"
+                          >
+                            Ativar Push
+                          </button>
+                        )}
                         <button
-                          onClick={handleTogglePush}
-                          className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-colors"
+                          onClick={() => setShowNotifMenu(false)}
+                          className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                          title="Fechar tela de avisos (ou clique fora)"
+                          aria-label="Fechar avisos"
                         >
-                          Ativar no Navegador
+                          <X className="w-4 h-4" />
                         </button>
-                      )}
+                      </div>
                     </div>
 
                     <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                       {notifications.length === 0 ? (
-                        <p className="text-zinc-500 text-center py-4">Nenhuma notificação registrada.</p>
+                        <p className="text-zinc-500 text-center py-5">Nenhum aviso ou notificação no momento.</p>
                       ) : (
                         notifications.map(n => {
                           let formattedTime = '';

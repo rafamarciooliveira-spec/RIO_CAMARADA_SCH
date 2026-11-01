@@ -48,7 +48,7 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
 }) => {
   const { currentUser, currentMember } = useAuth();
 
-  const [fullName, setFullName] = useState(initialData?.fullName || currentUser?.displayName || '');
+  const [fullName, setFullName] = useState(initialData?.fullName || '');
   const [cpf, setCpf] = useState(initialData?.cpf || '');
   const [birthDateBR, setBirthDateBR] = useState(() => {
     if (initialData?.birthDate) {
@@ -283,6 +283,9 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
             value={fullName}
             onChange={e => setFullName(e.target.value)}
             placeholder="Ex: Carlos Alberto da Silva"
+            autoComplete="name"
+            autoCorrect="off"
+            spellCheck={false}
             className="w-full px-4 py-2.5 rounded-xl bg-zinc-950/80 border border-zinc-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-hidden text-sm text-white"
           />
         </div>

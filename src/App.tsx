@@ -13,6 +13,9 @@ import { AuthModal } from './components/AuthModal.tsx';
 import { NotificationToastContainer } from './components/NotificationToast.tsx';
 import { VerificationModal } from './components/VerificationModal.tsx';
 import { AssociationLogo } from './components/AssociationLogos.tsx';
+import { EventsCalendarView } from './components/EventsCalendarView.tsx';
+import { CultureArticlesView } from './components/CultureArticlesView.tsx';
+import { SocialLinksView } from './components/SocialLinksView.tsx';
 import { Member } from './types/index.ts';
 import { db } from './firebase/config.ts';
 import { doc, getDoc } from 'firebase/firestore';
@@ -27,12 +30,16 @@ import {
   Lock,
   ArrowRight,
   CheckCircle2,
+  BookOpen,
+  Share2,
+  Home,
 } from 'lucide-react';
 
 function MainContent() {
   const { currentUser, activeRole, loading, activeTemplate } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [publicVerifyMember, setPublicVerifyMember] = useState<Member | null>(null);
+  const [publicTab, setPublicTab] = useState<'home' | 'events' | 'culture' | 'socials'>('home');
 
   // Check URL query parameters for public QR code scan (/validar?id=...)
   useEffect(() => {
@@ -78,48 +85,134 @@ function MainContent() {
             </ErrorBoundary>
           )
         ) : (
-          /* Landing Hero / Public Presentation */
-          <div className="py-12 px-4 sm:px-6 max-w-6xl mx-auto space-y-12 sm:space-y-16">
-            {/* Hero Top */}
-            <div className="text-center max-w-3xl mx-auto space-y-5">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold uppercase tracking-wider shadow-sm">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Gestão Completa de Associação Sem Fins Lucrativos</span>
-              </div>
-
-              <h1 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight">
-                Portal do Associado & <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-amber-300">
-                  Carteirinha Digital Inteligente
-                </span>
-              </h1>
-
-              <p className="text-sm sm:text-base text-zinc-400 max-w-2xl mx-auto leading-relaxed">
-                Plataforma com conformidade total à <strong>LGPD</strong>, dupla visualização para
-                <strong> Administrador</strong> e <strong>Sócio</strong>, aprovação cadastral em tempo real,
-                selo de visualização seguro de 24 horas e validade oficial até <strong>Outubro de 2027</strong>.
-              </p>
-
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+          /* Landing Hero / Public Presentation with Tabs */
+          <div className="py-8 px-4 sm:px-6 max-w-6xl mx-auto space-y-8 sm:space-y-12">
+            {/* Public Tab Navigation */}
+            <div className="flex items-center justify-center">
+              <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 p-1.5 rounded-2xl overflow-x-auto shadow-md">
                 <button
-                  onClick={() => setShowAuthModal(true)}
-                  className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm tracking-wide shadow-xl shadow-emerald-950/50 transition-all flex items-center justify-center gap-2 cursor-pointer hover:scale-102"
+                  onClick={() => setPublicTab('home')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    publicTab === 'home'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
                 >
-                  <UserCheck className="w-4 h-4" />
-                  <span>Cadastrar-se como Sócio</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <Home className="w-4 h-4 text-emerald-400" />
+                  <span>Início</span>
                 </button>
 
                 <button
-                  onClick={() => setShowAuthModal(true)}
-                  className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-semibold text-sm transition-all border border-zinc-800 flex items-center justify-center gap-2 cursor-pointer"
+                  onClick={() => setPublicTab('events')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    publicTab === 'events'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
                 >
-                  <Lock className="w-4 h-4 text-emerald-400" />
-                  <span>Acesso de Administrador</span>
+                  <Calendar className="w-4 h-4 text-emerald-400" />
+                  <span>Eventos da Sociedade</span>
+                </button>
+
+                <button
+                  onClick={() => setPublicTab('culture')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    publicTab === 'culture'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <BookOpen className="w-4 h-4 text-amber-400" />
+                  <span>Espaço Cultural</span>
+                </button>
+
+                <button
+                  onClick={() => setPublicTab('socials')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    publicTab === 'socials'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <Share2 className="w-4 h-4 text-pink-400" />
+                  <span>Redes Sociais</span>
                 </button>
               </div>
             </div>
+
+            {publicTab === 'events' && <EventsCalendarView />}
+            {publicTab === 'culture' && <CultureArticlesView />}
+            {publicTab === 'socials' && <SocialLinksView />}
+
+            {publicTab === 'home' && (
+              <div className="space-y-12 sm:space-y-16">
+                {/* Hero Top */}
+                <div className="text-center max-w-3xl mx-auto space-y-5">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold uppercase tracking-wider shadow-sm">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <span>Gestão Completa de Associação Sem Fins Lucrativos</span>
+                  </div>
+
+                  <h1 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight">
+                    Portal do Associado & <br />
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-amber-300">
+                      Carteirinha Digital Inteligente
+                    </span>
+                  </h1>
+
+                  <p className="text-sm sm:text-base text-zinc-400 max-w-2xl mx-auto leading-relaxed">
+                    Plataforma oficial com conformidade total à <strong>LGPD</strong>, dupla visualização para
+                    <strong> Administrador</strong> e <strong>Sócio</strong>, aprovação cadastral em tempo real,
+                    selo de visualização seguro de 24 horas e validade oficial até <strong>Outubro de 2027</strong>.
+                  </p>
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                    <button
+                      onClick={() => setShowAuthModal(true)}
+                      className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm tracking-wide shadow-xl shadow-emerald-950/50 transition-all flex items-center justify-center gap-2 cursor-pointer hover:scale-102"
+                    >
+                      <UserCheck className="w-4 h-4" />
+                      <span>Cadastrar-se como Sócio</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => setShowAuthModal(true)}
+                      className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-semibold text-sm transition-all border border-zinc-800 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Lock className="w-4 h-4 text-emerald-400" />
+                      <span>Acesso de Administrador</span>
+                    </button>
+                  </div>
+
+                  {/* Quick Shortcut Pills */}
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                    <button
+                      onClick={() => setPublicTab('events')}
+                      className="px-3 py-1.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Ver Calendário de Eventos</span>
+                    </button>
+
+                    <button
+                      onClick={() => setPublicTab('culture')}
+                      className="px-3 py-1.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+                      <span>História & Tradições de Schroeder</span>
+                    </button>
+
+                    <button
+                      onClick={() => setPublicTab('socials')}
+                      className="px-3 py-1.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Share2 className="w-3.5 h-3.5 text-pink-400" />
+                      <span>Redes Sociais Oficiais</span>
+                    </button>
+                  </div>
+                </div>
 
             {/* Secure Portal Access Banner (Card is only displayed after login) */}
             <div className="bg-gradient-to-b from-zinc-900 to-zinc-950 border border-zinc-800 rounded-3xl p-6 sm:p-10 shadow-2xl max-w-3xl mx-auto text-center space-y-6 relative overflow-hidden">
@@ -202,7 +295,9 @@ function MainContent() {
             </div>
           </div>
         )}
-      </main>
+      </div>
+    )}
+  </main>
 
       {/* Footer */}
       <footer className="border-t border-zinc-800/80 bg-zinc-950 py-6 text-center text-xs text-zinc-500">

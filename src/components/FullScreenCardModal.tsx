@@ -97,9 +97,15 @@ export const FullScreenCardModal: React.FC<FullScreenCardModalProps> = ({
   const officialStatus = checkOfficialCardStatus(member.validUntil);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col justify-between items-center p-2 sm:p-4 text-white select-none overflow-y-auto animate-fade-in">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col justify-between items-center p-2 sm:p-4 text-white select-none overflow-y-auto animate-fade-in cursor-pointer"
+    >
       {/* Top Bar for Gatekeeper / Portaria Presentation */}
-      <div className="w-full max-w-lg flex items-center justify-between gap-3 pt-1 pb-2 border-b border-zinc-800">
+      <div
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-lg flex items-center justify-between gap-3 pt-1 pb-2 border-b border-zinc-800 cursor-default"
+      >
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center p-1">
             <AssociationLogo logoKeyOrUrl={template?.logoUrl} className="w-full h-full object-contain" />
@@ -142,7 +148,10 @@ export const FullScreenCardModal: React.FC<FullScreenCardModalProps> = ({
       </div>
 
       {/* Screen Brightness Tip Banner */}
-      <div className="w-full max-w-lg my-1.5 py-1 px-3 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-[10px] sm:text-xs flex items-center justify-between gap-2 shadow-xs">
+      <div
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-lg my-1.5 py-1 px-3 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-[10px] sm:text-xs flex items-center justify-between gap-2 shadow-xs cursor-default"
+      >
         <span className="flex items-center gap-1.5 font-medium">
           <Sun className="w-3.5 h-3.5 text-amber-400 shrink-0" />
           Dica: Aumente o brilho do celular para leitura ágil do QR Code na portaria.
@@ -154,7 +163,10 @@ export const FullScreenCardModal: React.FC<FullScreenCardModalProps> = ({
 
       {/* Center Stage: The Maximized Carteirinha */}
       <div className="flex-1 w-full flex items-center justify-center py-2">
-        <div className="w-full max-w-[360px] sm:max-w-[420px] transform-gpu scale-100 transition-transform">
+        <div
+          onClick={e => e.stopPropagation()}
+          className="w-full max-w-[360px] sm:max-w-[420px] transform-gpu scale-100 transition-transform cursor-default"
+        >
           <DigitalCard
             member={member}
             template={template}
@@ -164,7 +176,10 @@ export const FullScreenCardModal: React.FC<FullScreenCardModalProps> = ({
       </div>
 
       {/* Bottom Bar: Instructions, 24h Countdown & Quick Close */}
-      <div className="w-full max-w-lg pt-2 pb-1 border-t border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-2 text-center text-xs text-zinc-400">
+      <div
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-lg pt-2 pb-1 border-t border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-2 text-center text-xs text-zinc-400 cursor-default"
+      >
         <div className="flex items-center gap-2 font-mono text-[11px]">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           <span className="text-white">
