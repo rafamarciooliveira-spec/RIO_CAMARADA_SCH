@@ -28,6 +28,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
     currentUser,
     currentMember,
     isAdmin,
+    isBoardMember,
+    boardRole,
+    isSuperAdmin,
+    isDiretoriaExecutiva,
     activeRole,
     setActiveRole,
     activePortalTab,
@@ -142,8 +146,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
         <div className="flex items-center gap-2 sm:gap-3">
           {currentUser ? (
             <>
-              {/* Role Switcher (Admin / Member) */}
-              {isAdmin && (
+              {/* Role Switcher (Diretoria / Sócio) - ONLY VISIBLE IF BOARD MEMBER */}
+              {isBoardMember && (
                 <div className="flex items-center bg-zinc-900 border border-zinc-800 p-1 rounded-xl shadow-inner">
                   <button
                     onClick={() => setActiveRole('admin')}
@@ -152,9 +156,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
                         ? 'bg-emerald-600 text-white shadow-xs'
                         : 'text-zinc-400 hover:text-white'
                     }`}
+                    title="Acessar Gestão e Administração da Associação"
                   >
-                    <Shield className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Admin</span>
+                    <Shield className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="hidden sm:inline">
+                      {isSuperAdmin ? 'Admin Geral' : isDiretoriaExecutiva ? 'Diretoria Exec.' : 'Diretoria'}
+                    </span>
+                    <span className="sm:hidden">Adm</span>
                   </button>
 
                   <button
@@ -164,6 +172,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
                         ? 'bg-emerald-600 text-white shadow-xs'
                         : 'text-zinc-400 hover:text-white'
                     }`}
+                    title="Visualizar Carteirinha de Sócio"
                   >
                     <User className="w-3.5 h-3.5" />
                     <span className="hidden sm:inline">Sócio</span>
@@ -301,7 +310,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
               onClick={onOpenAuthModal}
               className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-colors cursor-pointer"
             >
-              Acessar Portal / Login
+              Acessar Portal do Sócio
             </button>
           )}
         </div>

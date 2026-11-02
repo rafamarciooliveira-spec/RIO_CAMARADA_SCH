@@ -17,6 +17,10 @@ import {
   X,
   Sparkles,
   RefreshCw,
+  Phone,
+  Mail,
+  Lock,
+  ShieldAlert,
 } from 'lucide-react';
 
 const PRESET_AVATARS = [
@@ -41,9 +45,11 @@ export const EditMemberProfileModal: React.FC<EditModalProps> = ({
   member,
   onSuccess,
 }) => {
-  const { activeTemplate } = useAuth();
+  const { activeTemplate, syncPublicCard } = useAuth();
   const [fullName, setFullName] = useState(member.fullName || '');
   const [birthDateBR, setBirthDateBR] = useState(() => formatDateBR(member.birthDate, ''));
+  const [phone, setPhone] = useState(member.phone || '');
+  const [email, setEmail] = useState(member.email || '');
   const [photoUrl, setPhotoUrl] = useState(member.photoUrl || '');
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -91,6 +97,11 @@ export const EditMemberProfileModal: React.FC<EditModalProps> = ({
       return;
     }
 
+    if (email.trim() && !email.includes('@')) {
+      setErrorMsg('Informe um endereço de e-mail válido.');
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -100,10 +111,20 @@ export const EditMemberProfileModal: React.FC<EditModalProps> = ({
         fullName: fullName.trim(),
         birthDate: normalizedDate,
         photoUrl: photoUrl || '',
+        phone: phone.trim(),
+        email: email.trim().toLowerCase(),
         updatedAt: new Date().toISOString(),
       };
 
       await updateDoc(doc(db, path, member.id), updatedFields);
+
+      // Sincroniza também com o resumo público do cartão (sem PII) para o validador QR
+      if (syncPublicCard) {
+        await syncPublicCard({
+          ...member,
+          ...updatedFields,
+        });
+      }
 
       // Sincroniza também com o cartão salvo offline se houver
       if (activeTemplate) {
@@ -118,7 +139,7 @@ export const EditMemberProfileModal: React.FC<EditModalProps> = ({
 
       triggerPushNotification(
         '✅ Cadastro Atualizado!',
-        'Seu nome, data de nascimento e foto foram salvos com sucesso no banco de dados.',
+        'Seu nome, contato, data de nascimento e foto foram salvos com sucesso.',
         'approval'
       );
 
@@ -326,6 +347,75 @@ export const EditMemberProfileModal: React.FC<EditModalProps> = ({
             <span className="text-[10px] text-zinc-500 mt-1 block">
               Altere o dia, mês e o ano de nascimento conforme seu documento oficial.
             </span>
+          </div>
+
+          {/* 4. TELEFONE / WHATSAPP */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300 mb-1.5">
+              Telefone / WhatsApp de Contato
+            </label>
+            <div className="relative">
+              <Phone className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="tel"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                placeholder="(47) 99999-9999"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-hidden text-sm text-white"
+              />
+            </div>
+            <span className="text-[10px] text-zinc-500 mt-1 block">
+              Contato utilizado para comunicados da diretoria e notificações da sociedade.
+            </span>
+          </div>
+
+          {/* 5. E-MAIL CADASTRADO */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300 mb-1.5">
+              E-mail do Sócio
+            </label>
+            <div className="relative">
+              <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="seu.email@exemplo.com"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-hidden text-sm text-white"
+              />
+            </div>
+            <span className="text-[10px] text-zinc-500 mt-1 block">
+              Endereço eletrônico para envio de avisos e recuperação de acesso.
+            </span>
+          </div>
+
+          {/* DADOS PROTEGIDOS - NÃO ALTERÁVEIS PELO SÓCIO */}
+          <div className="p-3.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-zinc-400 uppercase tracking-wider">
+              <Lock className="w-3.5 h-3.5 text-amber-400" />
+              <span>Campos Estatutários (Gerenciados Exclusivamente pela Diretoria)</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px]">
+              <div className="bg-zinc-900/80 p-2 rounded-xl border border-zinc-800">
+                <span className="text-zinc-500 block text-[9px] uppercase">Categoria</span>
+                <span className="font-bold text-emerald-400 truncate block">{member.category || 'SÓCIO'}</span>
+              </div>
+              <div className="bg-zinc-900/80 p-2 rounded-xl border border-zinc-800">
+                <span className="text-zinc-500 block text-[9px] uppercase">Matrícula</span>
+                <span className="font-mono text-zinc-200 truncate block">{member.membershipNumber || 'Não atribuída'}</span>
+              </div>
+              <div className="bg-zinc-900/80 p-2 rounded-xl border border-zinc-800">
+                <span className="text-zinc-500 block text-[9px] uppercase">Situação</span>
+                <span className="font-bold text-amber-300 uppercase truncate block">{member.status}</span>
+              </div>
+              <div className="bg-zinc-900/80 p-2 rounded-xl border border-zinc-800">
+                <span className="text-zinc-500 block text-[9px] uppercase">Vigência</span>
+                <span className="font-mono text-zinc-300 truncate block">{member.validUntil || '2027-10-31'}</span>
+              </div>
+            </div>
+            <p className="text-[10px] text-zinc-500 italic">
+              Conforme o estatuto, apenas a diretoria e administradores autorizados podem homologar ou alterar categoria, matrícula, situação ou validade.
+            </p>
           </div>
 
           {/* Buttons */}

@@ -24,9 +24,11 @@ import {
   Shield,
   FileText,
 } from 'lucide-react';
+import { useAppDialog } from '../context/DialogContext.tsx';
 
 export const RejectionEmailConfig: React.FC = () => {
   const { currentUser, activeTemplate } = useAuth();
+  const dialog = useAppDialog();
 
   const [subject, setSubject] = useState(DEFAULT_REJECTION_SUBJECT);
   const [body, setBody] = useState(DEFAULT_REJECTION_BODY);
@@ -128,15 +130,25 @@ export const RejectionEmailConfig: React.FC = () => {
       setTimeout(() => setSaveSuccess(false), 4000);
     } catch (err: any) {
       console.error('Erro ao salvar modelo de e-mail:', err);
-      alert('Erro ao salvar no banco de dados: ' + (err.message || 'Verifique sua conexão.'));
+      await dialog.alert({
+        title: 'Erro ao Salvar',
+        message: 'Erro ao salvar no banco de dados: ' + (err.message || 'Verifique sua conexão.'),
+        variant: 'danger',
+      });
     } finally {
       setSaving(false);
     }
   };
 
   // Restore Default Template
-  const handleRestoreDefault = () => {
-    if (confirm('Deseja restaurar o texto de e-mail padrão do sistema?')) {
+  const handleRestoreDefault = async () => {
+    const ok = await dialog.confirm({
+      title: 'Restaurar Texto Padrão',
+      message: 'Deseja restaurar o modelo de comunicado padrão do sistema?',
+      confirmText: 'Restaurar',
+      variant: 'warning',
+    });
+    if (ok) {
       setSubject(DEFAULT_REJECTION_SUBJECT);
       setBody(DEFAULT_REJECTION_BODY);
     }
@@ -174,10 +186,10 @@ export const RejectionEmailConfig: React.FC = () => {
           </div>
           <div>
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              Texto Padrão de Não-Aprovação / Rejeição de Cadastro
+              Texto Padrão de Não-Aprovação / Comunicado de Ajuste
             </h3>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Defina a mensagem oficial que o associado receberá por e-mail e no painel caso seu cadastro necessite de ajustes ou seja recusado.
+              Defina a mensagem oficial que será registrada no sistema para consulta do associado caso seu cadastro necessite de ajustes ou seja recusado.
             </p>
           </div>
         </div>
@@ -204,7 +216,7 @@ export const RejectionEmailConfig: React.FC = () => {
             }`}
           >
             <History className="w-3.5 h-3.5 text-amber-400" />
-            <span>Histórico de Envios ({dispatches.length})</span>
+            <span>Histórico de Registros ({dispatches.length})</span>
           </button>
         </div>
       </div>
@@ -425,20 +437,27 @@ export const RejectionEmailConfig: React.FC = () => {
           <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
             <div>
               <h4 className="text-sm font-bold text-white">
-                Registro de E-mails e Notificações Enviadas aos Associados
+                Registro de Comunicados de Ajuste e Não-Aprovação no Sistema
               </h4>
               <p className="text-xs text-zinc-400">
-                Auditoria de comunicações oficiais de não-aprovação e solicitações de ajuste cadastral
+                Auditoria de comunicações oficiais registradas no banco de dados para consulta e acompanhamento
               </p>
             </div>
             <span className="text-xs font-mono text-zinc-400">
-              Total: {dispatches.length} envios registrados
+              Total: {dispatches.length} registro(s)
             </span>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800 text-xs text-zinc-400 flex items-start gap-2.5">
+            <Shield className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            <div className="leading-relaxed">
+              <strong>Nota de Transparência:</strong> Os comunicados abaixo são registrados no banco de dados e sincronizados no painel do associado para que ele possa regularizar os dados cadastrais (sem envio via servidor de e-mail externo).
+            </div>
           </div>
 
           {dispatches.length === 0 ? (
             <div className="p-10 text-center text-zinc-500 text-xs">
-              Nenhum e-mail de não-aprovação foi enviado até o momento.
+              Nenhum comunicado de não-aprovação foi registrado até o momento.
             </div>
           ) : (
             <div className="overflow-x-auto rounded-2xl border border-zinc-800">
@@ -447,8 +466,8 @@ export const RejectionEmailConfig: React.FC = () => {
                   <tr>
                     <th className="py-3 px-4 font-semibold">Data / Hora</th>
                     <th className="py-3 px-4 font-semibold">Destinatário</th>
-                    <th className="py-3 px-4 font-semibold">Assunto do E-mail</th>
-                    <th className="py-3 px-4 font-semibold">Status de Envio</th>
+                    <th className="py-3 px-4 font-semibold">Assunto Registrado</th>
+                    <th className="py-3 px-4 font-semibold">Status do Registro</th>
                     <th className="py-3 px-4 font-semibold text-right">Mensagem Registrada</th>
                   </tr>
                 </thead>
@@ -467,14 +486,19 @@ export const RejectionEmailConfig: React.FC = () => {
                       </td>
                       <td className="py-3 px-4">
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                          <CheckCircle2 className="w-3 h-3" /> Entregue / Registrado
+                          <CheckCircle2 className="w-3 h-3" /> Gravado no Sistema
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">
                         <button
                           type="button"
                           onClick={() => {
-                            alert(`ASSUNTO:\n${item.subject}\n\nCORPO DO E-MAIL:\n${item.body}`);
+                            dialog.alert({
+                              title: item.subject,
+                              message: item.body,
+                              buttonText: 'Fechar',
+                              variant: 'info',
+                            });
                           }}
                           className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-medium border border-zinc-700 transition-colors cursor-pointer"
                         >

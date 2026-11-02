@@ -7,6 +7,7 @@ import {
   DEFAULT_REJECTION_BODY,
   replaceTemplateVariables,
 } from '../utils/emailTemplate.ts';
+import { useAppDialog } from '../context/DialogContext.tsx';
 import {
   AlertTriangle,
   Mail,
@@ -44,6 +45,7 @@ export const RejectMemberModal: React.FC<RejectMemberModalProps> = ({
   onConfirmReject,
   onClose,
 }) => {
+  const dialog = useAppDialog();
   const [reason, setReason] = useState(
     'A foto 3x4 enviada está com baixa nitidez ou não atende aos padrões de identificação.'
   );
@@ -96,7 +98,11 @@ export const RejectMemberModal: React.FC<RejectMemberModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reason.trim()) {
-      alert('Por favor, descreva o motivo da não aprovação.');
+      await dialog.alert({
+        title: 'Motivo Obrigatório',
+        message: 'Por favor, descreva o motivo do ajuste ou recusa cadastral.',
+        variant: 'warning',
+      });
       return;
     }
 
@@ -110,7 +116,11 @@ export const RejectMemberModal: React.FC<RejectMemberModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Erro ao rejeitar associado:', err);
-      alert('Erro ao registrar não-aprovação: ' + (err.message || 'Erro inesperado.'));
+      await dialog.alert({
+        title: 'Erro ao Registrar',
+        message: 'Erro ao registrar não-aprovação: ' + (err.message || 'Erro inesperado.'),
+        variant: 'danger',
+      });
     } finally {
       setSending(false);
     }
@@ -182,7 +192,7 @@ export const RejectMemberModal: React.FC<RejectMemberModalProps> = ({
             }`}
           >
             <Mail className="w-3.5 h-3.5 text-emerald-400" />
-            <span>2. Visualizar E-mail que Será Enviado</span>
+            <span>2. Visualizar Comunicado que Será Registrado</span>
           </button>
         </div>
 
@@ -234,10 +244,10 @@ export const RejectMemberModal: React.FC<RejectMemberModalProps> = ({
               <div className="p-3.5 rounded-2xl bg-zinc-950/80 border border-zinc-800 text-[11px] text-zinc-400 space-y-1">
                 <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
                   <Mail className="w-3.5 h-3.5" />
-                  <span>Disparo Automático Integrado:</span>
+                  <span>Registro do Comunicado no Sistema:</span>
                 </div>
                 <p>
-                  O associado receberá o e-mail oficial com o texto padrão configurado pelo administrador e este motivo inserido dinamicamente, além de uma notificação push na tela do celular.
+                  O e-mail de recusa e o motivo são <strong>gravados no banco de dados do sistema</strong> para consulta imediata do associado em sua tela e para histórico de auditoria da diretoria (sem dependência de servidor SMTP externo).
                 </p>
               </div>
             </div>
@@ -249,13 +259,13 @@ export const RejectMemberModal: React.FC<RejectMemberModalProps> = ({
                 {/* Header */}
                 <div className="p-3.5 border-b border-zinc-800 bg-zinc-900/80 space-y-1 text-[11px]">
                   <div>
-                    <span className="text-zinc-500 font-semibold">Para: </span>
+                    <span className="text-zinc-500 font-semibold">Destinatário: </span>
                     <span className="text-white font-medium">
                       {member.fullName} &lt;{member.email}&gt;
                     </span>
                   </div>
                   <div>
-                    <span className="text-zinc-500 font-semibold">Assunto: </span>
+                    <span className="text-zinc-500 font-semibold">Assunto Registrado: </span>
                     <span className="text-amber-400 font-bold">{finalSubject}</span>
                   </div>
                 </div>
@@ -290,7 +300,7 @@ export const RejectMemberModal: React.FC<RejectMemberModalProps> = ({
               className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-md cursor-pointer flex items-center gap-2 transition-all disabled:opacity-50"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>{sending ? 'Enviando E-mail e Notificação...' : 'Confirmar e Enviar E-mail'}</span>
+              <span>{sending ? 'Gravando Comunicado...' : 'Confirmar e Registrar Comunicado'}</span>
             </button>
           </div>
         </form>

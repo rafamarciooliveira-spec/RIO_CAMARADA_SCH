@@ -29,9 +29,11 @@ import {
   RefreshCw,
   CheckCircle2,
   Pipette,
+  AlertCircle,
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext.tsx';
+import { useAppDialog } from '../context/DialogContext.tsx';
 
 interface CustomizerProps {
   activeTemplate: CardTemplate;
@@ -67,6 +69,7 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
   onUpdateActiveTemplate,
 }) => {
   const { saveActiveTemplate } = useAuth();
+  const dialog = useAppDialog();
   const [currentEdit, setCurrentEdit] = useState<CardTemplate>({
     ...activeTemplate,
     logoBgTransparent: activeTemplate.logoBgTransparent !== false,
@@ -76,6 +79,7 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
   });
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [newFieldName, setNewFieldName] = useState('');
   const [newFieldValue, setNewFieldValue] = useState('');
   const [mobilePreviewMode, setMobilePreviewMode] = useState(true);
@@ -185,7 +189,11 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2.5 * 1024 * 1024) {
-      alert('A imagem da logo deve ter no máximo 2.5MB.');
+      dialog.alert({
+        title: 'Arquivo Muito Grande',
+        message: 'A imagem da logo deve ter no máximo 2.5MB.',
+        variant: 'warning',
+      });
       return;
     }
     const reader = new FileReader();
@@ -222,6 +230,7 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
   const handleSaveTemplate = async (isNew = false) => {
     setSaving(true);
     setSaveSuccess(false);
+    setSaveError(null);
 
     try {
       const templateId = isNew
@@ -249,7 +258,13 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
       setTimeout(() => setSaveSuccess(false), 4000);
     } catch (err: any) {
       console.error('Erro ao salvar template:', err);
-      alert('Erro ao salvar no banco de dados: ' + (err.message || 'Verifique sua conexão.'));
+      const errMsg = err.message || 'Falha ao salvar no banco de dados. Verifique a conexão e as permissões de administrador.';
+      setSaveError(errMsg);
+      dialog.alert({
+        title: 'Erro ao Salvar Modelo',
+        message: `Não foi possível salvar o modelo da carteirinha: ${errMsg}`,
+        variant: 'danger',
+      });
     } finally {
       setSaving(false);
     }
@@ -289,6 +304,17 @@ export const AdminCardCustomizer: React.FC<CustomizerProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Display Save Error Banner if any error occurred */}
+        {saveError && (
+          <div className="mb-4 p-4 rounded-2xl bg-red-950/80 border border-red-500/50 text-red-200 text-xs flex items-start gap-3 shadow-md animate-fade-in">
+            <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+            <div>
+              <strong className="block font-bold text-sm text-red-100">Erro ao Salvar Modelo no Banco de Dados:</strong>
+              <span className="opacity-95">{saveError}</span>
+            </div>
+          </div>
+        )}
 
         {saveSuccess && (
           <div className="mb-4 p-3.5 rounded-2xl bg-emerald-950/70 border border-emerald-500/50 text-emerald-200 text-xs flex items-center gap-2.5 shadow-md animate-fade-in">

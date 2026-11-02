@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext.tsx';
 import { SocietyEvent, SocietyEventType } from '../types/index.ts';
 import { db } from '../firebase/config.ts';
@@ -167,54 +166,118 @@ export const ExcelEventsImporterModal: React.FC<ExcelEventsImporterModalProps> =
 
   if (!isOpen) return null;
 
-  // Generate and download pre-formatted Excel template
+  // Helper to parse CSV text into row objects (supports semicolons, commas, tabs, quotes)
+  const parseCSVText = (text: string): Record<string, any>[] => {
+    const cleanText = text.replace(/^\uFEFF/, '');
+    const lines = cleanText.split(/\r\n|\n|\r/).filter(l => l.trim().length > 0);
+    if (lines.length < 2) return [];
+
+    // Detect separator
+    const firstLine = lines[0];
+    const semiCount = (firstLine.match(/;/g) || []).length;
+    const commaCount = (firstLine.match(/,/g) || []).length;
+    const tabCount = (firstLine.match(/\t/g) || []).length;
+    const delimiter = semiCount >= commaCount && semiCount >= tabCount ? ';' : (tabCount > commaCount ? '\t' : ',');
+
+    const parseLine = (line: string): string[] => {
+      const result: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === delimiter && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+
+    const headers = parseLine(lines[0]).map(h => h.replace(/^["']|["']$/g, '').trim());
+    const records: Record<string, any>[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseLine(lines[i]);
+      const record: Record<string, any> = {};
+      headers.forEach((h, idx) => {
+        let val = values[idx] || '';
+        if (val.startsWith('"') && val.endsWith('"')) {
+          val = val.slice(1, -1).replace(/""/g, '"');
+        }
+        record[h] = val;
+      });
+      records.push(record);
+    }
+    return records;
+  };
+
+  // Generate and download pre-formatted CSV template (opens seamlessly in Excel)
   const handleDownloadTemplate = () => {
-    const templateData = [
-      {
-        'Data (AAAA-MM-DD ou DD/MM/AAAA)': '2025-06-21',
-        'Nome do Evento': 'Festa Junina Tradicional dos Sócios',
-        'Tipo (Sociedade ou Terceiro)': 'Sociedade',
-        'Horario Inicio': '19:00',
-        'Horario Termino': '23:30',
-        'Local': 'Salão Nobre / Festas',
-        'Observacoes': 'Apresentação de quadrilhas, comidas típicas e barracas de pescaria.',
-      },
-      {
-        'Data (AAAA-MM-DD ou DD/MM/AAAA)': '2025-07-05',
-        'Nome do Evento': 'Locação Salão de Festas - Casamento Privado (Família Silva)',
-        'Tipo (Sociedade ou Terceiro)': 'Terceiro',
-        'Horario Inicio': '16:00',
-        'Horario Termino': '23:00',
-        'Local': 'Espaço Gourmet & Churrasqueira',
-        'Observacoes': 'Contrato nº 104/2025. Locatário externo. Fica exibido como "Ocupado" para sócios.',
-      },
-      {
-        'Data (AAAA-MM-DD ou DD/MM/AAAA)': '2025-07-19',
-        'Nome do Evento': 'Torneio Interno de Futebol Society',
-        'Tipo (Sociedade ou Terceiro)': 'Sociedade',
-        'Horario Inicio': '08:30',
-        'Horario Termino': '14:00',
-        'Local': 'Campo de Futebol / Poliesportivo',
-        'Observacoes': 'Inscrições gratuitas para associados em dia.',
-      },
+    const headers = [
+      'Data (AAAA-MM-DD ou DD/MM/AAAA)',
+      'Nome do Evento',
+      'Tipo (Sociedade ou Terceiro)',
+      'Horario Inicio',
+      'Horario Termino',
+      'Local',
+      'Observacoes',
+    ];
+    const templateRows = [
+      [
+        '2025-06-21',
+        'Festa Junina Tradicional dos Sócios',
+        'Sociedade',
+        '19:00',
+        '23:30',
+        'Salão Nobre / Festas',
+        'Apresentação de quadrilhas, comidas típicas e barracas de pescaria.',
+      ],
+      [
+        '2025-07-05',
+        'Locação Salão de Festas - Casamento Privado (Família Silva)',
+        'Terceiro',
+        '16:00',
+        '23:00',
+        'Espaço Gourmet & Churrasqueira',
+        'Contrato nº 104/2025. Locatário externo. Fica exibido como "Ocupado" para sócios.',
+      ],
+      [
+        '2025-07-19',
+        'Torneio Interno de Futebol Society',
+        'Sociedade',
+        '08:30',
+        '14:00',
+        'Campo de Futebol / Poliesportivo',
+        'Inscrições gratuitas para associados em dia.',
+      ],
     ];
 
-    const worksheet = XLSX.utils.json_to_sheet(templateData);
+    const csvContent =
+      '\uFEFF' +
+      [
+        headers.map(h => `"${h}"`).join(';'),
+        ...templateRows.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(';')),
+      ].join('\r\n');
 
-    // Set column widths
-    worksheet['!cols'] = [
-      { wch: 30 }, // Data
-      { wch: 45 }, // Nome do Evento
-      { wch: 25 }, // Tipo
-      { wch: 15 }, // Horario Inicio
-      { wch: 15 }, // Horario Termino
-      { wch: 30 }, // Local
-      { wch: 60 }, // Observacoes
-    ];
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Eventos');
-    XLSX.writeFile(workbook, 'modelo_eventos_sociedade.xlsx');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'modelo_eventos_sociedade.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Process uploaded Excel / CSV file
@@ -228,15 +291,11 @@ export const ExcelEventsImporterModal: React.FC<ExcelEventsImporterModalProps> =
     setSuccessCount(null);
 
     try {
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array' });
-      const firstSheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[firstSheetName];
-
-      const rawJson = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: '' });
+      const text = await file.text();
+      const rawJson = parseCSVText(text);
 
       if (rawJson.length === 0) {
-        setErrorMsg('A planilha selecionada está vazia ou não contém dados legíveis.');
+        setErrorMsg('O arquivo CSV selecionado está vazio ou não contém registros válidos.');
         setParsing(false);
         return;
       }
@@ -443,7 +502,7 @@ export const ExcelEventsImporterModal: React.FC<ExcelEventsImporterModalProps> =
             title="Baixar planilha Excel com cabeçalhos e exemplos prontos"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Baixar Planilha Modelo (.xlsx)</span>
+            <span>Baixar Planilha Modelo (.csv / Excel)</span>
           </button>
         </div>
 
@@ -487,7 +546,7 @@ export const ExcelEventsImporterModal: React.FC<ExcelEventsImporterModalProps> =
             <input
               ref={fileInputRef}
               type="file"
-              accept=".xlsx,.xls,.csv"
+              accept=".csv,.tsv,.txt"
               onChange={handleFileChange}
               className="hidden"
             />

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.tsx';
+import { useAppDialog } from '../context/DialogContext.tsx';
 import { db } from '../firebase/config.ts';
 import { doc, updateDoc, setDoc, collection, query, where, limit, onSnapshot, getDoc } from 'firebase/firestore';
-import { EmailDispatchRecord, RejectionEmailTemplate } from '../types/index.ts';
+import { EmailDispatchRecord, RejectionEmailTemplate, normalizeMemberCategory } from '../types/index.ts';
 import { replaceTemplateVariables, DEFAULT_REJECTION_SUBJECT, DEFAULT_REJECTION_BODY } from '../utils/emailTemplate.ts';
 import { DigitalCard } from './DigitalCard.tsx';
 import { MemberRegistrationForm } from './MemberRegistrationForm.tsx';
@@ -30,7 +31,6 @@ import {
   Info,
   Crown,
   User,
-  FlaskConical,
   HardDriveDownload,
   ShieldAlert,
   Mail,
@@ -83,6 +83,7 @@ export const MemberDashboard: React.FC = () => {
     activePortalTab,
     setActivePortalTab,
   } = useAuth();
+  const dialog = useAppDialog();
   const [editing, setEditing] = useState(false);
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [showOfflineModal, setShowOfflineModal] = useState(false);
@@ -90,7 +91,6 @@ export const MemberDashboard: React.FC = () => {
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [pushStatus, setPushStatus] = useState<NotificationPermission>(getPushPermissionStatus());
   const [refreshingToken, setRefreshingToken] = useState(false);
-  const [seedingDemo, setSeedingDemo] = useState(false);
   const [receivedEmail, setReceivedEmail] = useState<EmailDispatchRecord | null>(null);
   const [showFullEmail, setShowFullEmail] = useState(true);
 
@@ -122,55 +122,6 @@ export const MemberDashboard: React.FC = () => {
       console.warn('Listener email dispatch error:', e);
     }
   }, [currentMember?.id, currentMember?.status]);
-
-  // Quick seed helper for testing the Member Dashboard
-  const handleSeedApprovedMember = async (category: 'SÓCIO' | 'MEMBRO DA DIRETORIA' = 'SÓCIO') => {
-    if (!currentUser) return;
-    setSeedingDemo(true);
-    try {
-      const memberId = `mem_${currentUser.uid}`;
-      const { token, generatedAt } = generateViewToken(memberId);
-      await setDoc(doc(db, 'members', memberId), {
-        id: memberId,
-        userId: currentUser.uid,
-        fullName: currentMember?.fullName || (currentUser.email ? currentUser.email.split('@')[0].replace('.', ' ') : 'Associado Homologado'),
-        cpf: '123.456.789-00',
-        birthDate: '1987-08-25',
-        email: currentUser.email || 'socio@associacao.org.br',
-        phone: '(11) 98765-4321',
-        photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80',
-        category,
-        status: 'aprovado',
-        lgpdConsent: true,
-        lgpdConsentDate: new Date().toISOString(),
-        validUntil: DEFAULT_OFFICIAL_EXPIRY,
-        renewalCount: 0,
-        lastGeneratedAt: generatedAt,
-        lastViewToken: token,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error('Erro ao gerar sócio de teste:', err);
-    } finally {
-      setSeedingDemo(false);
-    }
-  };
-
-  // Switch category between SÓCIO and MEMBRO DA DIRETORIA directly in member view
-  const handleToggleMyCategory = async () => {
-    if (!currentMember) return;
-    const isDiretoria = currentMember.category?.trim().toUpperCase() === 'MEMBRO DA DIRETORIA';
-    const newCat = isDiretoria ? 'SÓCIO' : 'MEMBRO DA DIRETORIA';
-    try {
-      await updateDoc(doc(db, 'members', currentMember.id), {
-        category: newCat,
-        updatedAt: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error('Erro ao alternar categoria:', err);
-    }
-  };
 
   // Top tab bar switcher between "Minha Carteirinha", "Calendário de Eventos", "Espaço Cultural" and "Redes Sociais"
   const renderTopNavTabs = () => (
@@ -265,52 +216,10 @@ export const MemberDashboard: React.FC = () => {
     );
   }
 
-  // If no member record exists yet, render registration form with quick-test option
   if (!currentMember) {
     return (
       <div className="py-6 px-4 max-w-4xl mx-auto space-y-6">
         {renderTopNavTabs()}
-
-        {/* Helper Banner for Testers and New Visitors */}
-        <div className="p-5 rounded-3xl bg-gradient-to-r from-emerald-950/70 via-zinc-900 to-zinc-950 border border-emerald-500/40 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 shadow-inner">
-              <FlaskConical className="w-6 h-6" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                Modo de Visualização do Sócio
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-900/60 text-emerald-300 border border-emerald-500/40">
-                  {currentUser?.email}
-                </span>
-              </h4>
-              <p className="text-xs text-zinc-300 mt-0.5 leading-relaxed">
-                Você ainda não possui um cadastro submetido nesta conta. Você pode preencher os dados abaixo para aprovação do administrador ou carregar uma carteirinha homologada instantânea para testar!
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center gap-2 shrink-0 w-full sm:w-auto">
-            <button
-              onClick={() => handleSeedApprovedMember('SÓCIO')}
-              disabled={seedingDemo}
-              className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs tracking-wide shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              <User className="w-3.5 h-3.5" />
-              <span>{seedingDemo ? 'Carregando...' : 'Testar Carteirinha (SÓCIO)'}</span>
-            </button>
-
-            <button
-              onClick={() => handleSeedApprovedMember('MEMBRO DA DIRETORIA')}
-              disabled={seedingDemo}
-              className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs tracking-wide shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              <Crown className="w-3.5 h-3.5" />
-              <span>Testar como DIRETORIA</span>
-            </button>
-          </div>
-        </div>
-
         <MemberRegistrationForm />
       </div>
     );
@@ -377,10 +286,18 @@ export const MemberDashboard: React.FC = () => {
         status: 'pendente',
         updatedAt: new Date().toISOString(),
       });
-      alert('Solicitação de renovação enviada para aprovação da administração!');
+      await dialog.alert({
+        title: 'Solicitação Enviada',
+        message: 'Sua solicitação de renovação foi enviada para a análise e aprovação da administração!',
+        variant: 'success',
+      });
     } catch (err: any) {
       console.warn('Erro ao solicitar renovação:', err);
-      alert('Erro ao enviar solicitação: ' + (err.message || 'Erro temporário de conexão.'));
+      await dialog.alert({
+        title: 'Erro ao Solicitar Renovação',
+        message: 'Erro ao enviar solicitação: ' + (err.message || 'Erro temporário de conexão.'),
+        variant: 'danger',
+      });
     }
   };
 
@@ -459,22 +376,13 @@ export const MemberDashboard: React.FC = () => {
             <div><strong>Classificação:</strong> {currentMember.category || 'SÓCIO'}</div>
           </div>
 
-          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+          <div className="pt-2 flex items-center justify-center">
             <button
               onClick={() => setShowEditProfileModal(true)}
-              className="text-xs text-zinc-300 hover:text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer bg-zinc-800/80 hover:bg-zinc-800 px-3 py-1.5 rounded-lg border border-zinc-700"
+              className="text-xs text-zinc-300 hover:text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer bg-zinc-800/80 hover:bg-zinc-800 px-3.5 py-2 rounded-lg border border-zinc-700"
             >
               <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
               <span>Editar Nome, Ano e Foto</span>
-            </button>
-
-            <span className="text-zinc-600 hidden sm:inline">•</span>
-
-            <button
-              onClick={() => handleSeedApprovedMember('SÓCIO')}
-              className="text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors cursor-pointer"
-            >
-              Aprovar este cadastro imediatamente (Modo Demonstração)
             </button>
           </div>
         </div>
@@ -602,7 +510,7 @@ export const MemberDashboard: React.FC = () => {
             </span>
             <h2 className="text-2xl font-bold text-white mt-3">Validade da Carteirinha Expirada</h2>
             <p className="text-sm text-zinc-400 mt-2">
-              A vigência oficial da sua credencial social atingiu o limite estatutário de <strong>Outubro de 2027</strong>.
+              A vigência oficial da sua credencial social expirou em <strong>{officialStatus.formattedDate}</strong>.
               Para reativar a carteirinha por mais 1 (um) ano, solicite uma nova aprovação da administração.
             </p>
           </div>
@@ -634,15 +542,28 @@ export const MemberDashboard: React.FC = () => {
                   <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Associado Homologado
                 </span>
 
-                {isDiretoria ? (
-                  <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider bg-amber-400 text-zinc-950 border border-amber-300 flex items-center gap-1">
-                    <Crown className="w-3 h-3" /> MEMBRO DA DIRETORIA
-                  </span>
-                ) : (
-                  <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider bg-zinc-800 text-emerald-300 border border-zinc-700 flex items-center gap-1">
-                    <User className="w-3 h-3" /> SÓCIO
-                  </span>
-                )}
+                {(() => {
+                  const normCat = normalizeMemberCategory(currentMember.category);
+                  if (normCat === 'Membro Diretoria Executiva') {
+                    return (
+                      <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider bg-amber-400 text-zinc-950 border border-amber-300 flex items-center gap-1">
+                        <Crown className="w-3 h-3" /> Membro Diretoria Executiva
+                      </span>
+                    );
+                  }
+                  if (normCat === 'Membro da Diretoria') {
+                    return (
+                      <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider bg-sky-400 text-zinc-950 border border-sky-300 flex items-center gap-1">
+                        <ShieldCheck className="w-3 h-3" /> Membro da Diretoria
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider bg-zinc-800 text-emerald-300 border border-zinc-700 flex items-center gap-1">
+                      <User className="w-3 h-3" /> Sócio Efetivo
+                    </span>
+                  );
+                })()}
               </div>
               <h2 className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
                 Carteirinha Digital do Associado
@@ -672,16 +593,6 @@ export const MemberDashboard: React.FC = () => {
               >
                 <HardDriveDownload className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Salvar Offline (24h)</span>
-              </button>
-
-              {/* Quick toggle category for testing */}
-              <button
-                onClick={handleToggleMyCategory}
-                className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium flex items-center gap-1.5 transition-colors border border-zinc-700 shadow-xs cursor-pointer"
-                title="Alternar entre Sócio e Membro da Diretoria"
-              >
-                {isDiretoria ? <User className="w-3.5 h-3.5 text-emerald-400" /> : <Crown className="w-3.5 h-3.5 text-amber-400" />}
-                <span>Alternar para {isDiretoria ? 'Sócio' : 'Diretoria'}</span>
               </button>
 
               <button

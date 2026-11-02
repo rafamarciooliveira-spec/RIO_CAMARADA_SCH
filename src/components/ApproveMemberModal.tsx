@@ -1,47 +1,56 @@
 import React, { useState } from 'react';
-import { Member } from '../types/index.ts';
+import { Member, MEMBER_CATEGORIES, MemberCategory, normalizeMemberCategory } from '../types/index.ts';
 import { maskCPF } from '../utils/cpf.ts';
 import { formatDateBR, maskDateBR, dateBRToISO, isValidDateBR } from '../utils/date.ts';
+import { getDefaultOfficialExpiry } from '../utils/security.ts';
 import {
   CheckCircle2,
   Crown,
   User,
-  Users,
   ShieldCheck,
-  Award,
   Upload,
   AlertCircle,
   Calendar,
   X,
+  Hash,
 } from 'lucide-react';
 
 interface ApproveModalProps {
   member: Member;
+  suggestedMembershipNumber?: string;
   onConfirmApprove: (updatedData: {
-    category: string;
+    category: MemberCategory;
     fullName?: string;
     cpf?: string;
     birthDate?: string;
     photoUrl?: string;
+    validUntil?: string;
+    membershipNumber?: string;
   }) => Promise<void>;
   onClose: () => void;
 }
 
 export const ApproveMemberModal: React.FC<ApproveModalProps> = ({
   member,
+  suggestedMembershipNumber,
   onConfirmApprove,
   onClose,
 }) => {
-  const [selectedCategory, setSelectedCategory] = useState<'SÓCIO' | 'MEMBRO DA DIRETORIA' | 'custom'>(
-    member.category === 'MEMBRO DA DIRETORIA' ? 'MEMBRO DA DIRETORIA' : 'SÓCIO'
-  );
-  const [customCategory, setCustomCategory] = useState(
-    member.category !== 'SÓCIO' && member.category !== 'MEMBRO DA DIRETORIA' ? member.category : ''
+  const [selectedCategory, setSelectedCategory] = useState<MemberCategory>(
+    normalizeMemberCategory(member.category)
   );
 
   const [fullName, setFullName] = useState(member.fullName);
   const [birthDateBR, setBirthDateBR] = useState(formatDateBR(member.birthDate));
   const [photoUrl, setPhotoUrl] = useState(member.photoUrl || '');
+  const [membershipNumber, setMembershipNumber] = useState(
+    member.membershipNumber && member.membershipNumber.startsWith('SOC-')
+      ? member.membershipNumber
+      : (suggestedMembershipNumber || 'SOC-000001')
+  );
+  const [validUntil, setValidUntil] = useState(
+    member.validUntil || getDefaultOfficialExpiry()
+  );
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -62,22 +71,15 @@ export const ApproveMemberModal: React.FC<ApproveModalProps> = ({
 
   const handleConfirm = async () => {
     setErrorMsg(null);
-    let finalCategory = selectedCategory as string;
-    if (selectedCategory === 'custom') {
-      if (!customCategory.trim()) {
-        setErrorMsg('Informe o nome do cargo ou categoria personalizada.');
-        return;
-      }
-      finalCategory = customCategory.trim().toUpperCase();
-    }
-
     setSaving(true);
     try {
       await onConfirmApprove({
-        category: finalCategory,
+        category: selectedCategory,
         fullName: fullName.trim(),
         birthDate: dateBRToISO(birthDateBR),
         photoUrl,
+        validUntil: validUntil.trim(),
+        membershipNumber: membershipNumber.trim(),
       });
       onClose();
     } catch (err: any) {
@@ -133,89 +135,128 @@ export const ApproveMemberModal: React.FC<ApproveModalProps> = ({
         )}
 
         <div className="space-y-6">
-          {/* CATEGORY SELECTION: SÓCIO vs MEMBRO DA DIRETORIA */}
+          {/* CATEGORY SELECTION: Sócio Efetivo vs Membro da Diretoria vs Membro Diretoria Executiva */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-emerald-400 mb-2">
-              Classificação na Associação (Obrigatório na Aprovação) *
+              Classificação na Associação (Definida Exclusivamente pelo Administrador) *
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Option 1: SÓCIO */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Option 1: Sócio Efetivo */}
               <button
                 type="button"
-                onClick={() => setSelectedCategory('SÓCIO')}
-                className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
-                  selectedCategory === 'SÓCIO'
+                onClick={() => setSelectedCategory('Sócio Efetivo')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-2 ${
+                  selectedCategory === 'Sócio Efetivo'
                     ? 'border-emerald-500 bg-emerald-950/40 shadow-lg ring-1 ring-emerald-500'
                     : 'border-zinc-800 bg-zinc-950 hover:border-zinc-700'
                 }`}
               >
-                <div
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                    selectedCategory === 'SÓCIO'
-                      ? 'bg-emerald-500 text-white'
-                      : 'bg-zinc-800 text-zinc-400'
-                  }`}
-                >
-                  <User className="w-5 h-5" />
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                      selectedCategory === 'Sócio Efetivo'
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-zinc-800 text-zinc-400'
+                    }`}
+                  >
+                    <User className="w-4 h-4" />
+                  </div>
+                  <h4 className="font-extrabold text-xs text-white">Sócio Efetivo</h4>
                 </div>
-                <div>
-                  <h4 className="font-extrabold text-sm text-white">SÓCIO</h4>
-                  <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">
-                    Associado geral homologado no quadro social com plenos direitos.
-                  </p>
-                </div>
+                <p className="text-[10px] text-zinc-400 leading-snug">
+                  Associado geral com carteirinha oficial e acesso a eventos, estandes e cultura.
+                </p>
               </button>
 
-              {/* Option 2: MEMBRO DA DIRETORIA */}
+              {/* Option 2: Membro da Diretoria */}
               <button
                 type="button"
-                onClick={() => setSelectedCategory('MEMBRO DA DIRETORIA')}
-                className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
-                  selectedCategory === 'MEMBRO DA DIRETORIA'
+                onClick={() => setSelectedCategory('Membro da Diretoria')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-2 ${
+                  selectedCategory === 'Membro da Diretoria'
+                    ? 'border-sky-500 bg-sky-950/40 shadow-lg ring-1 ring-sky-500'
+                    : 'border-zinc-800 bg-zinc-950 hover:border-zinc-700'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                      selectedCategory === 'Membro da Diretoria'
+                        ? 'bg-sky-500 text-zinc-950'
+                        : 'bg-zinc-800 text-zinc-400'
+                    }`}
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <h4 className="font-extrabold text-xs text-white">Membro da Diretoria</h4>
+                </div>
+                <p className="text-[10px] text-zinc-400 leading-snug">
+                  Diretoria com acesso a fiscalização, validação de carteirinhas e gestão.
+                </p>
+              </button>
+
+              {/* Option 3: Membro Diretoria Executiva */}
+              <button
+                type="button"
+                onClick={() => setSelectedCategory('Membro Diretoria Executiva')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-2 ${
+                  selectedCategory === 'Membro Diretoria Executiva'
                     ? 'border-amber-500 bg-amber-950/40 shadow-lg ring-1 ring-amber-500'
                     : 'border-zinc-800 bg-zinc-950 hover:border-zinc-700'
                 }`}
               >
-                <div
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                    selectedCategory === 'MEMBRO DA DIRETORIA'
-                      ? 'bg-amber-500 text-zinc-950'
-                      : 'bg-zinc-800 text-zinc-400'
-                  }`}
-                >
-                  <Crown className="w-5 h-5" />
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                      selectedCategory === 'Membro Diretoria Executiva'
+                        ? 'bg-amber-500 text-zinc-950'
+                        : 'bg-zinc-800 text-zinc-400'
+                    }`}
+                  >
+                    <Crown className="w-4 h-4" />
+                  </div>
+                  <h4 className="font-extrabold text-xs text-white">Membro Diretoria Executiva</h4>
                 </div>
-                <div>
-                  <h4 className="font-extrabold text-sm text-white">MEMBRO DA DIRETORIA</h4>
-                  <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">
-                    Diretoria executiva, conselho ou presidência da entidade.
-                  </p>
-                </div>
+                <p className="text-[10px] text-zinc-400 leading-snug">
+                  Gestão executiva ativa com poderes de homologação e aprovação de associados.
+                </p>
               </button>
             </div>
+          </div>
 
-            {/* Option 3: Custom / Special Title */}
-            <div className="mt-3">
-              <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none">
-                <input
-                  type="radio"
-                  name="catOption"
-                  checked={selectedCategory === 'custom'}
-                  onChange={() => setSelectedCategory('custom')}
-                  className="w-4 h-4 text-emerald-600 focus:ring-emerald-500"
-                />
-                <span>Outro cargo executivo específico (ex: Presidente, Secretário, Tesoureiro)</span>
+          {/* MATRÍCULA SEQUENCIAL & DATA DE VALIDADE EDITÁVEL */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-zinc-800">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-emerald-400 mb-1.5 flex items-center gap-1.5">
+                <Hash className="w-3.5 h-3.5" />
+                Matrícula Sequencial Oficial *
               </label>
+              <input
+                type="text"
+                value={membershipNumber}
+                onChange={e => setMembershipNumber(e.target.value)}
+                placeholder="SOC-000001"
+                className="w-full px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs font-mono text-emerald-300 font-bold outline-hidden focus:border-emerald-500"
+              />
+              <span className="text-[10px] text-zinc-400 mt-1 block">
+                Gerada em sequência sem repetir (SOC-000001, SOC-000002...).
+              </span>
+            </div>
 
-              {selectedCategory === 'custom' && (
-                <input
-                  type="text"
-                  placeholder="Digite o cargo ou categoria..."
-                  value={customCategory}
-                  onChange={e => setCustomCategory(e.target.value)}
-                  className="mt-2 w-full px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-white focus:border-emerald-500 outline-hidden"
-                />
-              )}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-emerald-400 mb-1.5 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5" />
+                Data de Validade da Carteirinha *
+              </label>
+              <input
+                type="date"
+                value={validUntil}
+                onChange={e => setValidUntil(e.target.value)}
+                className="w-full px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs font-mono text-white outline-hidden focus:border-emerald-500"
+              />
+              <span className="text-[10px] text-zinc-400 mt-1 block">
+                Defina o vencimento individual deste associado.
+              </span>
             </div>
           </div>
 
@@ -326,7 +367,7 @@ export const ApproveMemberModal: React.FC<ApproveModalProps> = ({
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>
-              {saving ? 'Homologando...' : `Aprovar como ${selectedCategory === 'custom' ? (customCategory || 'CARGO') : selectedCategory}`}
+              {saving ? 'Homologando...' : `Aprovar como ${selectedCategory}`}
             </span>
           </button>
         </div>

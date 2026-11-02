@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext.tsx';
+import { useAppDialog } from '../context/DialogContext.tsx';
 import { SocietyEvent, SocietyEventType } from '../types/index.ts';
 import { db } from '../firebase/config.ts';
 import {
@@ -129,6 +130,7 @@ const INITIAL_DEMO_EVENTS: Omit<SocietyEvent, 'id'>[] = [
 
 export const EventsCalendarView: React.FC = () => {
   const { currentUser, currentMember, isAdmin, isSuperAdmin } = useAuth();
+  const dialog = useAppDialog();
 
   // Permission check: Board Member or Admin can edit
   const isBoardMember = useMemo(() => {
@@ -348,12 +350,24 @@ export const EventsCalendarView: React.FC = () => {
 
   // Delete event
   const handleDeleteEvent = async (eventId: string) => {
-    if (!window.confirm('Tem certeza que deseja excluir este evento da agenda?')) return;
+    const confirmed = await dialog.confirm({
+      title: 'Excluir Evento da Agenda',
+      message: 'Tem certeza que deseja excluir este evento do calendário oficial?',
+      confirmLabel: 'Excluir Evento',
+      cancelLabel: 'Cancelar',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+
     try {
       await deleteDoc(doc(db, 'events', eventId));
       setViewingDetailEvent(null);
     } catch (err: any) {
-      alert('Erro ao excluir evento: ' + err.message);
+      await dialog.alert({
+        title: 'Erro ao Excluir Evento',
+        message: 'Erro ao excluir evento: ' + (err.message || 'Falha no banco de dados.'),
+        variant: 'danger',
+      });
     }
   };
 

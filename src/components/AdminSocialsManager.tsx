@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SocialLink, SocialPlatform } from '../types/index.ts';
 import { DEFAULT_SOCIAL_LINKS } from '../data/defaultSocialData.ts';
+import { useAppDialog } from '../context/DialogContext.tsx';
 import { db } from '../firebase/config.ts';
 import {
   collection,
@@ -32,6 +33,7 @@ import {
 } from 'lucide-react';
 
 export const AdminSocialsManager: React.FC = () => {
+  const dialog = useAppDialog();
   const [links, setLinks] = useState<SocialLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -152,18 +154,38 @@ export const AdminSocialsManager: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Deseja realmente remover esta rede social?')) return;
+    const confirmed = await dialog.confirm({
+      title: 'Remover Rede Social',
+      message: 'Deseja realmente remover esta rede social dos canais oficiais?',
+      confirmLabel: 'Remover Canal',
+      cancelLabel: 'Cancelar',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+
     try {
       await deleteDoc(doc(db, 'socialLinks', id));
       setSuccessMsg('Rede social removida.');
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (err: any) {
-      alert('Erro ao excluir: ' + (err.message || 'Erro desconhecido.'));
+      await dialog.alert({
+        title: 'Erro ao Excluir',
+        message: 'Erro ao excluir rede social: ' + (err.message || 'Erro desconhecido.'),
+        variant: 'danger',
+      });
     }
   };
 
   const handleSeedDefaults = async () => {
-    if (!confirm('Deseja carregar as redes sociais oficiais padrão da Associação Rio Camarada?')) return;
+    const confirmed = await dialog.confirm({
+      title: 'Carregar Redes Sociais Oficiais',
+      message: 'Deseja carregar as redes sociais oficiais padrão da Associação Rio Camarada?',
+      confirmLabel: 'Carregar Canais Padrão',
+      cancelLabel: 'Cancelar',
+      variant: 'info',
+    });
+    if (!confirmed) return;
+
     setSaving(true);
     try {
       for (const item of DEFAULT_SOCIAL_LINKS) {
@@ -172,7 +194,11 @@ export const AdminSocialsManager: React.FC = () => {
       setSuccessMsg('Redes sociais padrão gravadas no Firestore!');
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (err: any) {
-      alert('Erro ao carregar dados padrão: ' + err.message);
+      await dialog.alert({
+        title: 'Erro ao Carregar Padrão',
+        message: 'Erro ao carregar dados padrão: ' + err.message,
+        variant: 'danger',
+      });
     } finally {
       setSaving(false);
     }

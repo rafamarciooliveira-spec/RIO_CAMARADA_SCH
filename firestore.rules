@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Default-deny catch-all
+    // Default-deny catch-all (Master Gate)
     match /{document=**} {
       allow read, write: if false;
     }
@@ -12,13 +12,18 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Administrador só é válido com e-mail verificado (Prevenção contra spoofing de identidade)
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
     function isBootstrappedAdmin() {
-      return isSignedIn() && request.auth.token.email == 'rafa.marciooliveira@gmail.com';
+      return isEmailVerified() && request.auth.token.email == 'rafa.marciooliveira@gmail.com';
     }
 
     function isAdmin() {
       return isBootstrappedAdmin() || (
-        isSignedIn() && (
+        isEmailVerified() && (
           exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
           (request.auth.token.email != null && exists(/databases/$(database)/documents/admins/$(request.auth.token.email)))
         )
@@ -26,7 +31,7 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128;
+      return id is string && id.size() > 0 && id.size() <= 128;
     }
 
     function incoming() {
@@ -54,14 +59,28 @@ service cloud.firestore {
              data.primaryColor is string && data.primaryColor.size() <= 100;
     }
 
-    // Members collection
+    // Helper for society events
+    function isValidSocietyEvent(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.date is string && data.date.size() >= 8 && data.date.size() <= 30 &&
+             data.type in ['sociedade', 'terceiro'];
+    }
+
+    // Helper for public sanitized card summary (sem dados sensíveis PII)
+    function isValidPublicCard(data) {
+      return data.fullName is string && data.fullName.size() <= 150 &&
+             (!('cpf' in data)) &&
+             (!('birthDate' in data)) &&
+             (!('email' in data)) &&
+             (!('phone' in data));
+    }
+
+    // 1. Members collection - PROTEGIDO (Somente o próprio sócio ou administradores podem ver)
     match /members/{memberId} {
-      // Allows member to view their own profile, or admins to view all, or public read for QR card verification
+      // Leitura permitida estritamente para o administrador ou para o próprio titular
       allow get: if isValidId(memberId) && (
         isAdmin() ||
-        (isSignedIn() && existing().userId == request.auth.uid) ||
-        // Permit checking card authenticity if approved
-        existing().status == 'aprovado'
+        (isSignedIn() && existing().userId == request.auth.uid)
       );
 
       allow list: if isSignedIn() && (
@@ -69,7 +88,7 @@ service cloud.firestore {
         resource.data.userId == request.auth.uid
       );
 
-      // Create: Member can register their own profile with 'pendente' status
+      // Create: Sócio só pode criar seu próprio cadastro com status inicial 'pendente'
       allow create: if isSignedIn() &&
         isValidId(memberId) &&
         isValidMember(incoming()) &&
@@ -81,8 +100,8 @@ service cloud.firestore {
           )
         );
 
-      // Update: Admin can update any field (including category, approval and renewal).
-      // Member can update their own contact/photo info OR generate the 24h view token, but CANNOT self-approve.
+      // Update: Sócio só pode alterar o próprio nome, telefone, foto, data de nascimento e e-mail.
+      // Ele NÃO pode mudar categoria, matrícula, situação ou validade.
       allow update: if isSignedIn() &&
         isValidId(memberId) &&
         isValidMember(incoming()) &&
@@ -91,36 +110,56 @@ service cloud.firestore {
           (
             existing().userId == request.auth.uid &&
             incoming().userId == request.auth.uid &&
-            // Cannot self-approve status
-            (incoming().status == existing().status || (existing().status == 'expirado' && incoming().status == 'pendente')) &&
-            // Cannot alter validUntil directly unless admin
-            incoming().validUntil == existing().validUntil
+            incoming().cpf == existing().cpf &&
+            incoming().category == existing().category &&
+            incoming().membershipNumber == existing().membershipNumber &&
+            incoming().validUntil == existing().validUntil &&
+            incoming().status == existing().status &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'fullName',
+              'birthDate',
+              'photoUrl',
+              'phone',
+              'email',
+              'updatedAt',
+              'lastGeneratedAt',
+              'lastViewToken'
+            ])
           )
         );
 
       allow delete: if isAdmin();
     }
 
-    // Admin accounts
+    // 2. Public Cards (Resumo seguro e público para validação QR Code: NUNCA expõe CPF, e-mail, telefone ou nascimento)
+    match /publicCards/{memberId} {
+      allow read: if true;
+      allow create, update: if isSignedIn() && isValidPublicCard(incoming()) && (
+        isAdmin() ||
+        incoming().userId == request.auth.uid
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 3. Admin accounts (Membros da diretoria e administradores)
     match /admins/{adminId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
-    // Card templates for customizer
+    // 4. Card templates para personalização visual
     match /cardTemplates/{templateId} {
-      // Any authenticated user or visitor can read the visual template to display the card
       allow read: if true;
       allow write: if isAdmin() && isValidCardTemplate(incoming());
     }
 
-    // Push and in-app notifications
+    // 5. Notificações e Avisos (Somente administradores podem criar avisos)
     match /notifications/{notificationId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
         resource.data.userId == request.auth.uid
       );
-      allow create: if isSignedIn();
+      allow create: if isAdmin();
       allow update: if isSignedIn() && (
         isAdmin() ||
         (resource.data.userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['read']))
@@ -128,45 +167,44 @@ service cloud.firestore {
       allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
     }
 
-    // System Settings (e.g. rejection email template)
-    match /systemSettings/{settingId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    // Email dispatches and audit log of communications
+    // 6. E-mails registrados e comunicações da diretoria (Somente administradores podem disparar)
     match /emailDispatches/{dispatchId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
         resource.data.userId == request.auth.uid ||
         (request.auth.token.email != null && resource.data.toEmail == request.auth.token.email)
       );
-      allow create: if isAdmin() || isSignedIn();
+      allow create: if isAdmin();
       allow update, delete: if isAdmin();
     }
 
-    // Helper for society events
-    function isValidSocietyEvent(data) {
-      return data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
-             data.date is string && data.date.size() >= 8 && data.date.size() <= 30 &&
-             data.type in ['sociedade', 'terceiro'];
-    }
-
-    // Society Events (Agenda da Sociedade e Ocupações de Terceiros)
+    // 7. Eventos da Sociedade (Agenda) - Somente administradores podem criar, editar ou apagar
     match /events/{eventId} {
       allow read: if true;
-      allow create: if isSignedIn() && isValidSocietyEvent(incoming());
-      allow update: if isSignedIn() && isValidSocietyEvent(incoming());
-      allow delete: if isSignedIn();
+      allow create: if isAdmin() && isValidSocietyEvent(incoming());
+      allow update: if isAdmin() && isValidSocietyEvent(incoming());
+      allow delete: if isAdmin();
     }
 
-    // Social Media Links (Facebook, Instagram, etc.)
+    // 8. Registro de auditoria administrativa (Exportação CSV, etc.)
+    match /auditLogs/{logId} {
+      allow read, create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // 9. Configurações do Sistema (Modelos de e-mail, etc.)
+    match /systemSettings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // 10. Links de Redes Sociais da Associação
     match /socialLinks/{linkId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Culture Articles & Historical Records
+    // 11. Espaço Cultural e Artigos Históricos
     match /cultureArticles/{articleId} {
       allow read: if true;
       allow write: if isAdmin();

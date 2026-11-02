@@ -23,6 +23,8 @@
         "renewalCount": { "type": "number", "description": "Number of times membership was renewed" },
         "lastGeneratedAt": { "type": "string", "maxLength": 40, "description": "ISO timestamp when the digital card was last generated for viewing" },
         "lastViewToken": { "type": "string", "maxLength": 64, "description": "24-hour verification token for anti-screenshot and fraud prevention" },
+        "mustChangePassword": { "type": "boolean", "description": "Flag requiring user to change initial password on next login" },
+        "passwordChangedAt": { "type": "string", "maxLength": 40, "description": "Timestamp when password was set" },
         "createdAt": { "type": "string", "maxLength": 40, "description": "Timestamp of initial registration" },
         "updatedAt": { "type": "string", "maxLength": 40, "description": "Timestamp of last update" }
       },
@@ -112,12 +114,48 @@
         "sentAt": { "type": "string", "maxLength": 40, "description": "Timestamp of email dispatch" }
       },
       "required": ["toEmail", "subject", "body", "sentAt"]
+    },
+    "PublicCard": {
+      "title": "PublicCard",
+      "description": "Strictly sanitized public summary of an approved membership card for QR verification without CPF, birthdate, email, or phone.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Member document ID" },
+        "fullName": { "type": "string", "maxLength": 150, "description": "Full name" },
+        "category": { "type": "string", "maxLength": 50, "description": "Membership classification" },
+        "status": { "type": "string", "maxLength": 30, "description": "Membership status" },
+        "validUntil": { "type": "string", "maxLength": 30, "description": "Statutory card validity" },
+        "photoUrl": { "type": "string", "maxLength": 2000, "description": "Photo URL" },
+        "lastGeneratedAt": { "type": "string", "maxLength": 40, "description": "Timestamp generated" },
+        "lastViewToken": { "type": "string", "maxLength": 64, "description": "24h token" },
+        "userId": { "type": "string", "description": "Owner UID" }
+      },
+      "required": ["fullName", "status"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Administrative audit trail recording security actions like CSV export.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Audit event ID" },
+        "action": { "type": "string", "maxLength": 100, "description": "Action performed" },
+        "exportedByEmail": { "type": "string", "maxLength": 120, "description": "Admin email who triggered the action" },
+        "exportedByUid": { "type": "string", "maxLength": 128, "description": "Admin UID" },
+        "exportedByName": { "type": "string", "maxLength": 150, "description": "Admin display name" },
+        "totalMembersExported": { "type": "number", "description": "Count of records" },
+        "timestamp": { "type": "string", "maxLength": 40, "description": "ISO timestamp of event" }
+      },
+      "required": ["action", "exportedByEmail", "timestamp"]
     }
   },
   "firestore": {
     "/members/{memberId}": {
       "schema": "Member",
       "description": "Stores membership profiles, approval statuses, and digital card view metadata."
+    },
+    "/publicCards/{memberId}": {
+      "schema": "PublicCard",
+      "description": "Stores sanitized non-PII card profiles for public QR verification."
     },
     "/admins/{adminId}": {
       "schema": "AdminUser",
@@ -138,6 +176,10 @@
     "/emailDispatches/{dispatchId}": {
       "schema": "EmailDispatch",
       "description": "Stores logged email communications delivered to rejected/pending members."
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Stores audit logs for administrative operations and CSV exports."
     }
   }
 }

@@ -4,7 +4,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase/config.ts';
 import { doc, setDoc } from 'firebase/firestore';
 import { validateCPF, formatCPF } from '../utils/cpf.ts';
 import { formatDateBR, maskDateBR, dateBRToISO, isValidDateBR } from '../utils/date.ts';
-import { DEFAULT_OFFICIAL_EXPIRY } from '../utils/security.ts';
+import { getDefaultOfficialExpiry } from '../utils/security.ts';
 import {
   UserCheck,
   Shield,
@@ -59,7 +59,7 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
   const [email, setEmail] = useState(initialData?.email || currentUser?.email || '');
   const [phone, setPhone] = useState(initialData?.phone || '');
   const [photoUrl, setPhotoUrl] = useState(initialData?.photoUrl || currentUser?.photoURL || PRESET_AVATARS[0]);
-  const [category, setCategory] = useState(initialData?.category || 'Sócio Efetivo Contribuinte');
+  const [category, setCategory] = useState(initialData?.category || 'Sócio Efetivo');
   const [lgpdConsent, setLgpdConsent] = useState(isEditing ? true : false);
   const [showLgpdModal, setShowLgpdModal] = useState(false);
 
@@ -147,7 +147,7 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
         rejectionReason: '',
         lgpdConsent: true,
         lgpdConsentDate: new Date().toISOString(),
-        validUntil: currentMember?.validUntil || DEFAULT_OFFICIAL_EXPIRY,
+        validUntil: currentMember?.validUntil || getDefaultOfficialExpiry(),
         renewalCount: currentMember?.renewalCount || 0,
         createdAt: currentMember?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),

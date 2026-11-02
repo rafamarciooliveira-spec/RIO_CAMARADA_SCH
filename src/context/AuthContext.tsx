@@ -7,6 +7,9 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  updatePassword,
+  sendPasswordResetEmail,
+  sendEmailVerification,
 } from 'firebase/auth';
 import {
   collection,
@@ -14,18 +17,32 @@ import {
   where,
   onSnapshot,
   doc,
+  getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
+  getDocs,
 } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase/config.ts';
-import { Member, ViewRole, UserNotification, CardTemplate, AdminUser } from '../types/index.ts';
+import { Member, ViewRole, UserNotification, CardTemplate, AdminUser, MemberCategory, MemberStatus, ThemeMode } from '../types/index.ts';
 import { triggerPushNotification } from '../utils/pushNotification.ts';
 import { DEFAULT_TEMPLATES } from '../data/defaultTemplates.ts';
-import { deleteDoc } from 'firebase/firestore';
+import { clearOfflineSavedCard, DEFAULT_OFFICIAL_EXPIRY } from '../utils/security.ts';
 
 const BOOTSTRAP_ADMIN_EMAIL = 'rafa.marciooliveira@gmail.com';
 
-export type PortalTab = 'card' | 'events' | 'culture' | 'socials';
+export type PortalTab =
+  | 'card'
+  | 'events'
+  | 'news'
+  | 'birthdays'
+  | 'culture'
+  | 'financial'
+  | 'socials'
+  | 'mydata'
+  | 'privacy';
+
+export type BoardRole = 'superadmin' | 'diretoria_executiva' | 'diretoria' | 'tesoureiro' | 'conselho_fiscal' | null;
 
 interface AuthContextType {
   currentUser: User | null;
@@ -33,8 +50,23 @@ interface AuthContextType {
   memberLoading: boolean;
   isAdmin: boolean;
   isSuperAdmin: boolean;
+  isDiretoriaExecutiva: boolean;
+  isDiretoria: boolean;
+  isBoardMember: boolean;
+  isTesoureiro: boolean;
+  isConselhoFiscal: boolean;
+  canManageFinances: boolean;
+  canViewFinances: boolean;
+  boardRole: BoardRole;
   adminList: AdminUser[];
-  addAdmin: (email: string, name?: string) => Promise<void>;
+  theme: ThemeMode;
+  toggleTheme: () => void;
+  addAdmin: (
+    email: string,
+    name?: string,
+    role?: 'diretoria_executiva' | 'diretoria' | 'admin' | 'tesoureiro' | 'conselho_fiscal',
+    category?: 'DIRETORIA EXECUTIVA' | 'DIRETORIA' | 'TESOUREIRO' | 'CONSELHO FISCAL'
+  ) => Promise<void>;
   removeAdmin: (adminId: string) => Promise<void>;
   activeRole: ViewRole;
   setActiveRole: (role: ViewRole) => void;
@@ -45,6 +77,15 @@ interface AuthContextType {
   signInWithEmail: (email: string, pass: string) => Promise<void>;
   signUpWithEmail: (email: string, pass: string) => Promise<void>;
   logout: () => Promise<void>;
+  reloadUser: () => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
+  sendVerificationEmail: () => Promise<void>;
+  syncPublicCard: (member: Partial<Member> & { id: string }) => Promise<void>;
+  mustChangePassword: boolean;
+  changeInitialPassword: (newPass: string) => Promise<void>;
+  updateUserCategory: (memberId: string, category: MemberCategory) => Promise<void>;
+  updateUserStatus: (memberId: string, status: MemberStatus) => Promise<void>;
+  updateUserForcePassword: (memberId: string, force: boolean) => Promise<void>;
   notifications: UserNotification[];
   markNotificationRead: (id: string) => Promise<void>;
   activeTemplate: CardTemplate;
@@ -85,6 +126,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return DEFAULT_TEMPLATES[0];
   });
   const [previousStatus, setPreviousStatus] = useState<string | null>(null);
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    try {
+      const saved = localStorage.getItem('associacao_theme');
+      if (saved === 'light' || saved === 'dark') return saved as ThemeMode;
+    } catch (e) {}
+    return 'dark';
+  });
+
+  useEffect(() => {
+    try {
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+        document.documentElement.classList.remove('light');
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.documentElement.classList.add('light');
+      }
+      localStorage.setItem('associacao_theme', theme);
+    } catch (e) {}
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
+  };
 
   const setActiveRole = (role: ViewRole) => {
     setActiveRoleState(role);
@@ -100,16 +165,112 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return email === BOOTSTRAP_ADMIN_EMAIL.toLowerCase();
   }, [currentUser]);
 
-  // Compute isAdmin: superadmin OR in the dynamic admins list
-  const isAdmin = useMemo(() => {
+  // Diretoria Executiva check
+  const isDiretoriaExecutiva = useMemo(() => {
     if (!currentUser) return false;
     if (isSuperAdmin) return true;
+    const cat = String(currentMember?.category || '').trim().toUpperCase();
+    if (cat === 'DIRETORIA EXECUTIVA') return true;
     const userEmail = currentUser.email?.toLowerCase();
     const uid = currentUser.uid;
     return adminList.some(
-      a => (userEmail && a.email?.toLowerCase() === userEmail) || a.id === uid || a.id === userEmail
+      a =>
+        ((userEmail && a.email?.toLowerCase() === userEmail) || a.id === uid) &&
+        (a.role === 'superadmin' || a.role === 'diretoria_executiva' || a.category === 'DIRETORIA EXECUTIVA')
     );
-  }, [currentUser, isSuperAdmin, adminList]);
+  }, [currentUser, isSuperAdmin, currentMember, adminList]);
+
+  // Diretoria (Somente Diretoria or Diretoria Executiva or legacy Membro da Diretoria)
+  const isDiretoria = useMemo(() => {
+    if (!currentUser) return false;
+    if (isDiretoriaExecutiva) return true;
+    const cat = String(currentMember?.category || '').trim().toUpperCase();
+    if (cat === 'DIRETORIA' || cat === 'MEMBRO DA DIRETORIA') return true;
+    const userEmail = currentUser.email?.toLowerCase();
+    const uid = currentUser.uid;
+    return adminList.some(
+      a =>
+        ((userEmail && a.email?.toLowerCase() === userEmail) || a.id === uid) &&
+        (a.role === 'diretoria' || a.role === 'admin' || a.category === 'DIRETORIA')
+    );
+  }, [currentUser, isDiretoriaExecutiva, currentMember, adminList]);
+
+  // Tesoureiro role
+  const isTesoureiro = useMemo(() => {
+    if (!currentUser) return false;
+    if (isSuperAdmin || isDiretoriaExecutiva) return true;
+    const cat = String(currentMember?.category || '').trim().toUpperCase();
+    if (cat === 'TESOUREIRO') return true;
+    const userEmail = currentUser.email?.toLowerCase();
+    const uid = currentUser.uid;
+    return adminList.some(
+      a =>
+        ((userEmail && a.email?.toLowerCase() === userEmail) || a.id === uid) &&
+        (a.role === 'tesoureiro' || a.category === 'TESOUREIRO')
+    );
+  }, [currentUser, isSuperAdmin, isDiretoriaExecutiva, currentMember, adminList]);
+
+  // Conselho Fiscal role
+  const isConselhoFiscal = useMemo(() => {
+    if (!currentUser) return false;
+    if (isSuperAdmin || isDiretoriaExecutiva) return false; // Has full power
+    const cat = String(currentMember?.category || '').trim().toUpperCase();
+    if (cat === 'CONSELHO FISCAL') return true;
+    const userEmail = currentUser.email?.toLowerCase();
+    const uid = currentUser.uid;
+    return adminList.some(
+      a =>
+        ((userEmail && a.email?.toLowerCase() === userEmail) || a.id === uid) &&
+        (a.role === 'conselho_fiscal' || a.category === 'CONSELHO FISCAL')
+    );
+  }, [currentUser, isSuperAdmin, isDiretoriaExecutiva, currentMember, adminList]);
+
+  const canManageFinances = useMemo(() => {
+    return isSuperAdmin || isDiretoriaExecutiva || isTesoureiro;
+  }, [isSuperAdmin, isDiretoriaExecutiva, isTesoureiro]);
+
+  const canViewFinances = useMemo(() => {
+    return canManageFinances || isConselhoFiscal || isDiretoria;
+  }, [canManageFinances, isConselhoFiscal, isDiretoria]);
+
+  // Board Member: grants access to the Admin Dashboard (board, treasury, fiscal council or superadmin)
+  const isBoardMember = useMemo(() => {
+    return isSuperAdmin || isDiretoriaExecutiva || isDiretoria || isTesoureiro || isConselhoFiscal;
+  }, [isSuperAdmin, isDiretoriaExecutiva, isDiretoria, isTesoureiro, isConselhoFiscal]);
+
+  const isAdmin = isBoardMember;
+
+  const boardRole = useMemo<BoardRole>(() => {
+    if (isSuperAdmin) return 'superadmin';
+    if (isDiretoriaExecutiva) return 'diretoria_executiva';
+    if (isTesoureiro) return 'tesoureiro';
+    if (isConselhoFiscal) return 'conselho_fiscal';
+    if (isDiretoria) return 'diretoria';
+    return null;
+  }, [isSuperAdmin, isDiretoriaExecutiva, isTesoureiro, isConselhoFiscal, isDiretoria]);
+
+  // Check whether user must change password on first login
+  const mustChangePassword = useMemo(() => {
+    if (!currentUser) return false;
+    // Check if user authenticated with password provider
+    const hasPasswordProvider = currentUser.providerData.some(p => p.providerId === 'password');
+    if (!hasPasswordProvider) return false;
+
+    // Check localStorage cache if they just changed it in this browser session
+    const localCleared = localStorage.getItem(`pw_changed_${currentUser.uid}`) === 'true';
+    if (localCleared) return false;
+
+    // Check member profile
+    if (currentMember?.mustChangePassword === true) return true;
+    if (currentMember?.mustChangePassword === false) return false;
+
+    // If member has no passwordChangedAt recorded, require change on first access
+    if (currentMember && !currentMember.passwordChangedAt) {
+      return true;
+    }
+
+    return false;
+  }, [currentUser, currentMember]);
 
   // Listen to the admins collection
   useEffect(() => {
@@ -131,11 +292,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  // Sync active role with admin status
+  // Sync active role with board member status: non-board members are locked to 'member'
   useEffect(() => {
     if (!currentUser) return;
     const saved = localStorage.getItem('associacao_active_role');
-    if (!isAdmin) {
+    if (!isBoardMember) {
       setActiveRoleState('member');
     } else {
       if (saved === 'member' || saved === 'admin') {
@@ -144,13 +305,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setActiveRoleState('admin');
       }
     }
-  }, [isAdmin, currentUser]);
+  }, [isBoardMember, currentUser]);
 
   // Auth state listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, user => {
+    const unsubscribe = onAuthStateChanged(auth, async user => {
       setCurrentUser(user);
       setLoading(false);
+      if (user && user.email) {
+        const emailLower = user.email.toLowerCase();
+        // Superadmin and authorized admins sync UID doc for direct Firestore rules access
+        if (emailLower === BOOTSTRAP_ADMIN_EMAIL.toLowerCase()) {
+          try {
+            await setDoc(
+              doc(db, 'admins', user.uid),
+              {
+                id: user.uid,
+                uid: user.uid,
+                email: emailLower,
+                role: 'superadmin',
+                category: 'DIRETORIA EXECUTIVA',
+                name: 'Superadministrador Fundador',
+                updatedAt: new Date().toISOString(),
+              },
+              { merge: true }
+            );
+          } catch (e) {
+            // non-fatal
+          }
+        } else {
+          // Check if newly logged in user is in admins collection by email
+          try {
+            const adminEmailDoc = await getDoc(doc(db, 'admins', emailLower));
+            if (adminEmailDoc.exists()) {
+              const adminData = adminEmailDoc.data();
+              await setDoc(
+                doc(db, 'admins', user.uid),
+                {
+                  ...adminData,
+                  id: user.uid,
+                  uid: user.uid,
+                  email: emailLower,
+                  updatedAt: new Date().toISOString(),
+                },
+                { merge: true }
+              );
+            }
+          } catch (e) {
+            // non-fatal
+          }
+        }
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -350,13 +555,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signUpWithEmail = async (email: string, pass: string) => {
-    await createUserWithEmailAndPassword(auth, email, pass);
+    const cred = await createUserWithEmailAndPassword(auth, email, pass);
+    if (cred.user) {
+      try {
+        await sendEmailVerification(cred.user);
+      } catch (e) {
+        console.warn('Erro ao disparar envio inicial de confirmação:', e);
+      }
+    }
+  };
+
+  const sendVerificationEmail = async () => {
+    if (!auth.currentUser) throw new Error('Nenhum usuário logado no momento.');
+    await sendEmailVerification(auth.currentUser);
+    triggerPushNotification(
+      '📧 Confirmação de E-mail Enviada',
+      `Um link de verificação foi enviado para ${auth.currentUser.email}.`,
+      'approval'
+    );
   };
 
   const logout = async () => {
+    try {
+      clearOfflineSavedCard();
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('associacao_') || k.startsWith('pw_changed_'))) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch (e) {
+      // non-fatal
+    }
     await signOut(auth);
     setCurrentMember(null);
     setActiveRole('member');
+  };
+
+  const reloadUser = async () => {
+    if (auth.currentUser) {
+      await auth.currentUser.reload();
+      setCurrentUser({ ...auth.currentUser });
+    }
+  };
+
+  const syncPublicCard = async (member: Partial<Member> & { id: string }) => {
+    try {
+      const publicDoc = {
+        id: member.id,
+        fullName: member.fullName || '',
+        category: member.category || 'SÓCIO',
+        status: member.status || 'pendente',
+        validUntil: member.validUntil || DEFAULT_OFFICIAL_EXPIRY,
+        photoUrl: member.photoUrl || '',
+        lastGeneratedAt: member.lastGeneratedAt || new Date().toISOString(),
+        lastViewToken: member.lastViewToken || 'live',
+        userId: member.userId || auth.currentUser?.uid || '',
+        updatedAt: new Date().toISOString(),
+      };
+      await setDoc(doc(db, 'publicCards', member.id), publicDoc, { merge: true });
+    } catch (err) {
+      console.warn('Sync public card notice:', err);
+    }
   };
 
   const markNotificationRead = async (id: string) => {
@@ -368,21 +630,124 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const addAdmin = async (email: string, name?: string) => {
+  const sendPasswordReset = async (email: string) => {
+    await sendPasswordResetEmail(auth, email.trim().toLowerCase());
+  };
+
+  const changeInitialPassword = async (newPass: string) => {
+    if (!currentUser) throw new Error('Usuário não autenticado.');
+    await updatePassword(currentUser, newPass);
+    const path = 'members';
+    if (currentMember?.id) {
+      try {
+        await updateDoc(doc(db, path, currentMember.id), {
+          mustChangePassword: false,
+          passwordChangedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.warn('Notice updating member password change flag:', e);
+      }
+    }
+    localStorage.setItem(`pw_changed_${currentUser.uid}`, 'true');
+    triggerPushNotification(
+      '🔒 Senha Alterada com Sucesso!',
+      'Sua nova senha de acesso foi cadastrada e protegida com segurança.',
+      'approval'
+    );
+  };
+
+  const updateUserCategory = async (memberId: string, category: MemberCategory) => {
+    const path = 'members';
+    try {
+      await updateDoc(doc(db, path, memberId), {
+        category,
+        updatedAt: new Date().toISOString(),
+      });
+      triggerPushNotification(
+        'Categoria Atualizada',
+        `A categoria do usuário foi alterada para ${category}.`,
+        'approval'
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `members/${memberId}`);
+    }
+  };
+
+  const updateUserStatus = async (memberId: string, status: MemberStatus) => {
+    const path = 'members';
+    try {
+      await updateDoc(doc(db, path, memberId), {
+        status,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `members/${memberId}`);
+    }
+  };
+
+  const updateUserForcePassword = async (memberId: string, force: boolean) => {
+    const path = 'members';
+    try {
+      await updateDoc(doc(db, path, memberId), {
+        mustChangePassword: force,
+        updatedAt: new Date().toISOString(),
+      });
+      triggerPushNotification(
+        'Segurança de Acesso',
+        force ? 'O usuário deverá trocar a senha no próximo acesso.' : 'Exigência de troca de senha removida.',
+        'approval'
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `members/${memberId}`);
+    }
+  };
+
+  const addAdmin = async (
+    email: string,
+    name?: string,
+    role: 'diretoria_executiva' | 'diretoria' | 'admin' | 'tesoureiro' | 'conselho_fiscal' = 'diretoria_executiva',
+    category: 'DIRETORIA EXECUTIVA' | 'DIRETORIA' | 'TESOUREIRO' | 'CONSELHO FISCAL' = 'DIRETORIA EXECUTIVA'
+  ) => {
     const cleanEmail = email.trim().toLowerCase();
     const docId = cleanEmail.replace(/[@.]/g, '_');
     const path = 'admins';
+    const adminRecord = {
+      id: cleanEmail,
+      email: cleanEmail,
+      name: name || '',
+      role: role,
+      category: category,
+      addedBy: currentUser?.email || 'superadmin',
+      createdAt: new Date().toISOString(),
+    };
+
     try {
-      await setDoc(doc(db, path, docId), {
-        id: docId,
-        email: cleanEmail,
-        name: name || '',
-        role: 'admin',
-        addedBy: currentUser?.email || 'superadmin',
-        createdAt: new Date().toISOString(),
-      });
+      // 1. Grava com ID do email exato para compatibilidade direta com request.auth.token.email no firestore.rules
+      await setDoc(doc(db, path, cleanEmail), adminRecord);
+      // 2. Grava também com ID sanitizado para compatibilidade legada
+      if (docId !== cleanEmail) {
+        await setDoc(doc(db, path, docId), { ...adminRecord, id: docId });
+      }
+      // 3. Se o usuário já tiver cadastro de sócio com este email, busca seu userId e grava admins/{userId}
+      try {
+        const q = query(collection(db, 'members'), where('email', '==', cleanEmail));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const m = snap.docs[0].data();
+          if (m.userId) {
+            await setDoc(
+              doc(db, path, m.userId),
+              { ...adminRecord, id: m.userId, uid: m.userId },
+              { merge: true }
+            );
+          }
+        }
+      } catch (e) {
+        // non-fatal
+      }
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `admins/${docId}`);
+      handleFirestoreError(err, OperationType.WRITE, `admins/${cleanEmail}`);
     }
   };
 
@@ -390,6 +755,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const path = 'admins';
     try {
       await deleteDoc(doc(db, path, adminId));
+      const cleanEmail = adminId.toLowerCase();
+      const sanitized = cleanEmail.replace(/[@.]/g, '_');
+      if (sanitized !== cleanEmail) {
+        try {
+          await deleteDoc(doc(db, path, sanitized));
+        } catch (e) {}
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `admins/${adminId}`);
     }
@@ -422,8 +794,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await setDoc(doc(db, path, tmpl.id), updated);
       }
     } catch (err) {
-      console.warn('Erro ao salvar template ativo no Firestore:', err);
-      // Non-fatal fallback for permission or offline mode
+      console.error('Erro ao salvar template ativo no Firestore:', err);
+      throw err;
     }
   };
 
@@ -439,7 +811,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         memberLoading,
         isAdmin,
         isSuperAdmin,
+        isDiretoriaExecutiva,
+        isDiretoria,
+        isBoardMember,
+        isTesoureiro,
+        isConselhoFiscal,
+        canManageFinances,
+        canViewFinances,
+        boardRole,
         adminList,
+        theme,
+        toggleTheme,
         addAdmin,
         removeAdmin,
         activeRole,
@@ -451,6 +833,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signInWithEmail,
         signUpWithEmail,
         logout,
+        reloadUser,
+        sendPasswordReset,
+        sendVerificationEmail,
+        syncPublicCard,
+        mustChangePassword,
+        changeInitialPassword,
+        updateUserCategory,
+        updateUserStatus,
+        updateUserForcePassword,
         notifications,
         markNotificationRead,
         activeTemplate,

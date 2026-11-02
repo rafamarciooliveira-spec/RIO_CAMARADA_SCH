@@ -159,7 +159,8 @@ export const DigitalCard: React.FC<DigitalCardProps> = ({
   };
 
   const rawCategory = String(safeMember.category || 'SÓCIO').trim().toUpperCase();
-  const isDiretoria = rawCategory === 'MEMBRO DA DIRETORIA';
+  const isDiretoriaExecutiva = rawCategory === 'DIRETORIA EXECUTIVA';
+  const isDiretoria = rawCategory === 'DIRETORIA' || rawCategory === 'MEMBRO DA DIRETORIA';
   const isSocio = rawCategory === 'SÓCIO' || rawCategory === 'SOCIO';
 
   return (
@@ -342,13 +343,18 @@ export const DigitalCard: React.FC<DigitalCardProps> = ({
                   {safeMember.fullName || 'Associado Oficial'}
                 </h4>
 
-                {/* Categoria: SÓCIO ou MEMBRO DA DIRETORIA */}
+                {/* Categoria: SÓCIO, DIRETORIA EXECUTIVA ou DIRETORIA */}
                 {safeTemplate.showCategory && (
                   <div className={`mt-1 flex ${safeTemplate.infoAlignment === 'left' ? 'justify-start' : safeTemplate.infoAlignment === 'right' ? 'justify-end' : 'justify-center'}`}>
-                    {isDiretoria ? (
+                    {isDiretoriaExecutiva ? (
                       <span className="inline-flex items-center gap-1 px-3 py-1 text-[10px] rounded-lg font-black uppercase tracking-wider bg-amber-400 text-zinc-950 shadow-md border border-amber-300">
                         <Crown className="w-3 h-3 text-zinc-950" />
-                        <span>MEMBRO DA DIRETORIA</span>
+                        <span>DIRETORIA EXECUTIVA</span>
+                      </span>
+                    ) : isDiretoria ? (
+                      <span className="inline-flex items-center gap-1 px-3 py-1 text-[10px] rounded-lg font-extrabold uppercase tracking-wider bg-sky-400 text-zinc-950 shadow-md border border-sky-300">
+                        <ShieldCheck className="w-3 h-3 text-zinc-950" />
+                        <span>DIRETORIA</span>
                       </span>
                     ) : isSocio ? (
                       <span className="inline-flex items-center gap-1 px-3 py-1 text-[10px] rounded-lg font-bold uppercase tracking-wider bg-emerald-500/30 text-emerald-300 border border-emerald-500/60 shadow-sm">

@@ -1,7 +1,6 @@
 import React from 'react';
 import { Member, CardTemplate } from '../types/index.ts';
 import { checkViewTokenStatus, checkOfficialCardStatus } from '../utils/security.ts';
-import { maskCPF } from '../utils/cpf.ts';
 import { AssociationLogo } from './AssociationLogos.tsx';
 import {
   ShieldCheck,
@@ -101,7 +100,6 @@ export const VerificationModal: React.FC<ModalProps> = ({ member, template, onCl
           <div className="min-w-0 flex-1">
             <span className="text-[10px] uppercase font-mono text-emerald-400 block">Titular</span>
             <h5 className="font-bold text-white text-base truncate">{member.fullName}</h5>
-            <div className="text-xs text-zinc-400 font-mono mt-0.5">CPF: {maskCPF(member.cpf)}</div>
             <div className="mt-1">
               {member.category === 'MEMBRO DA DIRETORIA' ? (
                 <span className="inline-block px-2.5 py-0.5 rounded text-[10px] bg-amber-400 text-zinc-950 font-black uppercase tracking-wider">

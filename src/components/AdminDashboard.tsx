@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.tsx';
-import { Member, MemberStatus, CardTemplate } from '../types/index.ts';
+import { useAppDialog } from '../context/DialogContext.tsx';
+import { Member, MemberStatus, CardTemplate, MemberCategory, MEMBER_CATEGORIES, normalizeMemberCategory } from '../types/index.ts';
 import { db, handleFirestoreError, OperationType } from '../firebase/config.ts';
 import {
   collection,
@@ -9,6 +10,7 @@ import {
   updateDoc,
   deleteDoc,
   setDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { AdminCardCustomizer } from './AdminCardCustomizer.tsx';
 import { AssociationLogoUploader } from './AssociationLogoUploader.tsx';
@@ -24,7 +26,12 @@ import { AdminSocialsManager } from './AdminSocialsManager.tsx';
 import { maskCPF } from '../utils/cpf.ts';
 import { formatDateBR } from '../utils/date.ts';
 import { triggerPushNotification } from '../utils/pushNotification.ts';
-import { DEFAULT_OFFICIAL_EXPIRY, checkOfficialCardStatus } from '../utils/security.ts';
+import {
+  DEFAULT_OFFICIAL_EXPIRY,
+  checkOfficialCardStatus,
+  getDefaultOfficialExpiry,
+  generateNextMembershipNumber,
+} from '../utils/security.ts';
 import {
   Users,
   CheckCircle2,
@@ -38,9 +45,10 @@ import {
   Download,
   Eye,
   RefreshCw,
-  PlusCircle,
   FileSpreadsheet,
   Calendar,
+  CalendarCheck,
+  Edit3,
   Lock,
   Image as ImageIcon,
   Crown,
@@ -49,11 +57,26 @@ import {
   Mail,
   BookOpen,
   Share2,
+  ShieldCheck,
+  Check,
+  X,
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
-  const { activeTemplate, setActiveTemplate, templates, currentUser, adminList } = useAuth();
+  const {
+    activeTemplate,
+    setActiveTemplate,
+    templates,
+    currentUser,
+    adminList,
+    isSuperAdmin,
+    isDiretoriaExecutiva,
+    isDiretoria,
+    boardRole,
+    updateUserCategory,
+  } = useAuth();
 
+  const dialog = useAppDialog();
   const [activeTab, setActiveTab] = useState<'members' | 'events' | 'culture' | 'socials' | 'customizer' | 'logo' | 'rejectionEmail' | 'admins' | 'lgpd'>('members');
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,12 +84,26 @@ export const AdminDashboard: React.FC = () => {
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | MemberStatus>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | (typeof MEMBER_CATEGORIES)[number]>('all');
+
+  const canManageMembers = isSuperAdmin || isDiretoriaExecutiva;
+  const canConfigureSettings = isSuperAdmin || isDiretoriaExecutiva;
 
   // Modals
   const [approvingMember, setApprovingMember] = useState<Member | null>(null);
   const [rejectingMember, setRejectingMember] = useState<Member | null>(null);
   const [previewingMember, setPreviewingMember] = useState<Member | null>(null);
   const [verifyingMember, setVerifyingMember] = useState<Member | null>(null);
+
+  // Bulk Renewal State
+  const [showBulkRenewModal, setShowBulkRenewModal] = useState(false);
+  const [bulkRenewDate, setBulkRenewDate] = useState(() => getDefaultOfficialExpiry());
+  const [bulkRenewing, setBulkRenewing] = useState(false);
+
+  // Individual Validity Edit State
+  const [editingValidityMember, setEditingValidityMember] = useState<Member | null>(null);
+  const [editingValidityDate, setEditingValidityDate] = useState('');
+  const [savingValidity, setSavingValidity] = useState(false);
 
   // Fetch all members in real-time
   useEffect(() => {
@@ -110,53 +147,81 @@ export const AdminDashboard: React.FC = () => {
         if (verifyingMember) setVerifyingMember(null);
         if (approvingMember) setApprovingMember(null);
         if (rejectingMember) setRejectingMember(null);
+        if (showBulkRenewModal) setShowBulkRenewModal(false);
+        if (editingValidityMember) setEditingValidityMember(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [previewingMember, verifyingMember, approvingMember, rejectingMember]);
+  }, [previewingMember, verifyingMember, approvingMember, rejectingMember, showBulkRenewModal, editingValidityMember]);
 
   // Quick category switch in the table
-  const handleQuickChangeCategory = async (memberId: string, newCategory: 'SÓCIO' | 'MEMBRO DA DIRETORIA') => {
+  const handleQuickChangeCategory = async (memberId: string, newCategory: MemberCategory) => {
     try {
-      const path = 'members';
-      await updateDoc(doc(db, path, memberId), {
-        category: newCategory,
-        updatedAt: new Date().toISOString(),
-      });
+      await updateUserCategory(memberId, newCategory);
     } catch (err: any) {
       console.error('Erro ao atualizar categoria do associado:', err);
-      alert('Erro ao atualizar categoria: ' + (err.message || 'Erro no banco de dados.'));
+      await dialog.alert({
+        title: 'Erro ao Atualizar',
+        message: 'Erro ao atualizar categoria: ' + (err.message || 'Erro no banco de dados.'),
+        variant: 'danger',
+      });
     }
   };
 
-  // Trigger Approval Modal with Category Selection (SÓCIO vs MEMBRO DA DIRETORIA)
+  // Trigger Approval Modal with Category Selection & Sequential Number
   const handleOpenApproveModal = (member: Member) => {
     setApprovingMember(member);
   };
 
   const handleConfirmApproval = async (data: {
-    category: string;
+    category: MemberCategory;
     fullName?: string;
     cpf?: string;
     birthDate?: string;
     photoUrl?: string;
+    validUntil?: string;
+    membershipNumber?: string;
   }) => {
     if (!approvingMember) return;
     try {
       const path = 'members';
+      // Sequential non-repeating number generator
+      let finalMatricula = data.membershipNumber?.trim() || approvingMember.membershipNumber?.trim();
+      if (!finalMatricula || !finalMatricula.startsWith('SOC-')) {
+        finalMatricula = generateNextMembershipNumber(members);
+      }
+      const finalValidUntil = data.validUntil?.trim() || approvingMember.validUntil || getDefaultOfficialExpiry();
+
       const updatedMember = {
         status: 'aprovado' as MemberStatus,
         category: data.category,
         fullName: data.fullName || approvingMember.fullName,
         birthDate: data.birthDate || approvingMember.birthDate,
         photoUrl: data.photoUrl || approvingMember.photoUrl,
+        membershipNumber: finalMatricula,
         rejectionReason: '',
-        validUntil: approvingMember.validUntil || DEFAULT_OFFICIAL_EXPIRY,
+        validUntil: finalValidUntil,
         updatedAt: new Date().toISOString(),
       };
 
       await updateDoc(doc(db, path, approvingMember.id), updatedMember);
+
+      // Sync public card for QR code validation (strictly no PII)
+      try {
+        await setDoc(doc(db, 'publicCards', approvingMember.id), {
+          id: approvingMember.id,
+          fullName: updatedMember.fullName,
+          category: updatedMember.category,
+          status: 'aprovado',
+          validUntil: finalValidUntil,
+          membershipNumber: finalMatricula,
+          photoUrl: updatedMember.photoUrl || '',
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      } catch (e) {
+        console.warn('Public card sync notice:', e);
+      }
 
       // Create Push Notification record for user
       const notifPath = 'notifications';
@@ -165,7 +230,7 @@ export const AdminDashboard: React.FC = () => {
         id: notifId,
         userId: approvingMember.userId,
         title: '🎉 Cadastro Homologado!',
-        message: `Parabéns! Sua adesão como ${data.category} foi aprovada. Sua carteirinha já está emitida.`,
+        message: `Parabéns! Sua adesão como ${data.category} foi aprovada. Sua matrícula é ${finalMatricula}.`,
         type: 'approval',
         read: false,
         createdAt: new Date().toISOString(),
@@ -174,7 +239,7 @@ export const AdminDashboard: React.FC = () => {
       // Fire push notification alert
       triggerPushNotification(
         '🎉 Cadastro Homologado com Sucesso!',
-        `A adesão de ${approvingMember.fullName} como ${data.category} foi homologada.`,
+        `A adesão de ${approvingMember.fullName} como ${data.category} (Matrícula: ${finalMatricula}) foi homologada.`,
         'approval'
       );
     } catch (err) {
@@ -182,7 +247,7 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  // Reject Member Action with Email Dispatch
+  // Reject Member Action with Email Dispatch recorded
   const handleConfirmReject = async (data: {
     reason: string;
     emailSubject: string;
@@ -220,7 +285,7 @@ export const AdminDashboard: React.FC = () => {
         id: notifId,
         userId: rejectingMember.userId,
         title: 'Ajuste Solicitado no Cadastro',
-        message: `A administração enviou orientações por e-mail: "${reason}". Acesse o portal para atualizar.`,
+        message: `A administração registrou orientações para seu cadastro: "${reason}". Acesse o portal para atualizar.`,
         type: 'rejection',
         read: false,
         createdAt: new Date().toISOString(),
@@ -238,10 +303,10 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  // Renewal Action: For expired membership after October 2027, extends by +1 year!
+  // Renewal Action: Extends by +1 year for an individual member
   const handleRenewOneYear = async (member: Member) => {
     try {
-      const currentValid = new Date(member.validUntil || DEFAULT_OFFICIAL_EXPIRY);
+      const currentValid = new Date(member.validUntil || getDefaultOfficialExpiry());
       // Add 1 year
       const newExpiry = new Date(currentValid);
       newExpiry.setFullYear(newExpiry.getFullYear() + 1);
@@ -256,6 +321,15 @@ export const AdminDashboard: React.FC = () => {
         updatedAt: new Date().toISOString(),
       });
 
+      // Sync public card
+      try {
+        await setDoc(doc(db, 'publicCards', member.id), {
+          validUntil: newValidStr,
+          status: 'aprovado',
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      } catch (e) {}
+
       // Push notification
       const notifPath = 'notifications';
       const notifId = `notif_${Date.now()}`;
@@ -263,7 +337,7 @@ export const AdminDashboard: React.FC = () => {
         id: notifId,
         userId: member.userId,
         title: '🌟 Carteirinha Renovada por +1 Ano!',
-        message: `Sua renovação estatutária foi aprovada! Nova data limite: ${newValidStr}.`,
+        message: `Sua renovação estatutária foi aprovada! Nova data limite: ${formatDateBR(newValidStr, newValidStr)}.`,
         type: 'approval',
         read: false,
         createdAt: new Date().toISOString(),
@@ -271,7 +345,7 @@ export const AdminDashboard: React.FC = () => {
 
       triggerPushNotification(
         '🌟 Renovação de Filiação Concedida',
-        `A carteirinha de ${member.fullName} foi renovada com sucesso até ${newValidStr}.`,
+        `A carteirinha de ${member.fullName} foi renovada com sucesso até ${formatDateBR(newValidStr, newValidStr)}.`,
         'approval'
       );
     } catch (err) {
@@ -279,77 +353,187 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  // Bulk Renewal for ALL members ("Renovar validade de todos os sócios")
+  const handleBulkRenewAll = async () => {
+    if (!bulkRenewDate) {
+      await dialog.alert({
+        title: 'Data Inválida',
+        message: 'Por favor, selecione uma data de validade válida para a renovação de todos os sócios.',
+        variant: 'warning',
+      });
+      return;
+    }
+
+    setBulkRenewing(true);
+    try {
+      const batch = writeBatch(db);
+      for (const m of members) {
+        const memRef = doc(db, 'members', m.id);
+        batch.update(memRef, {
+          validUntil: bulkRenewDate,
+          renewalCount: (m.renewalCount || 0) + 1,
+          updatedAt: new Date().toISOString(),
+        });
+        const pubRef = doc(db, 'publicCards', m.id);
+        batch.set(pubRef, {
+          validUntil: bulkRenewDate,
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      }
+      await batch.commit();
+
+      setShowBulkRenewModal(false);
+      await dialog.alert({
+        title: 'Validade Renovada com Sucesso!',
+        message: `A validade de todos os ${members.length} associados foi atualizada para ${formatDateBR(bulkRenewDate, bulkRenewDate)}.`,
+        variant: 'success',
+      });
+
+      triggerPushNotification(
+        '🔄 Validade Renovada Coletivamente',
+        `A diretoria renovou a validade de todos os associados até ${formatDateBR(bulkRenewDate, bulkRenewDate)}.`,
+        'approval'
+      );
+    } catch (err: any) {
+      console.error('Erro na renovação coletiva:', err);
+      await dialog.alert({
+        title: 'Erro na Renovação Coletiva',
+        message: 'Falha ao atualizar validade dos sócios: ' + (err.message || 'Erro no banco de dados.'),
+        variant: 'danger',
+      });
+    } finally {
+      setBulkRenewing(false);
+    }
+  };
+
+  // Save Individual Member Validity
+  const handleSaveIndividualValidity = async () => {
+    if (!editingValidityMember || !editingValidityDate) return;
+    setSavingValidity(true);
+    try {
+      const path = 'members';
+      await updateDoc(doc(db, path, editingValidityMember.id), {
+        validUntil: editingValidityDate,
+        updatedAt: new Date().toISOString(),
+      });
+      try {
+        await setDoc(doc(db, 'publicCards', editingValidityMember.id), {
+          validUntil: editingValidityDate,
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      } catch (e) {}
+
+      setEditingValidityMember(null);
+      await dialog.alert({
+        title: 'Validade Atualizada',
+        message: `A nova data de validade (${formatDateBR(editingValidityDate, editingValidityDate)}) foi salva com sucesso.`,
+        variant: 'success',
+      });
+    } catch (err: any) {
+      await dialog.alert({
+        title: 'Erro ao Atualizar',
+        message: err.message || 'Erro ao persistir nova validade no banco.',
+        variant: 'danger',
+      });
+    } finally {
+      setSavingValidity(false);
+    }
+  };
+
   // Delete Member (LGPD right to erasure or test cleanup)
   const handleDeleteMember = async (memberId: string) => {
-    if (!confirm('Tem certeza que deseja excluir permanentemente este registro em atendimento às normas LGPD?')) return;
+    const confirmed = await dialog.confirm({
+      title: 'Excluir Registro (LGPD)',
+      message: 'Tem certeza que deseja excluir permanentemente este registro em atendimento às normas LGPD?',
+      confirmText: 'Excluir Permanentemente',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+
     try {
       const path = 'members';
       await deleteDoc(doc(db, path, memberId));
+      try {
+        await deleteDoc(doc(db, 'publicCards', memberId));
+      } catch (e) {}
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `members/${memberId}`);
     }
   };
 
-  // Create Mock Applicant for testing
-  const handleCreateTestMember = async () => {
-    const mockId = `mock_${Date.now()}`;
-    const mockNames = [
-      'Marcos Vinícius Barbosa',
-      'Juliana Helena Ribeiro',
-      'Ricardo Alves Moreira',
-      'Camila Fernandes Dias',
-    ];
-    const pickedName = mockNames[Math.floor(Math.random() * mockNames.length)];
-    const mockMember: Member = {
-      id: mockId,
-      userId: `user_test_${Math.random().toString(36).substring(2, 8)}`,
-      fullName: pickedName,
-      cpf: `${Math.floor(100 + Math.random() * 899)}.${Math.floor(100 + Math.random() * 899)}.${Math.floor(100 + Math.random() * 899)}-${Math.floor(10 + Math.random() * 89)}`,
-      birthDate: '1992-08-22',
-      email: `${pickedName.toLowerCase().replace(/\s+/g, '.')}@gmail.com`,
-      phone: '(11) 98123-4567',
-      photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
-      membershipNumber: `SOC-${Math.floor(100000 + Math.random() * 900000)}`,
-      category: 'Sócio Efetivo Contribuinte',
-      status: 'pendente',
-      lgpdConsent: true,
-      lgpdConsentDate: new Date().toISOString(),
-      validUntil: DEFAULT_OFFICIAL_EXPIRY,
-      renewalCount: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
+  // Export to CSV with masked CPF, RFC 4180 cell quoting, and audit trail
+  const handleExportCSV = async () => {
     try {
-      await setDoc(doc(db, 'members', mockId), mockMember);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `members/${mockId}`);
+      const escapeCell = (val: any) => {
+        if (val === null || val === undefined) return '""';
+        const str = String(val).replace(/"/g, '""');
+        return `"${str}"`;
+      };
+
+      const headers = [
+        'Matricula',
+        'Nome Completo',
+        'CPF (Mascarado)',
+        'Email',
+        'Data Nascimento',
+        'Categoria',
+        'Status',
+        'Validade',
+        'Consentimento LGPD'
+      ];
+
+      const rows = filteredMembers.map(m => [
+        escapeCell(m.membershipNumber || ''),
+        escapeCell(m.fullName || ''),
+        escapeCell(maskCPF(m.cpf)), // CPF mascarado por segurança e LGPD
+        escapeCell(m.email || ''),
+        escapeCell(m.birthDate || ''),
+        escapeCell(normalizeMemberCategory(m.category)),
+        escapeCell(m.status || ''),
+        escapeCell(m.validUntil || ''),
+        escapeCell(m.lgpdConsentDate || ''),
+      ]);
+
+      const csvContent = '\uFEFF' + [
+        headers.map(escapeCell).join(';'),
+        ...rows.map(r => r.join(';'))
+      ].join('\r\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `socios_associacao_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      // Audit log: register who exported and when
+      const auditId = `audit_export_${Date.now()}`;
+      await setDoc(doc(db, 'auditLogs', auditId), {
+        id: auditId,
+        action: 'EXPORT_MEMBERS_CSV',
+        exportedByEmail: currentUser?.email || 'admin',
+        exportedByUid: currentUser?.uid || '',
+        exportedByName: currentUser?.displayName || 'Administrador',
+        totalMembersExported: filteredMembers.length,
+        timestamp: new Date().toISOString(),
+      });
+
+      triggerPushNotification(
+        '📊 Base de Sócios Exportada',
+        `A planilha com ${filteredMembers.length} sócios foi exportada em CSV por ${currentUser?.email || 'gestor'}.`,
+        'approval'
+      );
+    } catch (err: any) {
+      console.error('Erro ao exportar base de sócios:', err);
+      await dialog.alert({
+        title: 'Erro ao Exportar',
+        message: 'Erro ao exportar planilha: ' + (err.message || 'Erro desconhecido.'),
+        variant: 'danger',
+      });
     }
-  };
-
-  // Export to CSV
-  const handleExportCSV = () => {
-    const headers = ['Matricula', 'Nome Completo', 'CPF', 'Email', 'Data Nascimento', 'Categoria', 'Status', 'Validade', 'Consentimento LGPD'];
-    const rows = members.map(m => [
-      m.membershipNumber,
-      `"${m.fullName}"`,
-      m.cpf,
-      m.email,
-      m.birthDate,
-      `"${m.category}"`,
-      m.status,
-      m.validUntil,
-      m.lgpdConsentDate,
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `socios_associacao_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   // Filter members
@@ -361,7 +545,12 @@ export const AdminDashboard: React.FC = () => {
       m.membershipNumber?.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus = statusFilter === 'all' || m.status === statusFilter;
-    return matchesSearch && matchesStatus;
+
+    const normalizedCat = normalizeMemberCategory(m.category);
+    const matchesCategory =
+      categoryFilter === 'all' || normalizedCat === categoryFilter;
+
+    return matchesSearch && matchesStatus && matchesCategory;
   });
 
   // Metrics
@@ -378,10 +567,14 @@ export const AdminDashboard: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 uppercase tracking-wider">
-              Painel de Administração
+              {isSuperAdmin
+                ? 'Superadmin Geral (Acesso Total & Configuração de Usuários)'
+                : isDiretoriaExecutiva
+                ? 'Diretoria Executiva (Homologação & Gestão)'
+                : 'Membro da Diretoria (Fiscalização & Validação)'}
             </span>
             <span className="text-xs text-zinc-400 font-mono">
-              Gestor: {currentUser?.email}
+              {currentUser?.email}
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
@@ -590,18 +783,37 @@ export const AdminDashboard: React.FC = () => {
                 <option value="rejeitado">Apenas Rejeitados ({rejectedCount})</option>
                 <option value="expirado">Apenas Expirados ({expiredCount})</option>
               </select>
+
+              {/* Category Filter */}
+              <select
+                value={categoryFilter}
+                onChange={e => setCategoryFilter(e.target.value as any)}
+                className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 outline-hidden focus:border-emerald-500"
+              >
+                <option value="all">Todas as Categorias</option>
+                {MEMBER_CATEGORIES.map(cat => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {/* Test Actions & Export */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleCreateTestMember}
-                className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-1.5 transition-colors border border-zinc-700 cursor-pointer"
-                title="Insere um sócio de teste para aprovar/rejeitar"
-              >
-                <PlusCircle className="w-3.5 h-3.5 text-emerald-400" />
-                <span>+ Sócio Teste</span>
-              </button>
+            {/* Actions: Bulk Renew & Export */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {canManageMembers && (
+                <button
+                  onClick={() => {
+                    setBulkRenewDate(getDefaultOfficialExpiry());
+                    setShowBulkRenewModal(true);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                  title="Renovar a validade de todos os sócios cadastrados"
+                >
+                  <CalendarCheck className="w-3.5 h-3.5" />
+                  <span>Renovar validade de todos os sócios</span>
+                </button>
+              )}
 
               <button
                 onClick={handleExportCSV}
@@ -676,37 +888,48 @@ export const AdminDashboard: React.FC = () => {
                             <div className="text-zinc-400 text-[11px]">{m.phone || '-'}</div>
                           </td>
 
-                          {/* Category (SÓCIO vs MEMBRO DA DIRETORIA) */}
+                          {/* Category (Sócio Efetivo vs Membro da Diretoria vs Membro Diretoria Executiva) */}
                           <td className="py-3 px-4">
                             <div className="flex flex-col gap-1 items-start">
-                              {String(m.category || '').trim().toUpperCase() === 'MEMBRO DA DIRETORIA' ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-400 text-zinc-950 border border-amber-300 shadow-xs">
-                                  <Crown className="w-2.5 h-2.5" />
-                                  <span>DIRETORIA</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                                  <User className="w-2.5 h-2.5" />
-                                  <span>{m.category || 'SÓCIO'}</span>
-                                </span>
-                              )}
+                              {(() => {
+                                const normCat = normalizeMemberCategory(m.category);
+                                if (normCat === 'Membro Diretoria Executiva') {
+                                  return (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-400 text-zinc-950 border border-amber-300 shadow-xs">
+                                      <Crown className="w-2.5 h-2.5" />
+                                      <span>Membro Diretoria Executiva</span>
+                                    </span>
+                                  );
+                                }
+                                if (normCat === 'Membro da Diretoria') {
+                                  return (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-sky-400 text-zinc-950 border border-sky-300 shadow-xs">
+                                      <ShieldCheck className="w-2.5 h-2.5" />
+                                      <span>Membro da Diretoria</span>
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                    <User className="w-2.5 h-2.5" />
+                                    <span>Sócio Efetivo</span>
+                                  </span>
+                                );
+                              })()}
 
-                              {m.status === 'aprovado' && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleQuickChangeCategory(
-                                      m.id,
-                                      String(m.category || '').trim().toUpperCase() === 'MEMBRO DA DIRETORIA'
-                                        ? 'SÓCIO'
-                                        : 'MEMBRO DA DIRETORIA'
-                                    )
-                                  }
-                                  className="text-[9px] text-zinc-400 hover:text-emerald-400 underline cursor-pointer transition-colors"
-                                  title="Alternar categoria no banco de dados"
+                              {canManageMembers && (
+                                <select
+                                  value={normalizeMemberCategory(m.category)}
+                                  onChange={e => handleQuickChangeCategory(m.id, e.target.value as MemberCategory)}
+                                  className="bg-zinc-950 border border-zinc-700 text-[10px] text-zinc-300 rounded px-1.5 py-0.5 cursor-pointer outline-hidden hover:border-emerald-500 mt-0.5"
+                                  title="Alterar cargo de diretoria ou sócio no banco de dados"
                                 >
-                                  Mudar para {String(m.category || '').trim().toUpperCase() === 'MEMBRO DA DIRETORIA' ? 'Sócio' : 'Diretoria'}
-                                </button>
+                                  {MEMBER_CATEGORIES.map(cat => (
+                                    <option key={cat} value={cat}>
+                                      {cat}
+                                    </option>
+                                  ))}
+                                </select>
                               )}
                             </div>
                           </td>
@@ -738,10 +961,24 @@ export const AdminDashboard: React.FC = () => {
                             )}
                           </td>
 
-                          {/* Expiration Date */}
+                          {/* Expiration Date with edit button */}
                           <td className="py-3 px-4 font-mono text-[11px]">
-                            <div className={officialStatus.isExpired ? 'text-amber-400 font-bold' : 'text-zinc-200'}>
-                              {officialStatus.formattedDate}
+                            <div className="flex items-center gap-1.5">
+                              <span className={officialStatus.isExpired ? 'text-amber-400 font-bold' : 'text-zinc-200'}>
+                                {officialStatus.formattedDate}
+                              </span>
+                              {canManageMembers && (
+                                <button
+                                  onClick={() => {
+                                    setEditingValidityMember(m);
+                                    setEditingValidityDate(m.validUntil || getDefaultOfficialExpiry());
+                                  }}
+                                  className="p-1 rounded-md text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 transition-colors cursor-pointer"
+                                  title="Editar data de validade deste sócio"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                </button>
+                              )}
                             </div>
                             {m.renewalCount > 0 && (
                               <span className="text-[10px] text-emerald-400 font-sans block">
@@ -753,55 +990,63 @@ export const AdminDashboard: React.FC = () => {
                           {/* Admin Actions */}
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
-                              {/* Approve Button -> Opens Modal with SÓCIO vs MEMBRO DA DIRETORIA */}
-                              {m.status !== 'aprovado' ? (
-                                <button
-                                  onClick={() => handleOpenApproveModal(m)}
-                                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[11px] transition-colors shadow-xs flex items-center gap-1 cursor-pointer"
-                                  title="Homologar e definir como SÓCIO ou MEMBRO DA DIRETORIA"
-                                >
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  <span>Homologar</span>
-                                </button>
+                              {canManageMembers ? (
+                                <>
+                                  {/* Approve Button -> Opens Modal with SÓCIO vs DIRETORIA EXECUTIVA vs DIRETORIA */}
+                                  {m.status !== 'aprovado' ? (
+                                    <button
+                                      onClick={() => handleOpenApproveModal(m)}
+                                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[11px] transition-colors shadow-xs flex items-center gap-1 cursor-pointer"
+                                      title="Homologar e definir como SÓCIO, DIRETORIA EXECUTIVA ou DIRETORIA"
+                                    >
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      <span>Homologar</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleOpenApproveModal(m)}
+                                      className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] font-medium transition-colors border border-zinc-700 cursor-pointer"
+                                      title="Alterar cargo/categoria ou dados do associado"
+                                    >
+                                      Alterar
+                                    </button>
+                                  )}
+
+                                  {/* Reject / Request Correction Button */}
+                                  {m.status === 'pendente' && (
+                                    <button
+                                      onClick={() => setRejectingMember(m)}
+                                      className="px-2.5 py-1 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-500/40 text-red-300 font-semibold text-[11px] transition-colors shadow-xs flex items-center gap-1 cursor-pointer"
+                                      title="Solicitar correção ao associado"
+                                    >
+                                      <XCircle className="w-3 h-3" />
+                                      <span>Ajuste</span>
+                                    </button>
+                                  )}
+
+                                  {/* Renewal Button (for expired cards after October 2027) */}
+                                  {officialStatus.isExpired && (
+                                    <button
+                                      onClick={() => handleRenewOneYear(m)}
+                                      className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold text-[11px] transition-colors shadow-xs flex items-center gap-1 cursor-pointer"
+                                      title="Renovar validade da carteirinha por mais 1 ano"
+                                    >
+                                      <RefreshCw className="w-3 h-3" />
+                                      <span>Renovar (+1 Ano)</span>
+                                    </button>
+                                  )}
+                                </>
                               ) : (
-                                <button
-                                  onClick={() => handleOpenApproveModal(m)}
-                                  className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] font-medium transition-colors border border-zinc-700 cursor-pointer"
-                                  title="Alterar cargo/categoria ou dados do associado"
-                                >
-                                  Alterar
-                                </button>
-                              )}
-
-                              {/* Reject / Request Correction Button */}
-                              {m.status === 'pendente' && (
-                                <button
-                                  onClick={() => setRejectingMember(m)}
-                                  className="px-2.5 py-1 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-500/40 text-red-300 font-semibold text-[11px] transition-colors shadow-xs flex items-center gap-1 cursor-pointer"
-                                  title="Solicitar correção ao associado"
-                                >
-                                  <XCircle className="w-3 h-3" />
-                                  <span>Ajuste</span>
-                                </button>
-                              )}
-
-                              {/* Renewal Button (for expired cards after October 2027) */}
-                              {officialStatus.isExpired && (
-                                <button
-                                  onClick={() => handleRenewOneYear(m)}
-                                  className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold text-[11px] transition-colors shadow-xs flex items-center gap-1 cursor-pointer"
-                                  title="Renovar validade da carteirinha por mais 1 ano"
-                                >
-                                  <RefreshCw className="w-3 h-3" />
-                                  <span>Renovar (+1 Ano)</span>
-                                </button>
+                                <span className="text-[10px] text-zinc-500 italic px-1.5 font-mono">
+                                  Somente Leitura
+                                </span>
                               )}
 
                               {/* View Card */}
                               {m.status === 'aprovado' && (
                                 <button
                                   onClick={() => setPreviewingMember(m)}
-                                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors"
+                                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
                                   title="Visualizar carteirinha"
                                 >
                                   <Eye className="w-3.5 h-3.5" />
@@ -809,13 +1054,15 @@ export const AdminDashboard: React.FC = () => {
                               )}
 
                               {/* Delete for LGPD rights */}
-                              <button
-                                onClick={() => handleDeleteMember(m.id)}
-                                className="p-1.5 rounded-lg bg-zinc-800 hover:bg-red-950/80 hover:text-red-400 text-zinc-500 transition-colors"
-                                title="Excluir dados (Direito ao esquecimento LGPD)"
-                              >
-                                ✕
-                              </button>
+                              {canManageMembers && (
+                                <button
+                                  onClick={() => handleDeleteMember(m.id)}
+                                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-red-950/80 hover:text-red-400 text-zinc-500 transition-colors cursor-pointer"
+                                  title="Excluir dados (Direito ao esquecimento LGPD)"
+                                >
+                                  ✕
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -921,80 +1168,126 @@ export const AdminDashboard: React.FC = () => {
       {activeTab === 'rejectionEmail' && <RejectionEmailConfig />}
 
       {/* TAB 3: LGPD & AUDIT TRAIL */}
-      {activeTab === 'lgpd' && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
-          <div className="flex items-center gap-3 border-b border-zinc-800 pb-4">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
-              <Shield className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-white">Relatório de Conformidade LGPD (Lei nº 13.709/2018)</h3>
-              <p className="text-xs text-zinc-400">
-                Governança, registro de consentimento dos associados e segurança de dados pessoais
-              </p>
-            </div>
-          </div>
+      {activeTab === 'lgpd' && (() => {
+        const totalLgpd = members.length;
+        const consentedMembers = members.filter(m => Boolean(m.lgpdConsent));
+        const unconsentedMembers = members.filter(m => !m.lgpdConsent);
+        const consentRate = totalLgpd > 0 ? Math.round((consentedMembers.length / totalLgpd) * 100) : 0;
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-1">
-              <span className="text-[11px] uppercase font-mono text-emerald-400">Termos de Consentimento</span>
-              <span className="text-xl font-bold text-white block">100% Homologados</span>
-              <p className="text-[11px] text-zinc-400">Todos os sócios registraram consentimento expresso no cadastro.</p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-1">
-              <span className="text-[11px] uppercase font-mono text-emerald-400">Base Legal Utilizada</span>
-              <span className="text-base font-bold text-white block">Art. 7º, V (Contrato) & I (Consentimento)</span>
-              <p className="text-[11px] text-zinc-400">Tratamento estrito para identificação associativa e emissão de credencial.</p>
+        return (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
+            <div className="flex items-center gap-3 border-b border-zinc-800 pb-4">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                <Shield className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Relatório de Conformidade LGPD (Lei nº 13.709/2018)</h3>
+                <p className="text-xs text-zinc-400">
+                  Governança, registro de consentimento dos associados e segurança de dados pessoais
+                </p>
+              </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-1">
-              <span className="text-[11px] uppercase font-mono text-emerald-400">Banco de Dados & Criptografia</span>
-              <span className="text-base font-bold text-white block">Google Cloud Firestore</span>
-              <p className="text-[11px] text-zinc-400">Políticas Zero-Trust com regras de segurança ativas no backend.</p>
-            </div>
-          </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-1">
+                <span className="text-[11px] uppercase font-mono text-emerald-400">Termos de Consentimento</span>
+                <span className="text-xl font-bold text-white block">
+                  {consentRate}% ({consentedMembers.length}/{totalLgpd})
+                </span>
+                <p className="text-[11px] text-zinc-400">
+                  {unconsentedMembers.length === 0
+                    ? 'Todos os sócios possuem consentimento expresso gravado.'
+                    : `${unconsentedMembers.length} sócio(s) cadastrado(s) sem consentimento expresso gravado.`}
+                </p>
+              </div>
 
-          {/* Table of Consents */}
-          <div>
-            <h4 className="text-sm font-bold text-white mb-3">Registros de Consentimento de Titulares</h4>
-            <div className="overflow-x-auto rounded-2xl border border-zinc-800">
-              <table className="w-full text-left text-xs text-zinc-300">
-                <thead className="bg-zinc-950 text-[10px] uppercase font-mono text-zinc-400 border-b border-zinc-800">
-                  <tr>
-                    <th className="py-2.5 px-4">Titular</th>
-                    <th className="py-2.5 px-4">CPF (Mascarado)</th>
-                    <th className="py-2.5 px-4">Status Consentimento</th>
-                    <th className="py-2.5 px-4">Data/Hora do Aceite</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800/60 bg-zinc-950/40 font-mono">
-                  {members.map(m => (
-                    <tr key={m.id}>
-                      <td className="py-2.5 px-4 font-sans font-medium text-white">{m.fullName}</td>
-                      <td className="py-2.5 px-4">{maskCPF(m.cpf)}</td>
-                      <td className="py-2.5 px-4">
-                        <span className="text-emerald-400">✓ Válido & Gravado</span>
-                      </td>
-                      <td className="py-2.5 px-4 text-zinc-400">
-                        {(() => {
-                          if (!m.lgpdConsentDate) return 'No cadastro';
-                          try {
-                            const d = new Date(m.lgpdConsentDate);
-                            return isNaN(d.getTime()) ? 'No cadastro' : d.toLocaleString('pt-BR');
-                          } catch {
-                            return 'No cadastro';
-                          }
-                        })()}
-                      </td>
-                    </tr>
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-1">
+                <span className="text-[11px] uppercase font-mono text-emerald-400">Base Legal Utilizada</span>
+                <span className="text-base font-bold text-white block">Art. 7º, V (Contrato) & I (Consentimento)</span>
+                <p className="text-[11px] text-zinc-400">Tratamento estrito para identificação associativa e emissão de credencial.</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-1">
+                <span className="text-[11px] uppercase font-mono text-emerald-400">Banco de Dados & Criptografia</span>
+                <span className="text-base font-bold text-white block">Google Cloud Firestore</span>
+                <p className="text-[11px] text-zinc-400">Políticas Zero-Trust com regras de segurança ativas no backend.</p>
+              </div>
+            </div>
+
+            {/* Warning Section for Unconsented Members */}
+            {unconsentedMembers.length > 0 && (
+              <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-500/40 space-y-2">
+                <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                  <span>Atenção: {unconsentedMembers.length} sócio(s) sem consentimento LGPD registrado</span>
+                </div>
+                <p className="text-xs text-amber-200/80 leading-relaxed">
+                  Os seguintes associados foram cadastrados sem o registro formal do termo de consentimento LGPD. Recomenda-se solicitar atualização cadastral:
+                </p>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {unconsentedMembers.map(um => (
+                    <span
+                      key={um.id}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-amber-500/30 text-amber-300 text-xs font-medium"
+                    >
+                      {um.fullName} ({maskCPF(um.cpf)})
+                    </span>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              </div>
+            )}
+
+            {/* Table of Consents */}
+            <div>
+              <h4 className="text-sm font-bold text-white mb-3">Registros de Consentimento de Titulares</h4>
+              <div className="overflow-x-auto rounded-2xl border border-zinc-800">
+                <table className="w-full text-left text-xs text-zinc-300">
+                  <thead className="bg-zinc-950 text-[10px] uppercase font-mono text-zinc-400 border-b border-zinc-800">
+                    <tr>
+                      <th className="py-2.5 px-4">Titular</th>
+                      <th className="py-2.5 px-4">CPF (Mascarado)</th>
+                      <th className="py-2.5 px-4">Status Consentimento</th>
+                      <th className="py-2.5 px-4">Data/Hora do Aceite</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/60 bg-zinc-950/40 font-mono">
+                    {members.map(m => (
+                      <tr key={m.id}>
+                        <td className="py-2.5 px-4 font-sans font-medium text-white">{m.fullName}</td>
+                        <td className="py-2.5 px-4">{maskCPF(m.cpf)}</td>
+                        <td className="py-2.5 px-4">
+                          {m.lgpdConsent ? (
+                            <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> Registrado no Sistema
+                            </span>
+                          ) : (
+                            <span className="text-amber-400 font-semibold flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" /> Pendente de Registro
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-4 text-zinc-400">
+                          {(() => {
+                            if (!m.lgpdConsentDate) {
+                              return m.lgpdConsent ? 'Registrado no cadastro' : 'Não registrado';
+                            }
+                            try {
+                              const d = new Date(m.lgpdConsentDate);
+                              return isNaN(d.getTime()) ? 'Registrado no cadastro' : d.toLocaleString('pt-BR');
+                            } catch {
+                              return 'Registrado no cadastro';
+                            }
+                          })()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Reject Modal with Email Dispatch & Live Preview */}
       {rejectingMember && (
@@ -1045,13 +1338,145 @@ export const AdminDashboard: React.FC = () => {
         />
       )}
 
-      {/* Approval & Category Definition Modal (SÓCIO vs MEMBRO DA DIRETORIA) */}
+      {/* Approval & Category Definition Modal (Unified Categories & Sequential Number) */}
       {approvingMember && (
         <ApproveMemberModal
           member={approvingMember}
+          suggestedMembershipNumber={generateNextMembershipNumber(members)}
           onConfirmApprove={handleConfirmApproval}
           onClose={() => setApprovingMember(null)}
         />
+      )}
+
+      {/* Bulk Renewal Modal ("Renovar validade de todos os sócios") */}
+      {showBulkRenewModal && (
+        <div
+          onClick={() => !bulkRenewing && setShowBulkRenewModal(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm cursor-pointer animate-fade-in"
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="bg-zinc-900 border border-zinc-700 rounded-3xl max-w-md w-full p-6 shadow-2xl text-zinc-100 cursor-default animate-scale-in space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <CalendarCheck className="w-5 h-5 text-emerald-400" />
+                <h4 className="font-bold text-base text-white">Renovar Validade de Todos os Sócios</h4>
+              </div>
+              <button
+                onClick={() => !bulkRenewing && setShowBulkRenewModal(false)}
+                className="text-zinc-400 hover:text-white p-1 cursor-pointer"
+                title="Fechar"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              Esta ação atualizará a data de validade de todos os <strong>{members.length}</strong> sócios cadastrados no sistema e sincronizará seus cartões digitais.
+            </p>
+
+            <div>
+              <label className="text-xs text-zinc-400 block mb-1 font-medium">Nova Data de Validade:</label>
+              <input
+                type="date"
+                value={bulkRenewDate}
+                onChange={e => setBulkRenewDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-sm text-white outline-hidden focus:border-emerald-500 font-mono"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                disabled={bulkRenewing}
+                onClick={() => setShowBulkRenewModal(false)}
+                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={bulkRenewing || !bulkRenewDate}
+                onClick={handleBulkRenewAll}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {bulkRenewing ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Renovando...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Confirmar Renovação Geral</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Individual Member Validity Modal */}
+      {editingValidityMember && (
+        <div
+          onClick={() => setEditingValidityMember(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm cursor-pointer animate-fade-in"
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="bg-zinc-900 border border-zinc-700 rounded-3xl max-w-md w-full p-6 shadow-2xl text-zinc-100 cursor-default animate-scale-in space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-emerald-400" />
+                <h4 className="font-bold text-base text-white">Editar Validade da Carteirinha</h4>
+              </div>
+              <button
+                onClick={() => setEditingValidityMember(null)}
+                className="text-zinc-400 hover:text-white p-1 cursor-pointer"
+                title="Fechar"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="text-xs text-zinc-300 space-y-1">
+              <div>Sócio: <strong className="text-white">{editingValidityMember.fullName}</strong></div>
+              <div className="font-mono text-zinc-400">CPF: {maskCPF(editingValidityMember.cpf)}</div>
+            </div>
+
+            <div>
+              <label className="text-xs text-zinc-400 block mb-1 font-medium">Data de Validade:</label>
+              <input
+                type="date"
+                value={editingValidityDate}
+                onChange={e => setEditingValidityDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-sm text-white outline-hidden focus:border-emerald-500 font-mono"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setEditingValidityMember(null)}
+                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!editingValidityDate}
+                onClick={handleSaveIndividualValidity}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Salvar Validade</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

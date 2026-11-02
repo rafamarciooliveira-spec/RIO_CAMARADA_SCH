@@ -10,6 +10,34 @@ export interface CustomCardField {
   visible?: boolean;
 }
 
+export const MEMBER_CATEGORIES = [
+  'Sócio Efetivo',
+  'Membro da Diretoria',
+  'Membro Diretoria Executiva',
+] as const;
+
+export type MemberCategory = (typeof MEMBER_CATEGORIES)[number] | string;
+
+export function normalizeMemberCategory(category?: string | null): (typeof MEMBER_CATEGORIES)[number] {
+  if (!category) return 'Sócio Efetivo';
+  const clean = category.trim().toUpperCase();
+  if (
+    clean === 'DIRETORIA EXECUTIVA' ||
+    clean === 'MEMBRO DIRETORIA EXECUTIVA' ||
+    clean === 'MEMBRO DA DIRETORIA EXECUTIVA'
+  ) {
+    return 'Membro Diretoria Executiva';
+  }
+  if (
+    clean === 'DIRETORIA' ||
+    clean === 'MEMBRO DA DIRETORIA' ||
+    clean === 'SOMENTE DIRETORIA'
+  ) {
+    return 'Membro da Diretoria';
+  }
+  return 'Sócio Efetivo';
+}
+
 export interface Member {
   id: string;
   userId: string;
@@ -20,15 +48,30 @@ export interface Member {
   phone?: string;
   photoUrl?: string;
   membershipNumber?: string;
-  category: 'SÓCIO' | 'MEMBRO DA DIRETORIA' | string;
+  category: MemberCategory;
   status: MemberStatus;
   rejectionReason?: string;
   lgpdConsent: boolean;
   lgpdConsentDate: string;
-  validUntil: string; // Defaults to "2027-10-31"
+  // Granular LGPD consents
+  allowBirthdayPublic?: boolean;
+  birthdayConsentDate?: string;
+  allowEventPhotos?: boolean;
+  eventPhotosConsentDate?: string;
+  allowCommunications?: boolean;
+  communicationsConsentDate?: string;
+  consentVersion?: string;
+  // Minor under 18 protection
+  isMinor?: boolean;
+  parentName?: string;
+  parentCpf?: string;
+  parentAuthorized?: boolean;
+  validUntil: string; // Defaults to "2027-10-31" or calculated
   renewalCount: number;
   lastGeneratedAt?: string;
   lastViewToken?: string;
+  mustChangePassword?: boolean;
+  passwordChangedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -37,7 +80,8 @@ export interface AdminUser {
   id: string;
   email: string;
   name?: string;
-  role: 'superadmin' | 'admin' | 'gestor';
+  role: 'superadmin' | 'diretoria_executiva' | 'diretoria' | 'admin' | 'gestor' | 'tesoureiro' | 'conselho_fiscal';
+  category?: 'DIRETORIA EXECUTIVA' | 'DIRETORIA' | 'TESOUREIRO' | 'CONSELHO FISCAL';
   addedBy?: string;
   createdAt: string;
 }
@@ -163,13 +207,183 @@ export interface CultureArticle {
   subtitle?: string;
   category: CultureCategory;
   categoryLabel: string;
-  content: string; // rich markdown / paragraphs
+  content: string; // HTML rich content
   summary: string;
   imageUrl?: string;
   order: number;
   highlighted?: boolean;
   published: boolean;
+  draftContent?: string;
+  draftSavedAt?: string;
   updatedAt: string;
   updatedBy?: string;
 }
+
+// PEDIDO 3: Editable Homepage Blocks
+export interface HomepageSettings {
+  id: string; // 'homepage'
+  heroBadge: string;
+  heroTitle: string;
+  heroSubtitle: string;
+  aboutTitle: string;
+  aboutText: string;
+  associationAddress: string;
+  associationCnpj: string;
+  associationPhone: string;
+  associationEmail: string;
+  footerNotice: string;
+  updatedAt: string;
+  updatedBy?: string;
+}
+
+// PEDIDO 4: News Module
+export interface NewsArticle {
+  id: string;
+  title: string;
+  summary: string;
+  sourceUrl: string;
+  sourceName: string;
+  imageUrl?: string;
+  tags: string[];
+  status: 'rascunho' | 'publicada';
+  highlighted: boolean;
+  publishedAt: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface NewsKeywordConfig {
+  id: string; // 'news_keywords'
+  enabled: boolean;
+  keywords: string[];
+  lastCheckedAt?: string;
+}
+
+// PEDIDO 5: Financial Module
+export type FinancialTransactionType = 'receita' | 'despesa';
+export type FinancialAccountType = 'caixa' | 'banco';
+
+export interface FinancialAccount {
+  id: string;
+  name: string;
+  type: FinancialAccountType;
+  initialBalance: number;
+  currentBalance: number;
+  bankName?: string;
+  accountNumber?: string;
+  pixKey?: string;
+  active: boolean;
+  updatedAt: string;
+}
+
+export interface FinancialCategory {
+  id: string;
+  name: string;
+  type: FinancialTransactionType;
+  icon?: string;
+  active: boolean;
+  updatedAt: string;
+}
+
+export interface FinancialTransaction {
+  id: string;
+  code: string; // e.g. "LAN-000123"
+  type: FinancialTransactionType;
+  amount: number;
+  date: string; // YYYY-MM-DD
+  competenceMonth: string; // YYYY-MM
+  categoryId: string;
+  categoryName: string;
+  accountId: string;
+  accountName: string;
+  description: string;
+  entityName: string; // Fornecedor ou Pagador
+  status: 'pago' | 'previsto';
+  attachmentUrl?: string;
+  attachmentName?: string;
+  isReversal?: boolean;
+  reversedFromId?: string;
+  isReversed?: boolean;
+  reversedById?: string;
+  reversalReason?: string;
+  createdByEmail: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FinancialMonthlyClosure {
+  id: string; // YYYY-MM
+  competenceMonth: string;
+  closedAt: string;
+  closedByEmail: string;
+  closedByName: string;
+  totalIncome: number;
+  totalExpense: number;
+  balance: number;
+  notes?: string;
+}
+
+export interface MemberFeeMonth {
+  paid: boolean;
+  paidAt?: string;
+  amount?: number;
+  transactionId?: string;
+}
+
+export interface FinancialMemberFee {
+  id: string; // memberId_year
+  memberId: string;
+  memberName: string;
+  memberCpf: string;
+  year: number;
+  months: Record<number, MemberFeeMonth>; // 1-12
+  updatedAt: string;
+}
+
+export interface FinancialPublishedReport {
+  id: string;
+  title: string;
+  description?: string;
+  period: string; // e.g. "Ano 2025" ou "1º Trimestre/2026"
+  documentUrl?: string;
+  approvedAtAssemblyDate?: string; // DD/MM/AAAA ou YYYY-MM-DD
+  totalIncome: number;
+  totalExpense: number;
+  balance: number;
+  publishedAt: string;
+  publishedBy: string;
+}
+
+// PEDIDO 6: Privacy, DPO & Data Requests
+export interface PrivacyDpoSettings {
+  id: string; // 'privacy_dpo'
+  dpoName: string;
+  dpoEmail: string;
+  dpoPhone: string;
+  dpoAddress: string;
+  updatedAt: string;
+  updatedBy?: string;
+}
+
+export type DataRequestType = 'copia_dados' | 'retificacao' | 'revogacao_consentimento' | 'exclusao_dados';
+export type DataRequestStatus = 'pendente' | 'em_analise' | 'atendido' | 'rejeitado';
+
+export interface DataSubjectRequest {
+  id: string;
+  memberId: string;
+  memberName: string;
+  memberEmail: string;
+  memberCpf: string;
+  type: DataRequestType;
+  details?: string;
+  status: DataRequestStatus;
+  requestedAt: string;
+  resolvedAt?: string;
+  resolvedByEmail?: string;
+  resolutionNotes?: string;
+}
+
+export type ThemeMode = 'dark' | 'light';
+
 

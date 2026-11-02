@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CultureArticle, CultureCategory } from '../types/index.ts';
 import { DEFAULT_CULTURE_ARTICLES } from '../data/defaultCultureData.ts';
+import { markdownToHtml } from '../utils/richText.ts';
 import { db } from '../firebase/config.ts';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import {
@@ -375,52 +376,10 @@ export const CultureArticlesView: React.FC<CultureArticlesViewProps> = ({
             )}
 
             {/* Article Body Content */}
-            <div className="prose prose-invert max-w-none text-xs sm:text-sm text-zinc-300 leading-relaxed space-y-4">
-              {readingArticle.content.split('\n\n').map((paragraph, idx) => {
-                const trimmed = paragraph.trim();
-                if (!trimmed) return null;
-
-                if (trimmed.startsWith('### ')) {
-                  return (
-                    <h3 key={idx} className="text-base sm:text-lg font-bold text-white pt-3 border-b border-zinc-800/80 pb-1">
-                      {trimmed.replace('### ', '')}
-                    </h3>
-                  );
-                }
-
-                if (trimmed.startsWith('---')) {
-                  return <hr key={idx} className="border-zinc-800 my-4" />;
-                }
-
-                if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
-                  const items = trimmed.split('\n').filter(i => i.trim());
-                  return (
-                    <ul key={idx} className="list-disc list-inside space-y-1.5 pl-2 text-zinc-300 bg-zinc-950/40 p-3 rounded-xl border border-zinc-800/60">
-                      {items.map((item, i) => (
-                        <li key={i}>{item.replace(/^(\* |- )/, '')}</li>
-                      ))}
-                    </ul>
-                  );
-                }
-
-                if (trimmed.match(/^\d\.\s/)) {
-                  const items = trimmed.split('\n').filter(i => i.trim());
-                  return (
-                    <ol key={idx} className="list-decimal list-inside space-y-1.5 pl-2 text-zinc-300 bg-zinc-950/40 p-3 rounded-xl border border-zinc-800/60">
-                      {items.map((item, i) => (
-                        <li key={i}>{item.replace(/^\d\.\s/, '')}</li>
-                      ))}
-                    </ol>
-                  );
-                }
-
-                return (
-                  <p key={idx} className="leading-relaxed">
-                    {trimmed}
-                  </p>
-                );
-              })}
-            </div>
+            <div
+              className="prose prose-invert max-w-none text-sm text-zinc-300 leading-relaxed space-y-4"
+              dangerouslySetInnerHTML={{ __html: markdownToHtml(readingArticle.content) }}
+            />
 
             {/* Footer with Actions */}
             <div className="pt-4 border-t border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-3">

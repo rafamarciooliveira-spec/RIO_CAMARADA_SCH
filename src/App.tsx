@@ -5,11 +5,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
+import { DialogProvider, useAppDialog } from './context/DialogContext.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { MemberDashboard } from './components/MemberDashboard.tsx';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
+import { ForcePasswordChangeModal } from './components/ForcePasswordChangeModal.tsx';
 import { NotificationToastContainer } from './components/NotificationToast.tsx';
 import { VerificationModal } from './components/VerificationModal.tsx';
 import { AssociationLogo } from './components/AssociationLogos.tsx';
@@ -33,10 +35,21 @@ import {
   BookOpen,
   Share2,
   Home,
+  AlertCircle,
 } from 'lucide-react';
 
 function MainContent() {
-  const { currentUser, activeRole, loading, activeTemplate } = useAuth();
+  const {
+    currentUser,
+    activeRole,
+    isBoardMember,
+    mustChangePassword,
+    loading,
+    activeTemplate,
+    sendVerificationEmail,
+    reloadUser,
+  } = useAuth();
+  const dialog = useAppDialog();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [publicVerifyMember, setPublicVerifyMember] = useState<Member | null>(null);
   const [publicTab, setPublicTab] = useState<'home' | 'events' | 'culture' | 'socials'>('home');
@@ -48,12 +61,27 @@ function MainContent() {
     const memberId = params.get('id');
 
     if (action === 'validar' && memberId) {
-      getDoc(doc(db, 'members', memberId)).then(docSnap => {
+      // Prioritize publicCards collection (strictly sanitized, 0 PII)
+      getDoc(doc(db, 'publicCards', memberId)).then(docSnap => {
         if (docSnap.exists()) {
           setPublicVerifyMember({ ...docSnap.data(), id: docSnap.id } as Member);
+        } else {
+          // Fallback to members if accessible by current session
+          getDoc(doc(db, 'members', memberId)).then(memSnap => {
+            if (memSnap.exists()) {
+              setPublicVerifyMember({ ...memSnap.data(), id: memSnap.id } as Member);
+            }
+          }).catch(() => {});
         }
-      }).catch(err => {
-        console.warn('Erro ao verificar documento público:', err);
+      }).catch(() => {
+        // Fallback to members if accessible
+        getDoc(doc(db, 'members', memberId)).then(memSnap => {
+          if (memSnap.exists()) {
+            setPublicVerifyMember({ ...memSnap.data(), id: memSnap.id } as Member);
+          }
+        }).catch(err => {
+          console.warn('Erro ao verificar carteirinha:', err);
+        });
       });
     }
   }, []);
@@ -72,10 +100,54 @@ function MainContent() {
       <Navbar onOpenAuthModal={() => setShowAuthModal(true)} />
       <NotificationToastContainer />
 
+      {/* Email Verification Banner */}
+      {currentUser && !currentUser.emailVerified && (
+        <div className="bg-amber-950/90 border-b border-amber-500/40 px-4 py-2.5 text-xs text-amber-200 flex flex-wrap items-center justify-between gap-3 shadow-md z-30">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              <strong>Confirmação de E-mail Pendente:</strong> Um link de ativação foi enviado para <strong>{currentUser.email}</strong>. Administradores precisam de e-mail verificado para ter permissão no banco de dados.
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                try {
+                  await sendVerificationEmail();
+                  await dialog.alert({
+                    title: 'Confirmação Reenviada',
+                    message: 'E-mail de confirmação reenviado com sucesso! Verifique sua caixa de entrada e spam.',
+                    variant: 'success',
+                  });
+                } catch (e: any) {
+                  await dialog.alert({
+                    title: 'Erro ao Reenviar',
+                    message: 'Erro ao reenviar: ' + (e.message || 'Tente novamente em instantes.'),
+                    variant: 'danger',
+                  });
+                }
+              }}
+              className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-lg text-[11px] transition-colors cursor-pointer"
+            >
+              Reenviar Confirmação
+            </button>
+            <button
+              onClick={async () => {
+                await reloadUser();
+              }}
+              className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-lg text-[11px] transition-colors cursor-pointer border border-zinc-700"
+              title="Atualizar status após clicar no link do e-mail"
+            >
+              Já confirmei
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main View Router */}
       <main className="flex-1 w-full max-w-full overflow-x-hidden">
         {currentUser ? (
-          activeRole === 'admin' ? (
+          (activeRole === 'admin' && isBoardMember) ? (
             <ErrorBoundary resetKey="admin" fallbackTitle="Painel de Administração">
               <AdminDashboard />
             </ErrorBoundary>
@@ -161,28 +233,19 @@ function MainContent() {
                   </h1>
 
                   <p className="text-sm sm:text-base text-zinc-400 max-w-2xl mx-auto leading-relaxed">
-                    Plataforma oficial com conformidade total à <strong>LGPD</strong>, dupla visualização para
-                    <strong> Administrador</strong> e <strong>Sócio</strong>, aprovação cadastral em tempo real,
+                    Plataforma oficial com conformidade total à <strong>LGPD</strong>, emissão e validação da carteirinha digital do associado,
                     selo de visualização seguro de 24 horas e validade oficial até <strong>Outubro de 2027</strong>.
                   </p>
 
-                  {/* Action Buttons */}
+                  {/* Action Buttons: Unified Sócio Entry */}
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
                     <button
                       onClick={() => setShowAuthModal(true)}
-                      className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm tracking-wide shadow-xl shadow-emerald-950/50 transition-all flex items-center justify-center gap-2 cursor-pointer hover:scale-102"
+                      className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm tracking-wide shadow-xl shadow-emerald-950/50 transition-all flex items-center justify-center gap-2 cursor-pointer hover:scale-102"
                     >
                       <UserCheck className="w-4 h-4" />
-                      <span>Cadastrar-se como Sócio</span>
+                      <span>Acessar Portal do Sócio / Cadastrar</span>
                       <ArrowRight className="w-4 h-4" />
-                    </button>
-
-                    <button
-                      onClick={() => setShowAuthModal(true)}
-                      className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-semibold text-sm transition-all border border-zinc-800 flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Lock className="w-4 h-4 text-emerald-400" />
-                      <span>Acesso de Administrador</span>
                     </button>
                   </div>
 
@@ -315,6 +378,9 @@ function MainContent() {
       {/* Auth Modal */}
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
 
+      {/* Force Password Change on First Login Modal */}
+      <ForcePasswordChangeModal isOpen={mustChangePassword} />
+
       {/* Public QR Scanner Modal */}
       {publicVerifyMember && (
         <VerificationModal
@@ -330,9 +396,11 @@ function MainContent() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <MainContent />
-      </AuthProvider>
+      <DialogProvider>
+        <AuthProvider>
+          <MainContent />
+        </AuthProvider>
+      </DialogProvider>
     </ErrorBoundary>
   );
 }
