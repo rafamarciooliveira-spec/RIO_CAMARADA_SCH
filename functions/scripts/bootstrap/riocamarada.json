@@ -1,0 +1,13 @@
+{
+  "name": "Associação Rio Camarada",
+  "shortName": "Rio Camarada",
+  "slug": "riocamarada",
+  "societyType": "tiro_esportivo",
+  "city": "",
+  "state": "SC",
+  "subtitle": "Fundada em 1955 • CNPJ 79.362.836/0001-96",
+  "foundedYear": 1955,
+  "about": "Associação de tiro esportivo fundada em 21 de julho de 1955, que preserva a tradição do tiro e a herança cultural brasileira e alemã.",
+  "logoFile": "riocamarada-logo.jpg",
+  "colors": { "primary": "#064e3b", "secondary": "#022c22", "accent": "#10b981", "text": "#ffffff" }
+}

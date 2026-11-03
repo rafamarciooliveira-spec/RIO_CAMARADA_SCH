@@ -1,0 +1,288 @@
+/** Abas de regras: categorias e regras, campos personalizados, módulos, modelos de e-mail e LGPD. */
+import { useState } from 'react';
+import { AlertTriangle, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { useOp } from '../../../app/DataContext.tsx';
+import { useTenant } from '../../../app/TenantContext.tsx';
+import { MODULES, type ModuleId } from '../../../shared/modules.ts';
+import { EMAIL_TEMPLATES } from '../../../shared/templates.ts';
+import type { CustomFieldDef, MemberCategory, TenantSettings } from '../../../shared/types.ts';
+import { Badge, Button, Card, Field, Input, MoneyInput, Notice, Select, Textarea, Toggle, useConfirm } from '../../../ui/index.tsx';
+import { SaveBar, slugId } from './common.tsx';
+
+function useSettingsSave() {
+  const t = useTenant();
+  const { run, busy } = useOp();
+  const save = (settings: Partial<TenantSettings>, success = 'Configurações salvas.') => run('tenant.updateSettings', { tenantId: t.tenantId, settings }, { success });
+  return { save, busy };
+}
+
+const PERIODS: MemberCategory['period'][] = ['mensal', 'trimestral', 'semestral', 'anual', 'isento'];
+
+export function RulesTab({ readOnly }: { readOnly: boolean }) {
+  const t = useTenant();
+  const s = t.settings!;
+  const { save, busy } = useSettingsSave();
+  const confirm = useConfirm();
+  const [cats, setCats] = useState<MemberCategory[]>(s.categories.map(c => ({ ...c })));
+  const [r, setR] = useState({
+    membershipPrefix: s.membershipPrefix,
+    validityMonths: s.validityMonths,
+    approvalRequired: s.approvalRequired,
+    gracePeriodDays: s.gracePeriodDays,
+    suspendAfterDays: s.suspendAfterDays,
+    showPhotoOnValidation: s.showPhotoOnValidation,
+  });
+  const [dirty, setDirty] = useState(false);
+  const setCat = (i: number, p: Partial<MemberCategory>) => (setCats(c => c.map((x, j) => (j === i ? { ...x, ...p } : x))), setDirty(true));
+  const setRule = (p: Partial<typeof r>) => (setR(x => ({ ...x, ...p })), setDirty(true));
+  const add = () => (setCats(c => [...c, { id: '', name: '', feeCents: 0, period: 'mensal', allowsDependents: false }]), setDirty(true));
+  const remove = async (i: number) => {
+    if (!(await confirm({ title: 'Remover categoria', text: `Quem já está em "${cats[i].name}" continua com ela até ser trocado. Novas propostas não poderão escolher esta categoria.`, confirmLabel: 'Remover', danger: true }))) return;
+    setCats(c => c.filter((_, j) => j !== i));
+    setDirty(true);
+  };
+  const submit = async () => {
+    const used = new Set<string>();
+    const categories = cats
+      .filter(c => c.name.trim().length >= 2)
+      .map(c => {
+        let id = c.id || slugId(c.name);
+        while (used.has(id)) id = `${id}_2`;
+        used.add(id);
+        return { ...c, id, name: c.name.trim(), feeCents: c.period === 'isento' ? 0 : c.feeCents };
+      });
+    const ok = await save({ categories, ...r, validityMonths: Number(r.validityMonths), gracePeriodDays: Number(r.gracePeriodDays), suspendAfterDays: Number(r.suspendAfterDays) });
+    if (ok) setDirty(false);
+  };
+  return (
+    <fieldset disabled={readOnly} className="space-y-5 min-w-0">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-sm">Categorias de {t.labels.member.toLowerCase()}</h3>
+          <Button type="button" size="sm" variant="secondary" icon={<Plus className="w-4 h-4" />} onClick={add}>
+            Categoria
+          </Button>
+        </div>
+        {cats.map((c, i) => (
+          <Card key={i} className="grid sm:grid-cols-[1fr_140px_150px_auto_auto] gap-2 items-end p-3!">
+            <Field label="Nome">{id => <Input id={id} value={c.name} maxLength={60} onChange={e => setCat(i, { name: e.target.value })} />}</Field>
+            <Field label={t.labels.fee}>{id => <MoneyInput id={id} value={c.feeCents} disabled={c.period === 'isento'} onChange={v => setCat(i, { feeCents: v })} />}</Field>
+            <Field label="Período">
+              {id => (
+                <Select id={id} value={c.period} onChange={e => setCat(i, { period: e.target.value as MemberCategory['period'] })}>
+                  {PERIODS.map(p => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <div className="pb-2">
+              <Toggle checked={c.allowsDependents} onChange={v => setCat(i, { allowsDependents: v })} label="Dependentes" />
+            </div>
+            <Button type="button" size="sm" variant="ghost" aria-label={`Remover ${c.name || 'categoria'}`} icon={<Trash2 className="w-4 h-4" />} onClick={() => remove(i)} />
+          </Card>
+        ))}
+      </div>
+      <div className="space-y-3">
+        <h3 className="font-semibold text-sm">Regras</h3>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <Field label="Prefixo da matrícula" hint="Exemplo: SC- gera SC-0001">
+            {id => <Input id={id} value={r.membershipPrefix} maxLength={10} onChange={e => setRule({ membershipPrefix: e.target.value })} />}
+          </Field>
+          <Field label="Validade da carteirinha (meses)">{id => <Input id={id} type="number" min={1} max={120} value={r.validityMonths} onChange={e => setRule({ validityMonths: Number(e.target.value) })} />}</Field>
+          <Field label="Carência até ficar em atraso (dias)">{id => <Input id={id} type="number" min={0} max={120} value={r.gracePeriodDays} onChange={e => setRule({ gracePeriodDays: Number(e.target.value) })} />}</Field>
+          <Field label="Suspender após (dias em atraso)">{id => <Input id={id} type="number" min={1} max={365} value={r.suspendAfterDays} onChange={e => setRule({ suspendAfterDays: Number(e.target.value) })} />}</Field>
+        </div>
+        <Toggle checked={r.approvalRequired} onChange={v => setRule({ approvalRequired: v })} label="Propostas online precisam de aprovação" />
+        <Toggle checked={r.showPhotoOnValidation} onChange={v => setRule({ showPhotoOnValidation: v })} label="Mostrar a foto na validação do QR" />
+        <p className="text-[11px] text-muted">A foto aparece só para quem lê o QR, por um link que expira em 2 minutos.</p>
+      </div>
+      {!readOnly && <SaveBar dirty={dirty} busy={busy} onSave={submit} disabled={r.suspendAfterDays <= r.gracePeriodDays} />}
+      {r.suspendAfterDays <= r.gracePeriodDays && <Notice tone="warn">A suspensão precisa vir depois da carência.</Notice>}
+    </fieldset>
+  );
+}
+
+const SENSITIVE_WORDS = ['saude', 'doenca', 'deficien', 'religi', 'igreja', 'crenca', 'politic', 'partido', 'sindica', 'raca', 'cor da pele', 'etnia', 'sexual', 'genero', 'biometr', 'genetic', 'medicament', 'alergia', 'sangue', 'filosof'];
+const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const looksSensitive = (label: string) => SENSITIVE_WORDS.some(w => norm(label).includes(w));
+
+export function CustomFieldsTab({ readOnly }: { readOnly: boolean }) {
+  const t = useTenant();
+  const { save, busy } = useSettingsSave();
+  const confirm = useConfirm();
+  const [fields, setFields] = useState<CustomFieldDef[]>((t.settings!.customFields || []).map(f => ({ ...f })));
+  const [dirty, setDirty] = useState(false);
+  const set = (i: number, p: Partial<CustomFieldDef>) => (setFields(f => f.map((x, j) => (j === i ? { ...x, ...p } : x))), setDirty(true));
+  const markSensitive = async (i: number, v: boolean) => {
+    if (v) {
+      const ok = await confirm({
+        title: 'Dado pessoal sensível',
+        text: 'Saúde, religião, opinião política, filiação sindical, origem racial, vida sexual, dados genéticos e biométricos são dados sensíveis (LGPD, art. 11). Só colete se for indispensável, com finalidade clara e consentimento específico. O campo fica opcional para o sócio responder.',
+        confirmLabel: 'Entendi, marcar como sensível',
+        danger: true,
+      });
+      if (!ok) return;
+      set(i, { sensitive: true, required: false });
+    } else set(i, { sensitive: false });
+  };
+  const submit = async () => {
+    const used = new Set<string>();
+    const customFields = fields
+      .filter(f => f.label.trim())
+      .map(f => {
+        let id = f.id || slugId(f.label);
+        while (used.has(id)) id = `${id}_2`;
+        used.add(id);
+        return { ...f, id, label: f.label.trim(), options: f.type === 'opcao' ? (f.options || []).map(o => o.trim()).filter(Boolean) : undefined, required: f.sensitive ? false : f.required };
+      })
+      .map(f => (f.options === undefined ? (({ options: _o, ...rest }) => rest)(f) : f));
+    const ok = await save({ customFields: customFields as CustomFieldDef[] });
+    if (ok) setDirty(false);
+  };
+  return (
+    <fieldset disabled={readOnly} className="space-y-3 min-w-0">
+      <Notice tone="warn">
+        Peça só o necessário. Não crie campos de saúde, religião ou política sem uma razão forte: são dados sensíveis pela LGPD.
+      </Notice>
+      {fields.map((f, i) => (
+        <Card key={i} className="space-y-2 p-3!">
+          <div className="grid sm:grid-cols-[1fr_160px_auto] gap-2 items-end">
+            <Field label="Pergunta">{id => <Input id={id} value={f.label} maxLength={60} onChange={e => set(i, { label: e.target.value })} />}</Field>
+            <Field label="Tipo">
+              {id => (
+                <Select id={id} value={f.type} onChange={e => set(i, { type: e.target.value as CustomFieldDef['type'] })}>
+                  <option value="texto">Texto</option>
+                  <option value="numero">Número</option>
+                  <option value="data">Data</option>
+                  <option value="opcao">Lista de opções</option>
+                </Select>
+              )}
+            </Field>
+            <Button type="button" size="sm" variant="ghost" aria-label="Remover campo" icon={<Trash2 className="w-4 h-4" />} onClick={() => (setFields(x => x.filter((_, j) => j !== i)), setDirty(true))} />
+          </div>
+          {f.type === 'opcao' && (
+            <Field label="Opções (separadas por vírgula)">
+              {id => <Input id={id} value={(f.options || []).join(', ')} onChange={e => set(i, { options: e.target.value.split(',').map(o => o.trimStart()) })} />}
+            </Field>
+          )}
+          <div className="flex flex-wrap gap-4">
+            <Toggle checked={f.required} disabled={f.sensitive} onChange={v => set(i, { required: v })} label="Obrigatório" />
+            <Toggle checked={f.sensitive} onChange={v => markSensitive(i, v)} label="Dado sensível" />
+          </div>
+          {!f.sensitive && looksSensitive(f.label) && (
+            <p className="text-xs text-bad flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" aria-hidden /> Esta pergunta parece pedir dado sensível. Marque como sensível ou reformule.
+            </p>
+          )}
+        </Card>
+      ))}
+      <Button type="button" size="sm" variant="secondary" icon={<Plus className="w-4 h-4" />} onClick={() => (setFields(f => [...f, { id: '', label: '', type: 'texto', required: false, sensitive: false }]), setDirty(true))}>
+        Novo campo
+      </Button>
+      {!readOnly && <SaveBar dirty={dirty} busy={busy} onSave={submit} />}
+    </fieldset>
+  );
+}
+
+export function ModulesTab({ readOnly }: { readOnly: boolean }) {
+  const t = useTenant();
+  const { run, busy } = useOp();
+  const [mods, setMods] = useState<Partial<Record<ModuleId, boolean>>>({ ...t.tenant.modules });
+  const [dirty, setDirty] = useState(false);
+  const save = async () => {
+    const changes = Object.fromEntries(MODULES.filter(m => !m.core).map(m => [m.id, mods[m.id] !== false]));
+    const r = await run('tenant.update', { tenantId: t.tenantId, modules: changes }, { success: 'Módulos atualizados.' });
+    if (r) setDirty(false);
+  };
+  return (
+    <fieldset disabled={readOnly} className="space-y-3 min-w-0">
+      <p className="text-sm text-muted">Desligar um módulo esconde as telas dele. Os dados ficam guardados e voltam ao religar.</p>
+      <div className="grid sm:grid-cols-2 gap-2">
+        {MODULES.map(m => (
+          <div key={m.id} className="flex items-center justify-between gap-2 p-3 rounded-xl border border-line">
+            <Toggle checked={m.core || mods[m.id] !== false} disabled={m.core} onChange={v => (setMods(x => ({ ...x, [m.id]: v })), setDirty(true))} label={m.label} />
+            {m.core && <Badge>Essencial</Badge>}
+          </div>
+        ))}
+      </div>
+      {!readOnly && <SaveBar dirty={dirty} busy={busy} onSave={save} />}
+    </fieldset>
+  );
+}
+
+export function EmailTemplatesTab({ readOnly }: { readOnly: boolean }) {
+  const t = useTenant();
+  const { save, busy } = useSettingsSave();
+  const [tpl, setTpl] = useState<Record<string, { subject: string; body: string }>>(() => {
+    const cur = t.settings!.emailTemplates || {};
+    return Object.fromEntries(Object.entries(EMAIL_TEMPLATES).map(([k, v]) => [k, cur[k] || { subject: v.subject, body: v.body }]));
+  });
+  const [key, setKey] = useState(Object.keys(EMAIL_TEMPLATES)[0]);
+  const [dirty, setDirty] = useState(false);
+  const def = EMAIL_TEMPLATES[key];
+  const set = (p: Partial<{ subject: string; body: string }>) => (setTpl(x => ({ ...x, [key]: { ...x[key], ...p } })), setDirty(true));
+  const submit = async () => {
+    const ok = await save({ emailTemplates: tpl }, 'Modelos de e-mail salvos.');
+    if (ok) setDirty(false);
+  };
+  return (
+    <fieldset disabled={readOnly} className="space-y-3 min-w-0">
+      <Field label="Modelo">
+        {id => (
+          <Select id={id} value={key} onChange={e => setKey(e.target.value)}>
+            {Object.entries(EMAIL_TEMPLATES).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v.label}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+      <div className="flex flex-wrap gap-1.5 text-xs">
+        <span className="text-muted">Variáveis:</span>
+        {def.vars.map(v => (
+          <code key={v} className="px-1.5 py-0.5 rounded bg-surface-2">{`{${v}}`}</code>
+        ))}
+      </div>
+      <Field label="Assunto">{id => <Input id={id} value={tpl[key].subject} maxLength={200} onChange={e => set({ subject: e.target.value })} />}</Field>
+      <Field label="Texto">{id => <Textarea id={id} rows={8} value={tpl[key].body} maxLength={4000} onChange={e => set({ body: e.target.value })} />}</Field>
+      <Button type="button" size="sm" variant="ghost" icon={<RotateCcw className="w-4 h-4" />} onClick={() => set({ subject: def.subject, body: def.body })}>
+        Voltar ao texto padrão
+      </Button>
+      {!readOnly && <SaveBar dirty={dirty} busy={busy} onSave={submit} />}
+    </fieldset>
+  );
+}
+
+export function LgpdTab({ readOnly }: { readOnly: boolean }) {
+  const t = useTenant();
+  const { save, busy } = useSettingsSave();
+  const [r, setR] = useState({ ...t.settings!.retentionYears });
+  const [dirty, setDirty] = useState(false);
+  const set = (p: Partial<typeof r>) => (setR(x => ({ ...x, ...p })), setDirty(true));
+  const submit = async () => {
+    const ok = await save({ retentionYears: { financeiro: Number(r.financeiro), atas: Number(r.atas), inativos: Number(r.inativos) } });
+    if (ok) setDirty(false);
+  };
+  return (
+    <fieldset disabled={readOnly} className="space-y-3 min-w-0">
+      <p className="text-sm text-muted">A sociedade é a controladora dos dados e a plataforma é a operadora. Defina por quanto tempo os dados ficam guardados.</p>
+      <div className="grid sm:grid-cols-3 gap-3">
+        <Field label="Registros financeiros (anos)" hint="Mínimo de 5 anos (prazo fiscal).">
+          {id => <Input id={id} type="number" min={5} max={99} value={r.financeiro} onChange={e => set({ financeiro: Number(e.target.value) })} />}
+        </Field>
+        <Field label="Atas (anos)" hint="Atas costumam ser guardadas para sempre.">
+          {id => <Input id={id} type="number" min={5} max={99} value={r.atas} onChange={e => set({ atas: Number(e.target.value) })} />}
+        </Field>
+        <Field label={`${t.labels.members} desligados (anos)`} hint="Depois disso, os dados pessoais são anonimizados por uma rotina diária.">
+          {id => <Input id={id} type="number" min={1} max={99} value={r.inativos} onChange={e => set({ inativos: Number(e.target.value) })} />}
+        </Field>
+      </div>
+      <Notice>Na anonimização, CPF, contato, endereço e foto são apagados. Ficam só identificadores nos registros financeiros e atas, que têm guarda legal própria.</Notice>
+      {!readOnly && <SaveBar dirty={dirty} busy={busy} onSave={submit} disabled={r.financeiro < 5 || r.atas < 5 || r.inativos < 1} />}
+    </fieldset>
+  );
+}

@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualidade:
+    name: Lint, tipos, testes, build e auditoria
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+            tools/lint/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Instalar dependências
+        run: |
+          npm ci
+          npm ci --prefix functions
+          npm ci --prefix tools/lint
+
+      - name: Tipos
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes (operações, sem emulador)
+        run: npm test
+
+      - name: Build do front
+        run: npm run build
+
+      - name: Typecheck e build das Functions
+        run: |
+          npm --prefix functions run typecheck
+          npm --prefix functions run build
+
+      - name: Testes das regras (Firestore e Storage no emulador)
+        run: npm run test:rules
+
+      - name: Auditoria de dependências
+        run: |
+          npm audit --audit-level=high
+          npm audit --audit-level=high --prefix functions
+
+      - name: Varredura de segredos
+        run: node scripts/scan-secrets.mjs

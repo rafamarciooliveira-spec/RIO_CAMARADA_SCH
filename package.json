@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "sodalis",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,31 +7,52 @@
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "clean": "rm -rf dist",
+    "lint": "eslint . && tsc --noEmit",
+    "lint:install": "npm ci --prefix tools/lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:rules": "firebase emulators:exec --only firestore,storage --project demo-sodalis \"node scripts/run-rules-tests.mjs\"",
+    "scan:secrets": "node scripts/scan-secrets.mjs",
+    "functions:build": "npm --prefix functions run build",
+    "emulators": "npm --prefix functions run build && firebase emulators:start --project demo-sodalis",
+    "seed": "tsx scripts/seed-emulator.ts",
+    "dev:emu": "vite --mode emulator --port=3000",
+    "indexes:scan": "tsx scripts/scan-queries.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
-    "dotenv": "^17.2.3",
-    "express": "^4.21.2",
-    "firebase": "^13.1.0",
+    "firebase": "^13.2.0",
+    "html-to-image": "^1.11.13",
+    "jspdf": "^4.2.1",
+    "jsqr": "^1.4.0",
     "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
     "qrcode": "^1.5.4",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "vite": "^8.3.0"
+    "react-router-dom": "^7.18.5",
+    "vite": "^8.3.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
+    "@firebase/rules-unit-testing": "^6.0.0",
     "@types/node": "^22.14.0",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "autoprefixer": "^10.4.21",
-    "esbuild": "^0.25.0",
+    "eslint": "^10.14.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "firebase-admin": "^14.5.0",
+    "firebase-tools": "^15.34.2",
+    "globals": "^17.14.0",
     "tailwindcss": "^4.3.3",
-    "tsx": "^4.21.0",
-    "typescript": "^7.0.2"
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.7"
   }
 }

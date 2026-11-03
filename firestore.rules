@@ -1,302 +1,349 @@
 rules_version = '2';
+
+// =====================================================================================
+// Sodalis: regras do Firestore (modelo multi-tenant, fase 1)
+//
+// Princípios
+// - Negar por padrão. Toda ESCRITA do cliente é negada em tenants/, slugs, users, plans e
+//   platform: as escritas passam pela Cloud Function `api` (executeOp, código compartilhado).
+// - Aqui só se decide LEITURA, por papel (permissões denormalizadas no vínculo
+//   tenants/{t}/memberships/{uid}, recalculadas pelo servidor) e por dono do dado.
+// - Revogação imediata: o vínculo é consultado a cada leitura (nada de claim com cache),
+//   exceto o master da plataforma (claim `master`, com segundo fator).
+// - E-mail verificado obrigatório para qualquer leitura que não seja pública.
+// - Acesso de suporte expira sozinho (expiresAtMs conferido contra request.time).
+// - Nenhum `list` amplo: consultas de quem não tem a permissão do módulo precisam filtrar
+//   pelo próprio uid (ou pelo vínculo de dependente).
+// Testes: tests/rules/tenant-isolation.test.ts (o CI falha se um acesso cruzado passar).
+// =====================================================================================
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Default-deny catch-all (Master Gate)
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Security Primitives
-    function isSignedIn() {
+    // ---------- Primitivas ----------
+    function authed() {
       return request.auth != null;
     }
 
-    // Administrador só é válido com e-mail verificado (Prevenção contra spoofing de identidade)
-    function isEmailVerified() {
-      return isSignedIn() && request.auth.token.email_verified == true;
+    function emailOk() {
+      return authed() && request.auth.token.email_verified == true;
     }
 
-    function isBootstrappedAdmin() {
-      return isEmailVerified() && request.auth.token.email == 'rafa.marciooliveira@gmail.com';
+    // Master: claim concedida por script. Para exigir verificação em duas etapas no futuro
+    // (Identity Platform), acrescente: && request.auth.token.get('firebase', {}).get('sign_in_second_factor', null) != null
+    function isMaster() {
+      return emailOk() && request.auth.token.get('master', false) == true;
     }
 
-    function isAdmin() {
-      return isBootstrappedAdmin() || (
-        isEmailVerified() && (
-          exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-          (request.auth.token.email != null && exists(/databases/$(database)/documents/admins/$(request.auth.token.email)))
-        )
-      );
+    function msPath(t) {
+      return /databases/$(database)/documents/tenants/$(t)/memberships/$(request.auth.uid);
     }
 
-    function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128;
+    function ms(t) {
+      return get(msPath(t)).data;
     }
 
-    function incoming() {
-      return request.resource.data;
+    // Vínculo ativo, não expirado (suporte) e com e-mail verificado
+    function isMember(t) {
+      return emailOk() && exists(msPath(t)) && ms(t).get('active', false) == true &&
+        (!('expiresAtMs' in ms(t)) || ms(t).expiresAtMs > request.time.toMillis());
     }
 
-    function existing() {
-      return resource.data;
+    function perm(t, mod, act) {
+      return isMember(t) && ms(t).get('perms', {}).get(mod, []).hasAny([act]);
     }
 
-    // Member Validation Helper
-    function isValidMember(data) {
-      return data.userId is string && data.userId.size() <= 128 &&
-             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 150 &&
-             data.cpf is string && data.cpf.size() <= 20 &&
-             data.email is string && data.email.size() <= 120 &&
-             data.status in ['pendente', 'aprovado', 'rejeitado', 'expirado'] &&
-             data.lgpdConsent == true;
+    function isBoard(t) {
+      return isMember(t) && ms(t).get('board', false) == true;
     }
 
-    // Card Template Validation Helper
-    function isValidCardTemplate(data) {
-      return data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
-             data.associationName is string && data.associationName.size() > 0 && data.associationName.size() <= 300 &&
-             data.primaryColor is string && data.primaryColor.size() <= 100;
+    // memberId do vínculo (valor que nunca coincide quando não há cadastro de sócio)
+    function myMemberId(t) {
+      return ms(t).get('memberId', '__sem_cadastro__');
     }
 
-    // Helper for society events
-    function isValidSocietyEvent(data) {
-      return data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
-             data.date is string && data.date.size() >= 8 && data.date.size() <= 30 &&
-             data.type in ['sociedade', 'terceiro'];
+    function isOwnUid(data) {
+      return emailOk() && data.get('uid', '__sem_uid__') == request.auth.uid;
     }
 
-    // Helper for public sanitized card summary (sem dados sensíveis PII)
-    function isValidPublicCard(data) {
-      return data.fullName is string && data.fullName.size() <= 150 &&
-             (!('cpf' in data)) &&
-             (!('birthDate' in data)) &&
-             (!('email' in data)) &&
-             (!('phone' in data));
+    // Dono do cadastro do sócio: a própria conta ou o titular de um dependente
+    function ownsMemberData(t, data) {
+      return isOwnUid(data) || (isMember(t) && data.get('dependentOf', '__sem_titular__') == myMemberId(t));
     }
 
-    // 1. Members collection - PROTEGIDO (Somente o próprio sócio ou administradores podem ver)
-    match /members/{memberId} {
-      // Leitura permitida estritamente para o administrador ou para o próprio titular
-      allow get: if isValidId(memberId) && (
-        isAdmin() ||
-        (isSignedIn() && (
-          existing().userId == request.auth.uid ||
-          (request.auth.token.email != null && existing().email == request.auth.token.email)
-        ))
-      );
-
-      allow list: if isSignedIn() && (
-        isAdmin() ||
-        resource.data.userId == request.auth.uid ||
-        (request.auth.token.email != null && resource.data.email == request.auth.token.email)
-      );
-
-      // Create: Sócio só pode criar seu próprio cadastro com status inicial 'pendente'
-      allow create: if isSignedIn() &&
-        isValidId(memberId) &&
-        isValidMember(incoming()) &&
-        (
-          isAdmin() ||
-          (
-            incoming().userId == request.auth.uid &&
-            incoming().status == 'pendente'
-          )
-        );
-
-      // Update: Sócio pode atualizar seu cadastro pendente para análise ou, se já aprovado, atualizar seus dados cadastrais permitidos.
-      // Ele NÃO pode mudar categoria, matrícula, situação ou validade quando já homologado.
-      allow update: if isSignedIn() &&
-        isValidId(memberId) &&
-        isValidMember(incoming()) &&
-        (
-          isAdmin() ||
-          (
-            (
-              existing().userId == request.auth.uid ||
-              (!('userId' in existing())) ||
-              existing().userId == '' ||
-              (request.auth.token.email != null && existing().email == request.auth.token.email)
-            ) &&
-            incoming().userId == request.auth.uid &&
-            (
-              // Caso 1: Sócio enviando ou reenviando cadastro pendente para homologação
-              (
-                incoming().status == 'pendente' &&
-                (existing().status == 'pendente' || existing().status == 'rejeitado' || !('status' in existing()))
-              ) ||
-              // Caso 2: Sócio já aprovado atualizando seus dados cadastrais permitidos
-              (
-                incoming().status == existing().status &&
-                incoming().category == existing().category &&
-                incoming().membershipNumber == existing().membershipNumber &&
-                incoming().validUntil == existing().validUntil &&
-                incoming().diff(existing()).affectedKeys().hasOnly([
-                  'fullName',
-                  'birthDate',
-                  'photoUrl',
-                  'phone',
-                  'email',
-                  'allowBirthdayPublic',
-                  'birthdayConsentDate',
-                  'allowEventPhotos',
-                  'eventPhotosConsentDate',
-                  'allowSocialMediaPhotos',
-                  'socialMediaPhotosConsentDate',
-                  'allowCommunications',
-                  'communicationsConsentDate',
-                  'consentVersion',
-                  'parentName',
-                  'parentCpf',
-                  'parentAuthorized',
-                  'isMinor',
-                  'updatedAt',
-                  'lastGeneratedAt',
-                  'lastViewToken'
-                ])
-              )
-            )
-          )
-        );
-
-      allow delete: if isAdmin();
+    function ownsMember(t, memberId) {
+      return ownsMemberData(t, get(/databases/$(database)/documents/tenants/$(t)/members/$(memberId)).data);
     }
 
-    // 2. Public Cards (Resumo seguro e público para validação QR Code: NUNCA expõe CPF, e-mail, telefone ou nascimento)
-    match /publicCards/{memberId} {
-      allow read: if true;
-      allow create, update: if isSignedIn() && isValidPublicCard(incoming()) && (
-        isAdmin() ||
-        incoming().userId == request.auth.uid
-      );
-      allow delete: if isAdmin();
+    // Visibilidade publico | socios | diretoria (agenda e biblioteca)
+    function visible(t, data) {
+      return data.get('visibility', 'diretoria') == 'publico' ||
+        (data.get('visibility', 'diretoria') == 'socios' && isMember(t)) ||
+        isBoard(t);
     }
 
-    // 3. Admin accounts (Membros da diretoria, tesoureiro, conselho fiscal)
-    match /admins/{adminId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+    // ---------- Plataforma ----------
+    match /slugs/{slug} {
+      allow get: if true;
+      allow list, write: if false;
     }
 
-    // 4. Card templates para personalização visual
-    match /cardTemplates/{templateId} {
-      allow read: if true;
-      allow write: if isAdmin() && isValidCardTemplate(incoming());
+    match /plans/{planId} {
+      allow get: if emailOk();
+      allow list: if isMaster();
+      allow write: if false;
     }
 
-    // 5. Notificações e Avisos (Administradores ou o próprio usuário para si mesmo)
-    match /notifications/{notificationId} {
-      allow read: if isSignedIn() && (
-        isAdmin() ||
-        resource.data.userId == request.auth.uid
-      );
-      allow create: if isSignedIn() && (
-        isAdmin() ||
-        incoming().userId == request.auth.uid
-      );
-      allow update: if isSignedIn() && (
-        isAdmin() ||
-        (resource.data.userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['read']))
-      );
-      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    match /platform/{docId} {
+      allow get: if docId == 'config' && emailOk();
+      allow list, write: if false;
     }
 
-    // 6. E-mails registrados e comunicações da diretoria (Somente administradores podem disparar)
-    match /emailDispatches/{dispatchId} {
-      allow read: if isSignedIn() && (
-        isAdmin() ||
-        resource.data.userId == request.auth.uid ||
-        (request.auth.token.email != null && resource.data.toEmail == request.auth.token.email)
-      );
-      allow create: if isAdmin();
-      allow update, delete: if isAdmin();
+    match /platformAudit/{id} {
+      allow read: if isMaster();
+      allow write: if false;
     }
 
-    // 7. Eventos da Sociedade (Agenda) - Somente administradores podem criar, editar ou apagar
-    match /events/{eventId} {
-      allow read: if true;
-      allow create: if isAdmin() && isValidSocietyEvent(incoming());
-      allow update: if isAdmin() && isValidSocietyEvent(incoming());
-      allow delete: if isAdmin();
+    match /supportAccess/{id} {
+      allow read: if isMaster();
+      allow write: if false;
     }
 
-    // 8. Registro de auditoria administrativa (Exportação CSV, estornos, etc.)
-    match /auditLogs/{logId} {
-      allow read, create: if isAdmin();
-      allow update, delete: if false;
+    match /users/{uid} {
+      allow get: if emailOk() && uid == request.auth.uid;
+      allow list, write: if false;
+      match /{sub=**} {
+        allow read, write: if false;
+      }
     }
 
-    // 9. Configurações do Sistema
-    match /systemSettings/{settingId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+    match /rateLimits/{id} {
+      allow read, write: if false;
     }
 
-    // 10. Links de Redes Sociais da Associação
-    match /socialLinks/{linkId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
+    // ---------- Sociedade ----------
+    match /tenants/{t} {
+      // Documento público da sociedade (identidade visual e rótulos; sem dado pessoal)
+      allow get: if true;
+      allow list, write: if false;
 
-    // 11. Espaço Cultural e Artigos Históricos
-    match /cultureArticles/{articleId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
+      // Nenhuma escrita do cliente em nada abaixo de tenants/{t}
+      match /{path=**} {
+        allow write: if false;
+      }
 
-    // 12. Notícias de Tiro Esportivo
-    match /news/{newsId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
+      match /config/{docId} {
+        // settings: necessário para o formulário de proposta; counters e outros: só o servidor
+        allow get: if (docId == 'settings' && emailOk()) || (docId == 'news' && perm(t, 'noticias', 'ver'));
+        allow list: if false;
+      }
 
-    // 13. Módulo Financeiro: Lançamentos & Livro Caixa (Imutável: nunca pode ser apagado, somente estornado)
-    match /financialTransactions/{transId} {
-      allow read: if isAdmin();
-      allow create: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if false; // Lançamentos nunca podem ser apagados, só estornados
-    }
+      match /stats/{docId} {
+        allow get: if docId == 'dashboard' && isBoard(t);
+        allow list: if false;
+      }
 
-    // 14. Módulo Financeiro: Contas e Categorias
-    match /financialAccounts/{accId} {
-      allow read, write: if isAdmin();
-    }
+      // Só o servidor
+      match /idempotency/{id} { allow read: if false; }
+      match /cpfIndex/{id} { allow read: if false; }
+      match /cardTokens/{id} { allow read: if false; }
+      match /outbox/{id} { allow read: if false; }
+      match /icsTokens/{id} { allow read: if false; }
+      match /paymentEvents/{id} { allow read: if false; }
 
-    match /financialCategories/{catId} {
-      allow read, write: if isAdmin();
-    }
+      // ---------- Papéis e acesso ----------
+      match /roles/{id} {
+        allow read: if isMember(t);
+      }
 
-    // 15. Módulo Financeiro: Fechamentos Mensais
-    match /financialMonthlyClosures/{closureId} {
-      allow read, write: if isAdmin();
-    }
+      match /memberships/{uid} {
+        allow get: if (emailOk() && uid == request.auth.uid) || perm(t, 'papeis', 'ver');
+        allow list: if perm(t, 'papeis', 'ver');
+      }
 
-    // 16. Módulo Financeiro: Mensalidades dos Sócios
-    match /financialMemberFees/{feeId} {
-      allow read, write: if isAdmin();
-    }
+      match /invites/{id} {
+        allow read: if perm(t, 'papeis', 'ver');
+      }
 
-    // 17. Módulo Financeiro: Prestação de Contas & Relatórios Publicados para os Sócios
-    match /financialPublishedReports/{reportId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
+      // ---------- Sócios ----------
+      match /members/{id} {
+        allow get: if perm(t, 'socios', 'ver') || ownsMemberData(t, resource.data);
+        // Sem a permissão, a consulta precisa filtrar uid == própria conta ou dependentOf == próprio cadastro
+        allow list: if perm(t, 'socios', 'ver') || ownsMemberData(t, resource.data);
 
-    // 18. Configurações Públicas do Site (Quem somos, endereço, telefone, rodapé, DPO)
-    match /siteSettings/{settingId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
+        match /private/{docId} {
+          allow get: if docId == 'pii' && (perm(t, 'pii', 'ver') || ownsMember(t, id));
+          allow list: if false;
+        }
 
-    // 19. LGPD: Fila de Solicitações de Titulares
-    match /dataRequests/{requestId} {
-      allow read: if isSignedIn() && (
-        isAdmin() ||
-        resource.data.userId == request.auth.uid
-      );
-      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
-      allow update, delete: if isAdmin();
+        match /history/{h} {
+          allow read: if perm(t, 'socios', 'ver') || ownsMember(t, id);
+        }
+
+        // Pedidos de alteração: o CPF novo vai cifrado e só o servidor decifra
+        match /changes/{c} {
+          allow read: if perm(t, 'socios', 'aprovar') || ownsMember(t, id);
+        }
+      }
+
+      // ---------- Carteirinha e portaria ----------
+      match /cardTemplates/{id} {
+        allow read: if isMember(t);
+      }
+
+      match /checkins/{id} {
+        allow read: if perm(t, 'portaria', 'ver');
+      }
+
+      // ---------- Comunicação ----------
+      match /notices/{id} {
+        // Diretoria lê tudo. Os demais só avisos publicados e não restritos à diretoria; a consulta
+        // precisa filtrar audience.boardOnly == false e status == 'publicado' (regra não é filtro).
+        // Atenção: não usar get(campo, padrão) com "!=" em regra de list: na análise da consulta
+        // o padrão é assumido e a lista passaria sem filtro (comprovado no teste).
+        allow read: if isBoard(t) ||
+          (isMember(t) && resource.data.audience.boardOnly == false && resource.data.status == 'publicado');
+
+        match /reads/{uid} {
+          allow get: if isMember(t) && uid == request.auth.uid;
+          allow list: if perm(t, 'avisos', 'ver');
+        }
+      }
+
+      match /notifications/{id} {
+        allow read: if isOwnUid(resource.data);
+      }
+
+      match /calendar/{id} {
+        allow read: if visible(t, resource.data);
+      }
+
+      // ---------- Financeiro ----------
+      match /finAccounts/{id} { allow read: if perm(t, 'financeiro', 'ver'); }
+      match /chartAccounts/{id} { allow read: if perm(t, 'financeiro', 'ver'); }
+      match /costCenters/{id} { allow read: if perm(t, 'financeiro', 'ver'); }
+      match /ledger/{id} { allow read: if perm(t, 'financeiro', 'ver'); }
+      match /periods/{id} { allow read: if perm(t, 'financeiro', 'ver'); }
+      match /statementLines/{id} { allow read: if perm(t, 'financeiro', 'ver'); }
+
+      match /charges/{id} {
+        allow read: if perm(t, 'financeiro', 'ver') || (emailOk() && resource.data.get('memberUid', '__sem_uid__') == request.auth.uid);
+      }
+
+      // ---------- Eventos, tarefas, atas ----------
+      match /events/{id} {
+        allow read: if resource.data.get('publicListing', false) == true || isMember(t);
+
+        match /guests/{g} {
+          allow read: if perm(t, 'eventos', 'ver') || isOwnUid(resource.data);
+        }
+      }
+
+      match /tasks/{id} {
+        allow read: if perm(t, 'tarefas', 'ver');
+      }
+
+      match /assemblies/{id} {
+        allow read: if isMember(t);
+
+        match /attendance/{a} {
+          allow read: if perm(t, 'atas', 'ver');
+        }
+      }
+
+      match /minutes/{id} {
+        allow read: if perm(t, 'atas', 'ver') || (isMember(t) && resource.data.get('published', false) == true);
+
+        match /versions/{v} {
+          allow read: if perm(t, 'atas', 'ver');
+        }
+      }
+
+      // ---------- Votações (voto secreto) ----------
+      match /elections/{id} {
+        allow read: if isMember(t);
+
+        match /voters/{memberId} {
+          allow get: if (isMember(t) && memberId == myMemberId(t)) || perm(t, 'votacoes', 'ver');
+          allow list: if perm(t, 'votacoes', 'ver');
+        }
+
+        match /ballots/{b} {
+          allow read: if false;
+        }
+      }
+
+      // ---------- Módulos culturais ----------
+      match /workshops/{id} { allow read: if isMember(t); }
+      match /spaces/{id} { allow read: if isMember(t); }
+      // Gestão atual aparece na página pública da sociedade, se a página estiver ligada
+      match /terms/{id} {
+        allow read: if isMember(t) ||
+          (resource.data.current == true &&
+            get(/databases/$(database)/documents/tenants/$(t)).data.get('publicPage', {}).get('enabled', false) == true);
+      }
+      match /honors/{id} { allow read: if isMember(t); }
+      match /benefits/{id} { allow read: if isMember(t); }
+
+      match /surveys/{id} {
+        allow read: if isMember(t);
+
+        match /voters/{uid} {
+          allow get: if isMember(t) && uid == request.auth.uid;
+          allow list: if false;
+        }
+      }
+
+      match /bookings/{id} { allow read: if perm(t, 'reservas', 'ver'); }
+      match /assets/{id} { allow read: if perm(t, 'patrimonio', 'ver'); }
+      match /grants/{id} { allow read: if perm(t, 'editais', 'ver'); }
+      match /sponsors/{id} { allow read: if perm(t, 'patrocinios', 'ver'); }
+
+      match /library/{id} {
+        allow read: if visible(t, resource.data);
+      }
+
+      // ---------- Notícias, competições e organograma ----------
+      // Notícia pública aparece também na página pública; as de sócios, só para membros.
+      // A consulta precisa filtrar hidden == false (e visibility == 'publico' para visitantes).
+      match /news/{id} {
+        allow read: if perm(t, 'noticias', 'editar') ||
+          (resource.data.hidden == false && (isMember(t) ||
+            (resource.data.visibility == 'publico' &&
+              get(/databases/$(database)/documents/tenants/$(t)).data.get('publicPage', {}).get('enabled', false) == true)));
+      }
+
+      // Ranking: sócios sempre; visitantes só quando a competição marcar ranking público
+      match /competitions/{cid} {
+        allow read: if isMember(t) || resource.data.publicRanking == true;
+
+        match /results/{rid} {
+          allow read: if isMember(t) ||
+            get(/databases/$(database)/documents/tenants/$(t)/competitions/$(cid)).data.publicRanking == true;
+        }
+        match /matches/{mid} {
+          allow read: if isMember(t) ||
+            get(/databases/$(database)/documents/tenants/$(t)/competitions/$(cid)).data.publicRanking == true;
+        }
+      }
+
+      match /orgchart/{docId} {
+        allow get: if isMember(t) || resource.data.showOnPublicPage == true;
+        allow list: if false;
+      }
+
+      // Galeria de mandatos encerrados (ex-presidentes, ex-reis...)
+      match /mandates/{id} {
+        allow read: if isMember(t);
+      }
+
+      // ---------- Privacidade e auditoria ----------
+      match /privacyRequests/{id} {
+        allow read: if isOwnUid(resource.data) || perm(t, 'pii', 'ver');
+      }
+
+      match /audit/{id} {
+        allow read: if perm(t, 'auditoria', 'ver');
+      }
     }
   }
 }

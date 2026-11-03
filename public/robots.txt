@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /master
+Disallow: /ver-sistema
+Sitemap: https://sodalis.app/sitemap.xml

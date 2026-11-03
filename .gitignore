@@ -6,3 +6,14 @@ coverage/
 *.log
 .env*
 !.env.example
+.claude/
+!.env.emulator
+functions/lib/
+.firebase/
+.emulator-data/
+firebase-debug.log
+firestore-debug.log
+storage-debug.log
+ui-debug.log
+database-debug.log
+dist-ai-studio/

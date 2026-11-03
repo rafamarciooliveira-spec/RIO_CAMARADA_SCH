@@ -1,0 +1,11 @@
+{
+  "name": "sodalis-lint-tools",
+  "private": true,
+  "version": "0.0.0",
+  "description": "typescript-eslint precisa da API JavaScript do TypeScript 6 (o TypeScript 7 da raiz é o compilador nativo, sem essa API). Fica isolado aqui para não conflitar com a raiz.",
+  "devDependencies": {
+    "eslint": "^10.14.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1"
+  }
+}

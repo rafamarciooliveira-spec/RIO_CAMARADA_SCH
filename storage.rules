@@ -1,0 +1,102 @@
+rules_version = '2';
+
+// =====================================================================================
+// Sodalis: regras do Cloud Storage
+//
+// - Negar por padrão; só as quatro pastas abaixo aceitam envio do cliente.
+// - O tipo declarado e o tamanho são conferidos aqui; o tipo REAL (bytes mágicos) é conferido
+//   no servidor pela função uploadGuard, que apaga o que não bater.
+// - As regras do Storage só conseguem consultar o banco (default) do Firestore
+//   (limite documentado do Firebase; no máximo 2 documentos por avaliação).
+//   Se o banco principal for nomeado, as Functions mirrorMembership/mirrorMember mantêm no
+//   (default) uma cópia mínima de tenants/{t}/memberships/{uid} e tenants/{t}/members/{id}.
+//   Recomendação para os projetos novos: usar o (default) como banco principal.
+// Testes: tests/rules/storage.test.ts
+// =====================================================================================
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    match /{all=**} {
+      allow read, write: if false;
+    }
+
+    function emailOk() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function msDoc(t) {
+      return firestore.get(/databases/(default)/documents/tenants/$(t)/memberships/$(request.auth.uid));
+    }
+
+    function activeMs(m) {
+      return m != null && m.data.get('active', false) == true &&
+        (!('expiresAtMs' in m.data) || m.data.expiresAtMs > request.time.toMillis());
+    }
+
+    function isMember(t) {
+      return emailOk() && activeMs(msDoc(t));
+    }
+
+    function perm(t, mod, act) {
+      return isMember(t) && msDoc(t).data.get('perms', {}).get(mod, []).hasAny([act]);
+    }
+
+    // Dono do cadastro (a própria conta ou o titular do dependente). Lê 2 documentos no máximo.
+    function ownsMember(t, memberId) {
+      let m = firestore.get(/databases/(default)/documents/tenants/$(t)/members/$(memberId));
+      return emailOk() && m != null && (
+        m.data.get('uid', '__sem_uid__') == request.auth.uid ||
+        (isMember(t) && m.data.get('dependentOf', '__sem_titular__') == msDoc(t).data.get('memberId', '__sem_cadastro__'))
+      );
+    }
+
+    function okName(file) {
+      return file.matches('[A-Za-z0-9._-]{1,120}');
+    }
+
+    function isImage(maxMb) {
+      return request.resource.size > 0 && request.resource.size <= maxMb * 1024 * 1024 &&
+        request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+
+    function isDocOrImage(maxMb) {
+      return request.resource.size > 0 && request.resource.size <= maxMb * 1024 * 1024 &&
+        request.resource.contentType.matches('image/(jpeg|png|webp)|application/pdf');
+    }
+
+    // Logos, favicon e capa: leitura pública
+    match /tenants/{t}/public/{rest=**} {
+      allow read: if true;
+      allow create, update: if perm(t, 'sociedade', 'editar') && isImage(2);
+      allow delete: if perm(t, 'sociedade', 'editar');
+    }
+
+    // Imagem de notícia da sociedade: leitura pública; quem publica notícias envia (sem precisar editar a identidade)
+    match /tenants/{t}/public/news/{file} {
+      allow read: if true;
+      allow create, update: if okName(file) && isImage(2) && (perm(t, 'noticias', 'criar') || perm(t, 'noticias', 'editar'));
+      allow delete: if perm(t, 'noticias', 'editar');
+    }
+
+    // Foto do sócio: privada (dono ou quem vê sócios)
+    match /tenants/{t}/members/{memberId}/photo/{file} {
+      allow read: if ownsMember(t, memberId) || perm(t, 'socios', 'ver');
+      allow create, update: if okName(file) && isImage(2) && (ownsMember(t, memberId) || perm(t, 'socios', 'editar'));
+      allow delete: if perm(t, 'socios', 'editar');
+    }
+
+    // Anexos por módulo (financeiro, eventos, atas, tarefas...)
+    match /tenants/{t}/attachments/{modulo}/{file} {
+      allow read: if perm(t, modulo, 'ver');
+      allow create, update: if okName(file) && isDocOrImage(10) && perm(t, modulo, 'editar');
+      allow delete: if perm(t, modulo, 'editar');
+    }
+
+    // Biblioteca de documentos (a visibilidade fina fica no documento do Firestore)
+    match /tenants/{t}/library/{file} {
+      allow read: if isMember(t);
+      allow create, update: if okName(file) && isDocOrImage(15) && perm(t, 'documentos', 'editar');
+      allow delete: if perm(t, 'documentos', 'editar');
+    }
+  }
+}

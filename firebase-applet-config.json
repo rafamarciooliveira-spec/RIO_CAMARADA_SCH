@@ -1,12 +1,13 @@
 {
-  "projectId": "spatial-expanse-ncxst",
-  "appId": "1:235985059535:web:e763478995d494dd4101ba",
-  "apiKey": "AIzaSyDT9DtpOcUZKOeau_Qai1r_4TqjZfrsyVs",
-  "authDomain": "spatial-expanse-ncxst.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-e7712f00-a92c-4b42-8ebd-43a03dbf7abf",
-  "storageBucket": "spatial-expanse-ncxst.firebasestorage.app",
-  "messagingSenderId": "235985059535",
+  "projectId": "sodalis-5be4d",
+  "appId": "1:91493019507:web:0d8ab5c2610e98af75df06",
+  "apiKey": "AIzaSyBV3M7ns6ryHepMvXwQA2WTV7xSqYNj-KE",
+  "authDomain": "sodalis-5be4d.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "sodalis-5be4d.firebasestorage.app",
+  "messagingSenderId": "91493019507",
   "measurementId": "",
-  "oAuthClientId": "235985059535-83kts888ct9k3mruv8tq4eh1ascp9s0q.apps.googleusercontent.com",
-  "recaptchaSiteKey": ""
+  "oAuthClientId": "",
+  "recaptchaSiteKey": "",
+  "vapidKey": "BB9vyK5QfY0Sp53sW2DoZ_gVR40WOtVXQoh3VNjyqoTmzZpz16ig27xXQdWb-LsMDSvpl0PkAj2ksJ2XPY8d9wY"
 }

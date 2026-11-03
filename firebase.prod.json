@@ -1,0 +1,16 @@
+{
+  "firestore": [
+    { "database": "ai-studio-e7712f00-a92c-4b42-8ebd-43a03dbf7abf", "rules": "firestore.rules", "indexes": "firestore.indexes.json" },
+    { "database": "(default)", "rules": "firestore.default.rules" }
+  ],
+  "storage": { "rules": "storage.rules" },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "*.log", "src", "scripts", "build.mjs", "tsconfig.json", ".env.local"],
+      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"]
+    }
+  ]
+}

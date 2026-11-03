@@ -1,0 +1,10 @@
+rules_version = '2';
+// Banco (default) do projeto atual: guarda só o espelho mínimo que as regras do Storage consultam
+// (o banco principal é o nomeado do AI Studio). Nenhum acesso pelo cliente.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

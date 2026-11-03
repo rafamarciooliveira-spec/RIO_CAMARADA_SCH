@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "demo-sodalis",
+    "prod": "sodalis-5be4d"
+  }
+}
