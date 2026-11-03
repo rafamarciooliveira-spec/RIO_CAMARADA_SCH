@@ -266,6 +266,18 @@ export const PrivacyPolicyView: React.FC<PrivacyPolicyViewProps> = ({ isAdmin: p
             <li>Solicitar a exclusão ou desfiliação de seus registros, ressalvadas as obrigações legais de guarda.</li>
           </ul>
         </section>
+
+        <section className="space-y-2 border-t border-zinc-800 pt-4">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <Shield className="w-4 h-4 text-emerald-400" /> 6. Uso e Exposição de Imagem nas Redes Sociais da Sociedade
+          </h3>
+          <p>
+            Em consonância com o <strong>Art. 20 do Código Civil Brasileiro (Lei nº 10.406/2002)</strong> e com os <strong>Arts. 7º, I e 8º, § 4º da LGPD</strong>, a publicação de fotografias e vídeos captados durante torneios de tiro esportivo, treinos, premiações e celebrações sociais nos perfis e redes sociais oficiais da Sociedade (Instagram, Facebook, YouTube, website oficial e boletins institucionais) depende de consentimento expresso e inequívoco do associado ou de seu responsável legal (no caso de menores de idade, conforme Art. 14 da LGPD).
+          </p>
+          <p>
+            Essa autorização é concedida a título gratuito, sem incidência de remuneração ou indenização, estritamente para finalidades institucionais, culturais e comemorativas da agremiação, sendo vedada qualquer destinação comercial abusiva ou que atente contra a honra e respeitabilidade do associado. O titular poderá revogar essa autorização a qualquer momento diretamente na aba <strong>Meus Dados (LGPD)</strong> do Portal do Associado.
+          </p>
+        </section>
       </div>
     </div>
   );

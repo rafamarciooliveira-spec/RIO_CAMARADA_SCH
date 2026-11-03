@@ -833,8 +833,8 @@ export const AdminDashboard: React.FC = () => {
       {/* 6 GRUPOS PRINCIPAIS DE NAVEGAÇÃO DO ADMINISTRADOR */}
       <div className="space-y-3">
         {/* Grupos Principais */}
-        <div className="w-full overflow-x-auto custom-scrollbar pb-1">
-          <div className="inline-flex min-w-full sm:min-w-0 items-center gap-1.5 bg-zinc-900/90 p-1.5 rounded-2xl border border-zinc-800 shadow-md">
+        <div className="w-full pb-1">
+          <div className="flex flex-wrap items-center gap-1.5 bg-zinc-900/90 p-1.5 rounded-2xl border border-zinc-800 shadow-md">
             <button
               onClick={() => {
                 setActiveGroup('socios');
@@ -939,8 +939,8 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         {/* Sub-Navegação Dinâmica do Grupo Ativo */}
-        <div className="w-full overflow-x-auto custom-scrollbar pb-1">
-          <div className="inline-flex min-w-full sm:min-w-0 items-center gap-1.5 bg-zinc-950/70 p-1.5 rounded-xl border border-zinc-800/80">
+        <div className="w-full pb-1">
+          <div className="flex flex-wrap items-center gap-1.5 bg-zinc-950/70 p-1.5 rounded-xl border border-zinc-800/80">
             {activeGroup === 'socios' && (
               <>
                 <button

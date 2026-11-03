@@ -166,7 +166,7 @@ export const MemberDashboard: React.FC = () => {
 
   // Top tab bar switcher
   const renderTopNavTabs = () => (
-    <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 p-1.5 rounded-2xl w-full overflow-x-auto shadow-md custom-scrollbar">
+    <div className="flex flex-wrap items-center gap-1.5 bg-zinc-900 border border-zinc-800 p-1.5 rounded-2xl w-full shadow-md">
       <button
         onClick={() => setActivePortalTab('card')}
         className={`px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${

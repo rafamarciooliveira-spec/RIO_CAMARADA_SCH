@@ -184,7 +184,7 @@ function MainContent() {
           <div className="py-8 px-4 sm:px-6 max-w-5xl mx-auto space-y-8 sm:space-y-10">
             {/* Public Tab Navigation */}
             <div className="flex items-center justify-center">
-              <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 p-1.5 rounded-2xl overflow-x-auto shadow-md">
+              <div className="flex flex-wrap items-center justify-center gap-1.5 bg-zinc-900 border border-zinc-800 p-1.5 rounded-2xl shadow-md max-w-full">
                 <button
                   onClick={() => setPublicTab('home')}
                   className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${

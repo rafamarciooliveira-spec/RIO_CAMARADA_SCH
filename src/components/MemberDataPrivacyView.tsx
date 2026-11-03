@@ -20,6 +20,7 @@ import {
   Mail,
   Printer,
   ChevronRight,
+  Share2,
   X,
 } from 'lucide-react';
 
@@ -46,7 +47,9 @@ export const MemberDataPrivacyView: React.FC<Props> = ({ onOpenEditProfile }) =>
   }
 
   // Toggle granular consent
-  const handleToggleConsent = async (field: 'allowBirthdayPublic' | 'allowEventPhotos' | 'allowCommunications') => {
+  const handleToggleConsent = async (
+    field: 'allowBirthdayPublic' | 'allowEventPhotos' | 'allowSocialMediaPhotos' | 'allowCommunications'
+  ) => {
     setSavingConsent(true);
     try {
       const currentVal = Boolean(currentMember[field]);
@@ -60,13 +63,16 @@ export const MemberDataPrivacyView: React.FC<Props> = ({ onOpenEditProfile }) =>
 
       if (field === 'allowBirthdayPublic') updates.birthdayConsentDate = nowIso;
       if (field === 'allowEventPhotos') updates.eventPhotosConsentDate = nowIso;
+      if (field === 'allowSocialMediaPhotos') updates.socialMediaPhotosConsentDate = nowIso;
       if (field === 'allowCommunications') updates.communicationsConsentDate = nowIso;
 
       await updateDoc(doc(db, 'members', currentMember.id), updates);
       await dialog.alert(
-        `Sua preferência de privacidade para "${
+        `Sua preferência para "${
           field === 'allowBirthdayPublic'
             ? 'Divulgação de Aniversário'
+            : field === 'allowSocialMediaPhotos'
+            ? 'Exposição de Imagens nas Redes Sociais'
             : field === 'allowEventPhotos'
             ? 'Fotos em Eventos'
             : 'Comunicações e Informativos'
@@ -365,6 +371,36 @@ export const MemberDataPrivacyView: React.FC<Props> = ({ onOpenEditProfile }) =>
               }`}
             >
               {currentMember.allowBirthdayPublic ? 'Autorizado (Sim)' : 'Revogado (Não)'}
+            </button>
+          </div>
+
+          {/* Optional Consent: Redes Sociais da Sociedade (Art. 20 CC e Art. 7 LGPD) */}
+          <div className="p-4 bg-zinc-950/60 rounded-xl border border-emerald-500/40 flex items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <Share2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>Divulgação e Exposição de Imagens nas Redes Sociais</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-mono">
+                    Art. 20 CC & LGPD
+                  </span>
+                </h4>
+                <p className="text-[11px] text-zinc-300 mt-0.5 leading-relaxed">
+                  Autorização expressa para publicação e veiculação de fotos e gravações suas em eventos, torneios esportivos de tiro e festividades nas redes sociais oficiais da Sociedade (Instagram, Facebook, YouTube e site institucional), a título gratuito e estritamente institucional.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={savingConsent}
+              onClick={() => handleToggleConsent('allowSocialMediaPhotos')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition shrink-0 ${
+                currentMember.allowSocialMediaPhotos !== false
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400'
+              }`}
+            >
+              {currentMember.allowSocialMediaPhotos !== false ? 'Autorizado (Sim)' : 'Revogado (Não)'}
             </button>
           </div>
 

@@ -58,6 +58,8 @@ export interface Member {
   birthdayConsentDate?: string;
   allowEventPhotos?: boolean;
   eventPhotosConsentDate?: string;
+  allowSocialMediaPhotos?: boolean;
+  socialMediaPhotosConsentDate?: string;
   allowCommunications?: boolean;
   communicationsConsentDate?: string;
   consentVersion?: string;
