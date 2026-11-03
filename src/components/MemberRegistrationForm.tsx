@@ -23,6 +23,7 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
+  Clock,
 } from 'lucide-react';
 
 interface FormProps {
@@ -90,6 +91,7 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
   const [showLgpdModal, setShowLgpdModal] = useState(false);
   const [showDetailedTermsAccordion, setShowDetailedTermsAccordion] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [isSubmittedSuccess, setIsSubmittedSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Helper to check if birth date indicates a minor under 18
@@ -125,43 +127,57 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
     e.preventDefault();
     setErrorMsg(null);
 
+    const scrollToTop = () => {
+      try {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (e) {}
+    };
+
     if (!currentUser) {
       setErrorMsg('Você precisa estar autenticado para enviar o cadastro.');
+      scrollToTop();
       return;
     }
 
     if (!fullName.trim()) {
       setErrorMsg('Por favor, informe seu nome completo.');
+      scrollToTop();
       return;
     }
 
     if (!validateCPF(cpf)) {
       setErrorMsg('CPF inválido. Verifique os dígitos digitados.');
+      scrollToTop();
       return;
     }
 
     if (!birthDateBR || !isValidDateBR(birthDateBR)) {
       setErrorMsg('Por favor, informe uma data de nascimento válida no padrão brasileiro (DD/MM/AAAA).');
+      scrollToTop();
       return;
     }
 
     if (isMinor) {
       if (!parentName.trim() || parentName.trim().length < 3) {
         setErrorMsg('O cadastro de menores de 18 anos exige o nome completo do responsável legal.');
+        scrollToTop();
         return;
       }
       if (!validateCPF(parentCpf)) {
         setErrorMsg('CPF do responsável legal inválido.');
+        scrollToTop();
         return;
       }
       if (!parentAuthorized) {
         setErrorMsg('É obrigatório que o responsável legal declare expressa autorização para cadastro e tratamento de dados do menor (Art. 14 da LGPD).');
+        scrollToTop();
         return;
       }
     }
 
     if (!lgpdConsent) {
       setErrorMsg('Você deve concordar com os termos de consentimento e tratamento de dados pessoais (LGPD).');
+      scrollToTop();
       return;
     }
 
@@ -173,7 +189,8 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
       const normalizedBirthDate = dateBRToISO(birthDateBR);
       const nowIso = new Date().toISOString();
 
-      const payload = {
+      // Ensure zero undefined values in payload (Firestore rejects any undefined field)
+      const payload: Record<string, any> = {
         id: memberId,
         userId: currentUser.uid,
         fullName: fullName.trim(),
@@ -181,26 +198,26 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
         birthDate: normalizedBirthDate,
         email: email.trim().toLowerCase(),
         phone: phone.trim(),
-        photoUrl,
+        photoUrl: photoUrl || '',
         membershipNumber: currentMember?.membershipNumber || `SOC-${Math.floor(100000 + Math.random() * 900000)}`,
-        category,
+        category: category || 'Sócio Efetivo',
         status: isEditing && currentMember?.status === 'aprovado' ? 'aprovado' : 'pendente',
         rejectionReason: '',
         lgpdConsent: true,
         lgpdConsentDate: nowIso,
-        allowSocialMediaPhotos,
-        socialMediaPhotosConsentDate: allowSocialMediaPhotos ? nowIso : undefined,
-        allowEventPhotos,
-        eventPhotosConsentDate: allowEventPhotos ? nowIso : undefined,
-        allowBirthdayPublic,
-        birthdayConsentDate: allowBirthdayPublic ? nowIso : undefined,
-        allowCommunications,
-        communicationsConsentDate: allowCommunications ? nowIso : undefined,
+        allowSocialMediaPhotos: Boolean(allowSocialMediaPhotos),
+        socialMediaPhotosConsentDate: allowSocialMediaPhotos ? nowIso : '',
+        allowEventPhotos: Boolean(allowEventPhotos),
+        eventPhotosConsentDate: allowEventPhotos ? nowIso : '',
+        allowBirthdayPublic: Boolean(allowBirthdayPublic),
+        birthdayConsentDate: allowBirthdayPublic ? nowIso : '',
+        allowCommunications: Boolean(allowCommunications),
+        communicationsConsentDate: allowCommunications ? nowIso : '',
         consentVersion: 'v3_lgpd_redes_sociais',
-        isMinor,
-        parentName: isMinor ? parentName.trim() : undefined,
-        parentCpf: isMinor ? parentCpf.trim() : undefined,
-        parentAuthorized: isMinor ? parentAuthorized : undefined,
+        isMinor: Boolean(isMinor),
+        parentName: isMinor ? parentName.trim() : '',
+        parentCpf: isMinor ? parentCpf.trim() : '',
+        parentAuthorized: isMinor ? Boolean(parentAuthorized) : false,
         validUntil: currentMember?.validUntil || getDefaultOfficialExpiry(),
         renewalCount: currentMember?.renewalCount || 0,
         createdAt: currentMember?.createdAt || nowIso,
@@ -209,26 +226,80 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
 
       await setDoc(doc(db, path, memberId), payload, { merge: true });
 
-      // Create confirmation notification
-      const notifPath = 'notifications';
-      const notifId = `notif_${Date.now()}`;
-      await setDoc(doc(db, notifPath, notifId), {
-        id: notifId,
-        userId: currentUser.uid,
-        title: '📋 Cadastro Enviado para Homologação',
-        message: 'Seu cadastro e os termos de LGPD e uso de imagem foram salvos com sucesso e aguardam homologação pela diretoria da sociedade.',
-        type: 'status_change',
-        read: false,
-        createdAt: new Date().toISOString(),
-      });
+      // Create confirmation notification in background (non-fatal if blocked)
+      try {
+        const notifPath = 'notifications';
+        const notifId = `notif_${Date.now()}`;
+        await setDoc(doc(db, notifPath, notifId), {
+          id: notifId,
+          userId: currentUser.uid,
+          title: '📋 Cadastro Enviado para Homologação',
+          message: 'Seu cadastro e os termos de LGPD e uso de imagem foram salvos com sucesso e aguardam homologação pela diretoria da sociedade.',
+          type: 'status_change',
+          read: false,
+          createdAt: new Date().toISOString(),
+        });
+      } catch (notifErr) {
+        console.warn('Gravação de notificação secundária não concluída:', notifErr);
+      }
 
-      if (onSuccess) onSuccess();
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `members/${currentUser.uid}`);
+      setIsSubmittedSuccess(true);
+      if (onSuccess) {
+        onSuccess();
+      }
+    } catch (err: any) {
+      console.error('Erro ao submeter cadastro do associado:', err);
+      let friendlyMsg = 'Não foi possível salvar o seu cadastro. Verifique sua conexão à internet e tente novamente.';
+      if (err?.code === 'permission-denied') {
+        friendlyMsg = 'Permissão negada pelo servidor ao salvar o cadastro. Por favor, verifique se está logado ou contate a administração.';
+      } else if (err?.message) {
+        friendlyMsg = `Falha ao salvar: ${err.message}`;
+      }
+      setErrorMsg(friendlyMsg);
+      scrollToTop();
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (isSubmittedSuccess && !isEditing) {
+    return (
+      <div className="bg-zinc-900 border border-emerald-500/40 rounded-3xl p-6 sm:p-10 shadow-2xl max-w-2xl mx-auto text-zinc-100 text-center space-y-6 animate-scale-in">
+        <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 mx-auto shadow-lg shadow-emerald-950/50">
+          <CheckCircle2 className="w-8 h-8" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-black text-white">Cadastro Enviado com Sucesso!</h2>
+          <p className="text-sm text-zinc-300 max-w-md mx-auto leading-relaxed">
+            Seus dados cadastrais, termos de privacidade LGPD e autorizações de uso de imagem foram salvos com sucesso na <strong>Sociedade Recreativa e Esportiva Rio Camarada</strong>.
+          </p>
+        </div>
+
+        <div className="bg-zinc-950/70 border border-zinc-800 rounded-2xl p-4 text-xs text-zinc-300 max-w-md mx-auto text-left space-y-2">
+          <div className="flex items-center gap-2 text-emerald-400 font-bold">
+            <Clock className="w-4 h-4 shrink-0" />
+            <span>Situação: Aguardando Homologação da Diretoria</span>
+          </div>
+          <p className="text-zinc-400 leading-relaxed">
+            A Diretoria Executiva irá homologar sua inscrição estatutária. Assim que seu cadastro for homologado, sua carteirinha digital estará disponível automaticamente no Portal do Associado.
+          </p>
+        </div>
+
+        <div className="pt-2 flex justify-center">
+          <button
+            type="button"
+            onClick={() => {
+              if (onSuccess) onSuccess();
+              else window.location.reload();
+            }}
+            className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm transition-colors cursor-pointer inline-flex items-center gap-2 shadow-lg shadow-emerald-900/30"
+          >
+            <span>Acompanhar Meu Status</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-8 shadow-2xl max-w-2xl mx-auto text-zinc-100 animate-fade-in">
@@ -564,6 +635,17 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
             </span>
           </div>
         </div>
+
+        {/* Alerta de Erro Próximo ao Botão de Envio */}
+        {errorMsg && (
+          <div className="p-4 rounded-2xl bg-red-950/80 border border-red-500/50 flex items-start gap-3 text-red-200 text-xs sm:text-sm animate-pulse">
+            <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold text-white">Não foi possível concluir o envio:</p>
+              <p className="leading-relaxed">{errorMsg}</p>
+            </div>
+          </div>
+        )}
 
         {/* Botão de Envio */}
         <div className="pt-2">

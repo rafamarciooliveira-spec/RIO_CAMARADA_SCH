@@ -80,12 +80,16 @@ service cloud.firestore {
       // Leitura permitida estritamente para o administrador ou para o próprio titular
       allow get: if isValidId(memberId) && (
         isAdmin() ||
-        (isSignedIn() && existing().userId == request.auth.uid)
+        (isSignedIn() && (
+          existing().userId == request.auth.uid ||
+          (request.auth.token.email != null && existing().email == request.auth.token.email)
+        ))
       );
 
       allow list: if isSignedIn() && (
         isAdmin() ||
-        resource.data.userId == request.auth.uid
+        resource.data.userId == request.auth.uid ||
+        (request.auth.token.email != null && resource.data.email == request.auth.token.email)
       );
 
       // Create: Sócio só pode criar seu próprio cadastro com status inicial 'pendente'
@@ -100,44 +104,58 @@ service cloud.firestore {
           )
         );
 
-      // Update: Sócio só pode alterar o próprio nome, telefone, foto, data de nascimento e e-mail.
-      // Ele NÃO pode mudar categoria, matrícula, situação ou validade.
+      // Update: Sócio pode atualizar seu cadastro pendente para análise ou, se já aprovado, atualizar seus dados cadastrais permitidos.
+      // Ele NÃO pode mudar categoria, matrícula, situação ou validade quando já homologado.
       allow update: if isSignedIn() &&
         isValidId(memberId) &&
         isValidMember(incoming()) &&
         (
           isAdmin() ||
           (
-            existing().userId == request.auth.uid &&
+            (
+              existing().userId == request.auth.uid ||
+              (!('userId' in existing())) ||
+              existing().userId == '' ||
+              (request.auth.token.email != null && existing().email == request.auth.token.email)
+            ) &&
             incoming().userId == request.auth.uid &&
-            incoming().cpf == existing().cpf &&
-            incoming().category == existing().category &&
-            incoming().membershipNumber == existing().membershipNumber &&
-            incoming().validUntil == existing().validUntil &&
-            incoming().status == existing().status &&
-            incoming().diff(existing()).affectedKeys().hasOnly([
-              'fullName',
-              'birthDate',
-              'photoUrl',
-              'phone',
-              'email',
-              'allowBirthdayPublic',
-              'birthdayConsentDate',
-              'allowEventPhotos',
-              'eventPhotosConsentDate',
-              'allowSocialMediaPhotos',
-              'socialMediaPhotosConsentDate',
-              'allowCommunications',
-              'communicationsConsentDate',
-              'consentVersion',
-              'parentName',
-              'parentCpf',
-              'parentAuthorized',
-              'isMinor',
-              'updatedAt',
-              'lastGeneratedAt',
-              'lastViewToken'
-            ])
+            (
+              // Caso 1: Sócio enviando ou reenviando cadastro pendente para homologação
+              (
+                incoming().status == 'pendente' &&
+                (existing().status == 'pendente' || existing().status == 'rejeitado' || !('status' in existing()))
+              ) ||
+              // Caso 2: Sócio já aprovado atualizando seus dados cadastrais permitidos
+              (
+                incoming().status == existing().status &&
+                incoming().category == existing().category &&
+                incoming().membershipNumber == existing().membershipNumber &&
+                incoming().validUntil == existing().validUntil &&
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'fullName',
+                  'birthDate',
+                  'photoUrl',
+                  'phone',
+                  'email',
+                  'allowBirthdayPublic',
+                  'birthdayConsentDate',
+                  'allowEventPhotos',
+                  'eventPhotosConsentDate',
+                  'allowSocialMediaPhotos',
+                  'socialMediaPhotosConsentDate',
+                  'allowCommunications',
+                  'communicationsConsentDate',
+                  'consentVersion',
+                  'parentName',
+                  'parentCpf',
+                  'parentAuthorized',
+                  'isMinor',
+                  'updatedAt',
+                  'lastGeneratedAt',
+                  'lastViewToken'
+                ])
+              )
+            )
           )
         );
 
@@ -166,13 +184,16 @@ service cloud.firestore {
       allow write: if isAdmin() && isValidCardTemplate(incoming());
     }
 
-    // 5. Notificações e Avisos (Somente administradores podem criar avisos)
+    // 5. Notificações e Avisos (Administradores ou o próprio usuário para si mesmo)
     match /notifications/{notificationId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
         resource.data.userId == request.auth.uid
       );
-      allow create: if isAdmin();
+      allow create: if isSignedIn() && (
+        isAdmin() ||
+        incoming().userId == request.auth.uid
+      );
       allow update: if isSignedIn() && (
         isAdmin() ||
         (resource.data.userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['read']))
