@@ -23,6 +23,13 @@ import { RejectMemberModal } from './RejectMemberModal.tsx';
 import { EventsCalendarView } from './EventsCalendarView.tsx';
 import { AdminCultureManager } from './AdminCultureManager.tsx';
 import { AdminSocialsManager } from './AdminSocialsManager.tsx';
+import { MemberExcelImporterModal } from './MemberExcelImporterModal.tsx';
+import { NewsManagerView } from './NewsManagerView.tsx';
+import { BirthdaysView } from './BirthdaysView.tsx';
+import { AdminFinancialManager } from './AdminFinancialManager.tsx';
+import { AdminDataRequestsView } from './AdminDataRequestsView.tsx';
+import { PrivacyPolicyView } from './PrivacyPolicyView.tsx';
+import { AdminHomepageSettingsManager } from './EditableHomepageBlock.tsx';
 import { maskCPF } from '../utils/cpf.ts';
 import { formatDateBR } from '../utils/date.ts';
 import { triggerPushNotification } from '../utils/pushNotification.ts';
@@ -60,6 +67,19 @@ import {
   ShieldCheck,
   Check,
   X,
+  Newspaper,
+  Gift,
+  DollarSign,
+  FileText,
+  UploadCloud,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
+  Layers,
+  Settings,
+  HelpCircle,
+  CheckSquare,
+  Building,
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
@@ -73,11 +93,37 @@ export const AdminDashboard: React.FC = () => {
     isDiretoriaExecutiva,
     isDiretoria,
     boardRole,
+    isTesoureiro,
+    isConselhoFiscal,
+    canManageFinances,
+    canViewFinances,
     updateUserCategory,
   } = useAuth();
 
   const dialog = useAppDialog();
-  const [activeTab, setActiveTab] = useState<'members' | 'events' | 'culture' | 'socials' | 'customizer' | 'logo' | 'rejectionEmail' | 'admins' | 'lgpd'>('members');
+  const [activeGroup, setActiveGroup] = useState<'socios' | 'conteudo' | 'aniversariantes' | 'financeiro' | 'configuracoes' | 'lgpd'>('socios');
+  const [activeTab, setActiveTab] = useState<
+    | 'members'
+    | 'events'
+    | 'culture'
+    | 'news'
+    | 'socials'
+    | 'customizer'
+    | 'logo'
+    | 'birthdays'
+    | 'fin_dashboard'
+    | 'fin_transactions'
+    | 'fin_fees'
+    | 'fin_reports'
+    | 'admins'
+    | 'rejectionEmail'
+    | 'homepageTexts'
+    | 'lgpd_overview'
+    | 'lgpd_requests'
+    | 'lgpd_policy'
+  >('members');
+  const [showExcelImporter, setShowExcelImporter] = useState(false);
+  const [showPrimeirosPassos, setShowPrimeirosPassos] = useState(true);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -596,121 +642,538 @@ export const AdminDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Tab Navigation with Dedicated Horizontal Scroll Container (prevents page dragging) */}
-      <div className="w-full overflow-x-auto custom-scrollbar pb-2">
-        <div className="inline-flex min-w-full sm:min-w-0 items-center gap-1.5 bg-zinc-900/90 p-1.5 rounded-2xl border border-zinc-800 shadow-md">
+      {/* Primeiros Passos (Checklist do Administrador) */}
+      <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+              <CheckSquare className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <span>Primeiros Passos do Administrador</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Associação Rio Camarada
+                </span>
+              </h3>
+              <p className="text-xs text-zinc-400">
+                Guia prático para configuração e implantação do portal da sociedade
+              </p>
+            </div>
+          </div>
           <button
-            onClick={() => setActiveTab('members')}
-            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'members'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
+            onClick={() => setShowPrimeirosPassos(!showPrimeirosPassos)}
+            className="text-xs text-zinc-400 hover:text-white px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700/80 transition-all flex items-center gap-1 cursor-pointer"
           >
-            <Users className="w-3.5 h-3.5" />
-            <span>Sócios ({totalCount})</span>
-            {pendingCount > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-400 text-zinc-950 font-black animate-pulse">
-                {pendingCount}
+            <span>{showPrimeirosPassos ? 'Recolher' : 'Exibir Checklist'}</span>
+            {showPrimeirosPassos ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+
+        {showPrimeirosPassos && (
+          <div className="space-y-4 pt-2 border-t border-zinc-800/80 animate-fade-in">
+            {/* Progress bar */}
+            <div>
+              <div className="flex items-center justify-between text-xs mb-1.5 font-medium">
+                <span className="text-zinc-400">Progresso de Implantação do Portal</span>
+                <span className="text-emerald-400 font-bold">
+                  {members.length > 0 ? '5 de 6 etapas recomendadas (83%)' : '4 de 6 etapas recomendadas (67%)'}
+                </span>
+              </div>
+              <div className="w-full h-2.5 rounded-full bg-zinc-950 overflow-hidden border border-zinc-800">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
+                  style={{ width: members.length > 0 ? '83%' : '67%' }}
+                />
+              </div>
+            </div>
+
+            {/* Checklist Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 flex items-start gap-3">
+                <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <Check className="w-3.5 h-3.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-xs font-bold text-white">1. Associação & Logotipo</h4>
+                  <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">
+                    Nome e brasão oficial da Associação Rio Camarada configurados.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setActiveGroup('conteudo');
+                      setActiveTab('logo');
+                    }}
+                    className="mt-2 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 cursor-pointer block"
+                  >
+                    Gerenciar Logo →
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 flex items-start gap-3">
+                <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <Check className="w-3.5 h-3.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-xs font-bold text-white">2. Modelo da Carteirinha</h4>
+                  <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">
+                    Layout da credencial com selo 24h e QR Code dinâmico ativado.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setActiveGroup('conteudo');
+                      setActiveTab('customizer');
+                    }}
+                    className="mt-2 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 cursor-pointer block"
+                  >
+                    Formatador da Carteirinha →
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 flex items-start gap-3">
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                  members.length > 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+                }`}>
+                  {members.length > 0 ? <Check className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-xs font-bold text-white">3. Sócios Cadastrados</h4>
+                  <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">
+                    {members.length > 0 ? `${members.length} associado(s) na base.` : 'Cadastre ou importe por planilha.'}
+                  </p>
+                  <div className="flex items-center gap-3 mt-2">
+                    <button
+                      onClick={() => {
+                        setActiveGroup('socios');
+                        setActiveTab('members');
+                      }}
+                      className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 cursor-pointer"
+                    >
+                      Ver Sócios →
+                    </button>
+                    <button
+                      onClick={() => setShowExcelImporter(true)}
+                      className="text-[11px] font-semibold text-sky-400 hover:text-sky-300 cursor-pointer"
+                    >
+                      Importar Planilha →
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 flex items-start gap-3">
+                <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <Check className="w-3.5 h-3.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-xs font-bold text-white">4. Notícias & Conteúdo</h4>
+                  <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">
+                    Publique notícias de tiro esportivo e artigos culturais para os sócios.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setActiveGroup('conteudo');
+                      setActiveTab('news');
+                    }}
+                    className="mt-2 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 cursor-pointer block"
+                  >
+                    Cadastrar Notícias →
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 flex items-start gap-3">
+                <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <Check className="w-3.5 h-3.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-xs font-bold text-white">5. Tesouraria & PIX</h4>
+                  <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">
+                    Contas bancárias, mensalidades e chave PIX para prestação de contas.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setActiveGroup('financeiro');
+                      setActiveTab('fin_dashboard');
+                    }}
+                    className="mt-2 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 cursor-pointer block"
+                  >
+                    Abrir Módulo Financeiro →
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 flex items-start gap-3">
+                <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <Check className="w-3.5 h-3.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-xs font-bold text-white">6. Encarregado LGPD (DPO)</h4>
+                  <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">
+                    Política de privacidade ativa com canal de atendimento a titulares.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setActiveGroup('lgpd');
+                      setActiveTab('lgpd_policy');
+                    }}
+                    className="mt-2 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 cursor-pointer block"
+                  >
+                    Ver Política & DPO →
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 6 GRUPOS PRINCIPAIS DE NAVEGAÇÃO DO ADMINISTRADOR */}
+      <div className="space-y-3">
+        {/* Grupos Principais */}
+        <div className="w-full overflow-x-auto custom-scrollbar pb-1">
+          <div className="inline-flex min-w-full sm:min-w-0 items-center gap-1.5 bg-zinc-900/90 p-1.5 rounded-2xl border border-zinc-800 shadow-md">
+            <button
+              onClick={() => {
+                setActiveGroup('socios');
+                setActiveTab('members');
+              }}
+              className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeGroup === 'socios'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              }`}
+            >
+              <Users className="w-4 h-4 text-emerald-400" />
+              <span>1. Sócios</span>
+              <span className="px-2 py-0.5 rounded-full text-[11px] bg-zinc-950/60 text-emerald-300 font-mono">
+                {totalCount}
               </span>
+              {pendingCount > 0 && (
+                <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-400 text-zinc-950 font-black animate-pulse">
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveGroup('conteudo');
+                setActiveTab('news');
+              }}
+              className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeGroup === 'conteudo'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              }`}
+            >
+              <BookOpen className="w-4 h-4 text-amber-400" />
+              <span>2. Conteúdo</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveGroup('aniversariantes');
+                setActiveTab('birthdays');
+              }}
+              className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeGroup === 'aniversariantes'
+                  ? 'bg-pink-600 text-white shadow-md'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              }`}
+            >
+              <Gift className="w-4 h-4 text-pink-300" />
+              <span>3. Aniversariantes</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveGroup('financeiro');
+                setActiveTab('fin_dashboard');
+              }}
+              className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeGroup === 'financeiro'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              }`}
+            >
+              <DollarSign className="w-4 h-4 text-emerald-400" />
+              <span>4. Financeiro</span>
+              {isConselhoFiscal && (
+                <span className="text-[10px] bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded">Fiscal</span>
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveGroup('configuracoes');
+                setActiveTab('admins');
+              }}
+              className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeGroup === 'configuracoes'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              }`}
+            >
+              <Settings className="w-4 h-4 text-zinc-300" />
+              <span>5. Configurações</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveGroup('lgpd');
+                setActiveTab('lgpd_overview');
+              }}
+              className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeGroup === 'lgpd'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4 text-teal-400" />
+              <span>6. LGPD</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Sub-Navegação Dinâmica do Grupo Ativo */}
+        <div className="w-full overflow-x-auto custom-scrollbar pb-1">
+          <div className="inline-flex min-w-full sm:min-w-0 items-center gap-1.5 bg-zinc-950/70 p-1.5 rounded-xl border border-zinc-800/80">
+            {activeGroup === 'socios' && (
+              <>
+                <button
+                  onClick={() => setActiveTab('members')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'members'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Gestão & Homologação de Sócios</span>
+                </button>
+                <button
+                  onClick={() => setShowExcelImporter(true)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors cursor-pointer flex items-center gap-1.5 border border-zinc-700"
+                >
+                  <UploadCloud className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Importar Sócios por Planilha</span>
+                </button>
+              </>
             )}
-          </button>
 
-          <button
-            onClick={() => setActiveTab('events')}
-            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'events'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Eventos & Agenda da Sociedade</span>
-          </button>
+            {activeGroup === 'conteudo' && (
+              <>
+                <button
+                  onClick={() => setActiveTab('news')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'news'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <Newspaper className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Notícias de Tiro Esportivo</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('culture')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'culture'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Espaço Cultural</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('events')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'events'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Agenda de Eventos</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('socials')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'socials'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <Share2 className="w-3.5 h-3.5 text-pink-400" />
+                  <span>Redes Sociais</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('logo')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'logo'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Logotipo Oficial</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('customizer')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'customizer'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <Sliders className="w-3.5 h-3.5" />
+                  <span>Formatador da Carteirinha</span>
+                </button>
+              </>
+            )}
 
-          <button
-            onClick={() => setActiveTab('culture')}
-            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'culture'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <BookOpen className="w-3.5 h-3.5 text-amber-400" />
-            <span>Espaço Cultural</span>
-          </button>
+            {activeGroup === 'aniversariantes' && (
+              <button
+                onClick={() => setActiveTab('birthdays')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'birthdays'
+                    ? 'bg-pink-700 text-white shadow-xs'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                }`}
+              >
+                <Gift className="w-3.5 h-3.5 text-pink-400" />
+                <span>Agenda de Aniversários & Parabéns WhatsApp</span>
+              </button>
+            )}
 
-          <button
-            onClick={() => setActiveTab('socials')}
-            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'socials'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <Share2 className="w-3.5 h-3.5 text-pink-400" />
-            <span>Redes Sociais</span>
-          </button>
+            {activeGroup === 'financeiro' && (
+              <>
+                <button
+                  onClick={() => setActiveTab('fin_dashboard')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'fin_dashboard'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Painel Financeiro Geral</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('fin_transactions')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'fin_transactions'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Lançamentos & Livro Caixa</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('fin_fees')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'fin_fees'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Mensalidades & Anuidades</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('fin_reports')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'fin_reports'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-teal-400" />
+                  <span>Fechamento Mensal & Balancetes</span>
+                </button>
+              </>
+            )}
 
-          <button
-            onClick={() => setActiveTab('customizer')}
-            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'customizer'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>Formatador da Carteirinha</span>
-          </button>
+            {activeGroup === 'configuracoes' && (
+              <>
+                <button
+                  onClick={() => setActiveTab('admins')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'admins'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <Key className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Gestores & Papéis ({adminList.length + 1})</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('rejectionEmail')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'rejectionEmail'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <Mail className="w-3.5 h-3.5 text-red-400" />
+                  <span>Texto de Rejeição (E-mail Registrado)</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('homepageTexts')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'homepageTexts'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <Building className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Textos & Subtítulo da Página Inicial</span>
+                </button>
+              </>
+            )}
 
-          <button
-            onClick={() => setActiveTab('logo')}
-            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'logo'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Logotipo da Associação</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('rejectionEmail')}
-            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'rejectionEmail'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <Mail className="w-3.5 h-3.5 text-red-400" />
-            <span>Texto de Rejeição (E-mail)</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('admins')}
-            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'admins'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <Key className="w-3.5 h-3.5 text-amber-400" />
-            <span>Gestores ({adminList.length + 1})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('lgpd')}
-            className={`whitespace-nowrap shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'lgpd'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <Shield className="w-3.5 h-3.5" />
-            <span>Conformidade LGPD</span>
-          </button>
+            {activeGroup === 'lgpd' && (
+              <>
+                <button
+                  onClick={() => setActiveTab('lgpd_overview')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'lgpd_overview'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Métricas Reais & Conformidade</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('lgpd_requests')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'lgpd_requests'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <FileText className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Fila de Solicitações de Titulares</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('lgpd_policy')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'lgpd_policy'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <Lock className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Política de Privacidade & Encarregado (DPO)</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1152,6 +1615,9 @@ export const AdminDashboard: React.FC = () => {
         </div>
       )}
 
+      {/* TAB: NOTÍCIAS DE TIRO ESPORTIVO */}
+      {activeTab === 'news' && <NewsManagerView />}
+
       {/* TAB: EVENTOS & AGENDA DA SOCIEDADE */}
       {activeTab === 'events' && <EventsCalendarView />}
 
@@ -1161,14 +1627,42 @@ export const AdminDashboard: React.FC = () => {
       {/* TAB: REDES SOCIAIS */}
       {activeTab === 'socials' && <AdminSocialsManager />}
 
+      {/* TAB: ANIVERSARIANTES & PARABÉNS WHATSAPP */}
+      {activeTab === 'birthdays' && <BirthdaysView isAdmin={true} />}
+
+      {/* TAB: MÓDULO FINANCEIRO (PAINEL, LANÇAMENTOS, MENSALIDADES, FECHAMENTO & RELATÓRIOS) */}
+      {(activeGroup === 'financeiro' || activeTab.startsWith('fin_')) && (
+        <AdminFinancialManager
+          members={members}
+          initialSubTab={
+            activeTab === 'fin_transactions'
+              ? 'transactions'
+              : activeTab === 'fin_fees'
+              ? 'fees'
+              : activeTab === 'fin_reports'
+              ? 'reports'
+              : 'dashboard'
+          }
+        />
+      )}
+
       {/* TAB: GESTÃO DE ADMINISTRADORES */}
       {activeTab === 'admins' && <AdminManagementView />}
 
-      {/* TAB: TEXTO PADRÃO DE REJEIÇÃO / E-MAIL */}
+      {/* TAB: TEXTO PADRÃO DE REJEIÇÃO / E-MAIL REGISTRADO */}
       {activeTab === 'rejectionEmail' && <RejectionEmailConfig />}
 
-      {/* TAB 3: LGPD & AUDIT TRAIL */}
-      {activeTab === 'lgpd' && (() => {
+      {/* TAB: TEXTOS DA PÁGINA INICIAL & SUBTÍTULO */}
+      {activeTab === 'homepageTexts' && <AdminHomepageSettingsManager />}
+
+      {/* TAB: LGPD - SOLICITAÇÕES DE TITULARES */}
+      {activeTab === 'lgpd_requests' && <AdminDataRequestsView />}
+
+      {/* TAB: LGPD - POLÍTICA DE PRIVACIDADE E DPO */}
+      {activeTab === 'lgpd_policy' && <PrivacyPolicyView isAdmin={true} />}
+
+      {/* TAB: LGPD - CONFORMIDADE & MÉTRICAS REAIS */}
+      {(activeTab === 'lgpd_overview' || (activeTab as any) === 'lgpd') && (() => {
         const totalLgpd = members.length;
         const consentedMembers = members.filter(m => Boolean(m.lgpdConsent));
         const unconsentedMembers = members.filter(m => !m.lgpdConsent);
@@ -1477,6 +1971,14 @@ export const AdminDashboard: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Member Excel/CSV Importer Modal with Real-time CPF Validation */}
+      {showExcelImporter && (
+        <MemberExcelImporterModal
+          isOpen={showExcelImporter}
+          onClose={() => setShowExcelImporter(false)}
+        />
       )}
     </div>
   );

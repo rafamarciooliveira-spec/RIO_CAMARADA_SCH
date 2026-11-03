@@ -17,6 +17,12 @@ import { EditMemberProfileModal } from './EditMemberProfileModal.tsx';
 import { EventsCalendarView } from './EventsCalendarView.tsx';
 import { CultureArticlesView } from './CultureArticlesView.tsx';
 import { SocialLinksView } from './SocialLinksView.tsx';
+import { NewsListView } from './NewsListView.tsx';
+import { BirthdaysView } from './BirthdaysView.tsx';
+import { FinancialTransparencyView } from './FinancialTransparencyView.tsx';
+import { MemberDataPrivacyView } from './MemberDataPrivacyView.tsx';
+import { PrivacyPolicyView } from './PrivacyPolicyView.tsx';
+import { isBirthdayToday, parseMemberBirthday } from '../utils/birthdays.ts';
 import {
   Clock,
   CheckCircle2,
@@ -40,6 +46,13 @@ import {
   CalendarDays,
   BookOpen,
   Share2,
+  Newspaper,
+  Gift,
+  DollarSign,
+  FileText,
+  Lock,
+  PartyPopper,
+  Menu,
 } from 'lucide-react';
 
 function formatDateSafe(val: any, fallback = 'Data recente'): string {
@@ -93,6 +106,7 @@ export const MemberDashboard: React.FC = () => {
   const [refreshingToken, setRefreshingToken] = useState(false);
   const [receivedEmail, setReceivedEmail] = useState<EmailDispatchRecord | null>(null);
   const [showFullEmail, setShowFullEmail] = useState(true);
+  const [todayBirthdays, setTodayBirthdays] = useState<{ id: string; fullName: string; dayFormatted: string }[]>([]);
 
   // Fetch dispatched rejection email if rejected
   useEffect(() => {
@@ -123,85 +137,295 @@ export const MemberDashboard: React.FC = () => {
     }
   }, [currentMember?.id, currentMember?.status]);
 
-  // Top tab bar switcher between "Minha Carteirinha", "Calendário de Eventos", "Espaço Cultural" and "Redes Sociais"
+  // Listener for approved opted-in members with birthday today
+  useEffect(() => {
+    try {
+      const q = query(collection(db, 'members'), where('status', '==', 'aprovado'));
+      const unsub = onSnapshot(q, snap => {
+        const matches: { id: string; fullName: string; dayFormatted: string }[] = [];
+        snap.forEach(d => {
+          const m = d.data();
+          if (m.allowBirthdayPublic && m.birthDate && isBirthdayToday(m.birthDate)) {
+            const b = parseMemberBirthday(m.birthDate);
+            matches.push({
+              id: d.id,
+              fullName: m.fullName || 'Associado',
+              dayFormatted: b?.displayFormatted || 'Hoje',
+            });
+          }
+        });
+        setTodayBirthdays(matches);
+      }, err => {
+        console.warn('Syncing today birthdays banner:', err);
+      });
+      return () => unsub();
+    } catch (e) {
+      console.warn('Syncing today birthdays banner:', e);
+    }
+  }, []);
+
+  // Top tab bar switcher
   const renderTopNavTabs = () => (
-    <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 p-1.5 rounded-2xl w-full sm:w-fit overflow-x-auto shadow-md">
+    <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 p-1.5 rounded-2xl w-full overflow-x-auto shadow-md custom-scrollbar">
       <button
         onClick={() => setActivePortalTab('card')}
-        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+        className={`px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
           activePortalTab === 'card'
             ? 'bg-emerald-600 text-white shadow-sm'
             : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
         }`}
       >
         <ShieldCheck className="w-4 h-4 text-emerald-400" />
-        <span>Minha Carteirinha</span>
+        <span>Carteirinha</span>
       </button>
 
       <button
         onClick={() => setActivePortalTab('events')}
-        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+        className={`px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
           activePortalTab === 'events'
             ? 'bg-emerald-600 text-white shadow-sm'
             : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
         }`}
       >
         <Calendar className="w-4 h-4 text-emerald-400" />
-        <span>Calendário de Eventos</span>
+        <span>Agenda</span>
+      </button>
+
+      <button
+        onClick={() => setActivePortalTab('news')}
+        className={`px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+          activePortalTab === 'news'
+            ? 'bg-emerald-600 text-white shadow-sm'
+            : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+        }`}
+      >
+        <Newspaper className="w-4 h-4 text-blue-400" />
+        <span>Notícias</span>
+      </button>
+
+      <button
+        onClick={() => setActivePortalTab('birthdays')}
+        className={`px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap relative ${
+          activePortalTab === 'birthdays'
+            ? 'bg-pink-600 text-white shadow-sm'
+            : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+        }`}
+      >
+        <Gift className="w-4 h-4 text-pink-300" />
+        <span>Aniversariantes</span>
+        {todayBirthdays.length > 0 && (
+          <span className="w-2 h-2 rounded-full bg-pink-400 animate-ping" />
+        )}
       </button>
 
       <button
         onClick={() => setActivePortalTab('culture')}
-        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+        className={`px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
           activePortalTab === 'culture'
             ? 'bg-emerald-600 text-white shadow-sm'
             : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
         }`}
       >
         <BookOpen className="w-4 h-4 text-amber-400" />
-        <span>Espaço Cultural</span>
+        <span>Cultura</span>
+      </button>
+
+      <button
+        onClick={() => setActivePortalTab('financial')}
+        className={`px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+          activePortalTab === 'financial'
+            ? 'bg-emerald-600 text-white shadow-sm'
+            : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+        }`}
+      >
+        <DollarSign className="w-4 h-4 text-emerald-400" />
+        <span>Prestação de Contas</span>
       </button>
 
       <button
         onClick={() => setActivePortalTab('socials')}
-        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+        className={`px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
           activePortalTab === 'socials'
             ? 'bg-emerald-600 text-white shadow-sm'
             : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
         }`}
       >
-        <Share2 className="w-4 h-4 text-pink-400" />
-        <span>Redes Sociais</span>
+        <Share2 className="w-4 h-4 text-purple-400" />
+        <span>Redes</span>
+      </button>
+
+      <button
+        onClick={() => setActivePortalTab('mydata')}
+        className={`px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+          activePortalTab === 'mydata'
+            ? 'bg-emerald-600 text-white shadow-sm'
+            : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+        }`}
+      >
+        <User className="w-4 h-4 text-teal-400" />
+        <span>Meus Dados (LGPD)</span>
+      </button>
+
+      <button
+        onClick={() => setActivePortalTab('privacy')}
+        className={`px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+          activePortalTab === 'privacy'
+            ? 'bg-emerald-600 text-white shadow-sm'
+            : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+        }`}
+      >
+        <Lock className="w-4 h-4 text-indigo-400" />
+        <span>Privacidade</span>
       </button>
     </div>
   );
 
-  // If user selected Events tab, show the Events Calendar directly
+  const renderMobileBottomNav = () => (
+    <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/95 border-t border-zinc-800 backdrop-blur-md px-1 py-1.5 flex items-center justify-around shadow-2xl">
+      <button
+        onClick={() => setActivePortalTab('card')}
+        className={`flex flex-col items-center gap-0.5 py-1 px-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+          (activePortalTab as string) === 'card' ? 'text-emerald-400 font-black' : 'text-zinc-400 hover:text-white'
+        }`}
+      >
+        <ShieldCheck className="w-4 h-4" />
+        <span>Carteira</span>
+      </button>
+      <button
+        onClick={() => setActivePortalTab('events')}
+        className={`flex flex-col items-center gap-0.5 py-1 px-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+          (activePortalTab as string) === 'events' ? 'text-emerald-400 font-black' : 'text-zinc-400 hover:text-white'
+        }`}
+      >
+        <Calendar className="w-4 h-4" />
+        <span>Agenda</span>
+      </button>
+      <button
+        onClick={() => setActivePortalTab('news')}
+        className={`flex flex-col items-center gap-0.5 py-1 px-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+          (activePortalTab as string) === 'news' ? 'text-emerald-400 font-black' : 'text-zinc-400 hover:text-white'
+        }`}
+      >
+        <Newspaper className="w-4 h-4" />
+        <span>Notícias</span>
+      </button>
+      <button
+        onClick={() => setActivePortalTab('birthdays')}
+        className={`flex flex-col items-center gap-0.5 py-1 px-1.5 rounded-lg text-[10px] font-bold relative cursor-pointer transition-colors ${
+          (activePortalTab as string) === 'birthdays' ? 'text-pink-400 font-black' : 'text-zinc-400 hover:text-white'
+        }`}
+      >
+        <Gift className="w-4 h-4" />
+        <span>Nívers</span>
+        {todayBirthdays.length > 0 && (
+          <span className="absolute top-0.5 right-1 w-2 h-2 rounded-full bg-pink-400 animate-ping" />
+        )}
+      </button>
+      <button
+        onClick={() => setActivePortalTab('financial')}
+        className={`flex flex-col items-center gap-0.5 py-1 px-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+          (activePortalTab as string) === 'financial' ? 'text-emerald-400 font-black' : 'text-zinc-400 hover:text-white'
+        }`}
+      >
+        <DollarSign className="w-4 h-4" />
+        <span>Contas</span>
+      </button>
+      <button
+        onClick={() => setActivePortalTab('mydata')}
+        className={`flex flex-col items-center gap-0.5 py-1 px-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+          (activePortalTab as string) === 'mydata' ? 'text-emerald-400 font-black' : 'text-zinc-400 hover:text-white'
+        }`}
+      >
+        <User className="w-4 h-4" />
+        <span>LGPD</span>
+      </button>
+    </div>
+  );
+
+  // If user selected Events tab
   if (activePortalTab === 'events') {
     return (
-      <div className="max-w-6xl mx-auto py-6 px-4 sm:px-6 space-y-6">
+      <div className="max-w-6xl mx-auto py-6 px-4 sm:px-6 space-y-6 pb-20 sm:pb-8">
         {renderTopNavTabs()}
         <EventsCalendarView />
+        {renderMobileBottomNav()}
       </div>
     );
   }
 
-  // If user selected Culture tab, show Culture Articles directly
+  // If user selected News tab
+  if (activePortalTab === 'news') {
+    return (
+      <div className="max-w-6xl mx-auto py-6 px-4 sm:px-6 space-y-6 pb-20 sm:pb-8">
+        {renderTopNavTabs()}
+        <NewsListView />
+        {renderMobileBottomNav()}
+      </div>
+    );
+  }
+
+  // If user selected Birthdays tab
+  if (activePortalTab === 'birthdays') {
+    return (
+      <div className="max-w-6xl mx-auto py-6 px-4 sm:px-6 space-y-6 pb-20 sm:pb-8">
+        {renderTopNavTabs()}
+        <BirthdaysView isAdmin={false} />
+        {renderMobileBottomNav()}
+      </div>
+    );
+  }
+
+  // If user selected Culture tab
   if (activePortalTab === 'culture') {
     return (
-      <div className="max-w-6xl mx-auto py-6 px-4 sm:px-6 space-y-6">
+      <div className="max-w-6xl mx-auto py-6 px-4 sm:px-6 space-y-6 pb-20 sm:pb-8">
         {renderTopNavTabs()}
         <CultureArticlesView />
+        {renderMobileBottomNav()}
       </div>
     );
   }
 
-  // If user selected Socials tab, show Social Links directly
+  // If user selected Financial Transparency tab
+  if (activePortalTab === 'financial') {
+    return (
+      <div className="max-w-6xl mx-auto py-6 px-4 sm:px-6 space-y-6 pb-20 sm:pb-8">
+        {renderTopNavTabs()}
+        <FinancialTransparencyView />
+        {renderMobileBottomNav()}
+      </div>
+    );
+  }
+
+  // If user selected Socials tab
   if (activePortalTab === 'socials') {
     return (
-      <div className="max-w-5xl mx-auto py-6 px-4 sm:px-6 space-y-6">
+      <div className="max-w-5xl mx-auto py-6 px-4 sm:px-6 space-y-6 pb-20 sm:pb-8">
         {renderTopNavTabs()}
         <SocialLinksView />
+        {renderMobileBottomNav()}
+      </div>
+    );
+  }
+
+  // If user selected My Data tab (LGPD)
+  if (activePortalTab === 'mydata') {
+    return (
+      <div className="max-w-5xl mx-auto py-6 px-4 sm:px-6 space-y-6 pb-20 sm:pb-8">
+        {renderTopNavTabs()}
+        <MemberDataPrivacyView onOpenEditProfile={() => setShowEditProfileModal(true)} />
+        {renderMobileBottomNav()}
+      </div>
+    );
+  }
+
+  // If user selected Privacy Policy tab
+  if (activePortalTab === 'privacy') {
+    return (
+      <div className="max-w-5xl mx-auto py-6 px-4 sm:px-6 space-y-6 pb-20 sm:pb-8">
+        {renderTopNavTabs()}
+        <PrivacyPolicyView isAdmin={false} />
+        {renderMobileBottomNav()}
       </div>
     );
   }
@@ -307,9 +531,53 @@ export const MemberDashboard: React.FC = () => {
   const isDiretoria = String(currentMember?.category || '').trim().toUpperCase() === 'MEMBRO DA DIRETORIA';
 
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 space-y-8">
+    <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 space-y-8 pb-24 sm:pb-8">
       {/* Top Nav Switcher */}
       {renderTopNavTabs()}
+
+      {/* Banner de Aniversariantes de Hoje */}
+      {todayBirthdays.length > 0 ? (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-pink-950/70 via-purple-950/60 to-zinc-900 border border-pink-500/40 flex flex-col sm:flex-row items-center justify-between gap-4 text-zinc-100 shadow-xl">
+          <div className="flex items-center gap-3 text-center sm:text-left">
+            <div className="w-11 h-11 rounded-2xl bg-pink-500/20 text-pink-400 border border-pink-500/30 flex items-center justify-center shrink-0 shadow-inner">
+              <PartyPopper className="w-6 h-6 animate-bounce" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 justify-center sm:justify-start">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-pink-500 text-white">
+                  🎉 Aniversariantes de Hoje!
+                </span>
+                <span className="text-xs text-pink-300 font-medium">Associação Rio Camarada</span>
+              </div>
+              <p className="text-sm font-bold text-white mt-1">
+                {todayBirthdays.map(m => m.fullName).join(', ')}
+              </p>
+              <p className="text-xs text-zinc-300">
+                A sociedade deseja muitas felicidades, saúde e realizações!
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setActivePortalTab('birthdays')}
+            className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs transition-colors shrink-0 shadow-md cursor-pointer whitespace-nowrap"
+          >
+            Ver Todos os Nívers →
+          </button>
+        </div>
+      ) : (
+        <div className="px-4 py-2.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 flex items-center justify-between text-xs text-zinc-400">
+          <span className="flex items-center gap-2">
+            <Gift className="w-4 h-4 text-pink-400" />
+            Nenhum sócio faz aniversário hoje.
+          </span>
+          <button
+            onClick={() => setActivePortalTab('birthdays')}
+            className="text-pink-400 hover:text-pink-300 font-semibold cursor-pointer"
+          >
+            Ver calendário do mês →
+          </button>
+        </div>
+      )}
 
       {/* Push Notification Opt-in Prompt */}
       {pushStatus !== 'granted' && (
@@ -726,6 +994,9 @@ export const MemberDashboard: React.FC = () => {
           onClose={() => setShowEditProfileModal(false)}
         />
       )}
+
+      {/* Menu Fixo no Rodapé no Celular */}
+      {renderMobileBottomNav()}
     </div>
   );
 };

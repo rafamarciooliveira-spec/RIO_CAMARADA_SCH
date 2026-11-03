@@ -17,6 +17,8 @@ import {
   BookOpen,
   Share2,
   ShieldCheck,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -40,6 +42,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
     notifications,
     markNotificationRead,
     activeTemplate,
+    theme,
+    toggleTheme,
   } = useAuth();
 
   const [showNotifMenu, setShowNotifMenu] = useState(false);
@@ -72,19 +76,19 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
     <header className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         {/* Brand & Association Identity */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3.5">
           <div
-            className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shadow-xs overflow-hidden p-1 shrink-0"
+            className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-emerald-500/15 to-emerald-500/5 border border-emerald-500/40 flex items-center justify-center shadow-md overflow-hidden p-1.5 shrink-0"
             style={{ color: activeTemplate?.accentColor || '#10b981' }}
           >
             <AssociationLogo logoKeyOrUrl={activeTemplate?.logoUrl} className="w-full h-full object-contain" />
           </div>
           <div>
-            <h1 className="text-sm font-bold text-white tracking-tight leading-tight line-clamp-1">
-              {activeTemplate?.associationName || 'Portal do Associado'}
+            <h1 className="text-base sm:text-lg font-black text-white tracking-tight leading-tight line-clamp-1">
+              {activeTemplate?.associationName || 'Associação Rio Camarada'}
             </h1>
-            <p className="text-[10px] text-zinc-400 leading-tight">
-              Gestão de Sócios & Carteirinha Digital (LGPD)
+            <p className="text-xs text-emerald-400 font-bold tracking-wide leading-tight">
+              Portal do Associado
             </p>
           </div>
         </div>
@@ -293,6 +297,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
 
               {/* User Email & Logout */}
               <div className="flex items-center gap-2 pl-1 border-l border-zinc-800">
+                {/* Theme Mode Toggle Button */}
+                <button
+                  onClick={toggleTheme}
+                  className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white transition-colors border border-zinc-800 cursor-pointer"
+                  title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+                >
+                  {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-sky-400" />}
+                </button>
+
                 <div className="w-8 h-8 rounded-full bg-emerald-900/60 border border-emerald-500/30 flex items-center justify-center text-emerald-300 font-bold text-xs">
                   {currentUser.email?.charAt(0).toUpperCase()}
                 </div>
@@ -306,12 +319,21 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuthModal }) => {
               </div>
             </>
           ) : (
-            <button
-              onClick={onOpenAuthModal}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-colors cursor-pointer"
-            >
-              Acessar Portal do Sócio
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white transition-colors border border-zinc-800 cursor-pointer"
+                title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+              >
+                {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-sky-400" />}
+              </button>
+              <button
+                onClick={onOpenAuthModal}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-colors cursor-pointer"
+              >
+                Entrar no Portal
+              </button>
+            </div>
           )}
         </div>
       </div>

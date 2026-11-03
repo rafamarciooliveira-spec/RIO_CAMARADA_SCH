@@ -216,7 +216,7 @@ export const FinancialReportsView: React.FC<Props> = ({
     }
   };
 
-  const associationName = activeTemplate?.associationName || 'Associação Esportiva e Cultural Rio Camarada';
+  const associationName = activeTemplate?.associationName || 'Associação Rio Camarada';
 
   return (
     <div className="space-y-6">

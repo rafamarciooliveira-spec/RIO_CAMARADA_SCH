@@ -25,7 +25,8 @@ import {
   ChevronDown,
 } from 'lucide-react';
 
-interface BirthdaysViewProps {
+export interface BirthdaysViewProps {
+  isAdmin?: boolean;
   isAdminView?: boolean;
 }
 
@@ -46,7 +47,8 @@ const MONTHS_LIST = [
   { value: 12, label: 'Dezembro' },
 ];
 
-export const BirthdaysView: React.FC<BirthdaysViewProps> = ({ isAdminView = false }) => {
+export const BirthdaysView: React.FC<BirthdaysViewProps> = ({ isAdmin, isAdminView }) => {
+  const isActualAdmin = Boolean(isAdmin || isAdminView);
   const { currentMember, activeTemplate } = useAuth();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,7 +82,7 @@ export const BirthdaysView: React.FC<BirthdaysViewProps> = ({ isAdminView = fals
     return members
       .filter(m => {
         // Members only see approved members who explicitly consented
-        if (!isAdminView && !m.allowBirthdayPublic) {
+        if (!isActualAdmin && !m.allowBirthdayPublic) {
           return false;
         }
 
@@ -120,17 +122,17 @@ export const BirthdaysView: React.FC<BirthdaysViewProps> = ({ isAdminView = fals
         }
         return parsedA.effectiveDay - parsedB.effectiveDay;
       });
-  }, [members, isAdminView, filter, selectedMonth, searchQuery]);
+  }, [members, isActualAdmin, filter, selectedMonth, searchQuery]);
 
   const todayCount = useMemo(() => {
-    return members.filter(m => (isAdminView || m.allowBirthdayPublic) && m.birthDate && isBirthdayToday(m.birthDate)).length;
-  }, [members, isAdminView]);
+    return members.filter(m => (isActualAdmin || m.allowBirthdayPublic) && m.birthDate && isBirthdayToday(m.birthDate)).length;
+  }, [members, isActualAdmin]);
 
   const handlePrint = () => {
     window.print();
   };
 
-  const associationName = activeTemplate?.associationName || 'Associação Esportiva e Cultural Rio Camarada';
+  const associationName = activeTemplate?.associationName || 'Associação Rio Camarada';
 
   return (
     <div className="space-y-6">
@@ -151,7 +153,7 @@ export const BirthdaysView: React.FC<BirthdaysViewProps> = ({ isAdminView = fals
                 )}
               </h1>
               <p className="text-sm text-zinc-400 mt-0.5">
-                {isAdminView
+                {isActualAdmin
                   ? 'Gestão e envio de felicitações aos associados da sociedade'
                   : 'Celebre o dia especial dos nossos companheiros de tiro e tradição'}
               </p>
@@ -161,7 +163,7 @@ export const BirthdaysView: React.FC<BirthdaysViewProps> = ({ isAdminView = fals
 
         {/* Action buttons */}
         <div className="flex items-center gap-2">
-          {isAdminView && (
+          {isActualAdmin && (
             <button
               onClick={handlePrint}
               type="button"
@@ -176,7 +178,7 @@ export const BirthdaysView: React.FC<BirthdaysViewProps> = ({ isAdminView = fals
       </div>
 
       {/* Member Privacy Notice if non-admin */}
-      {!isAdminView && (
+      {!isActualAdmin && (
         <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-start gap-3">
           <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
           <div className="text-xs text-zinc-300 leading-relaxed">
@@ -367,7 +369,7 @@ export const BirthdaysView: React.FC<BirthdaysViewProps> = ({ isAdminView = fals
                     </p>
 
                     {/* Admin LGPD and Action Badges */}
-                    {isAdminView && (
+                    {isActualAdmin && (
                       <div className="mt-2.5 pt-2 border-t border-zinc-800/80 flex items-center justify-between gap-2">
                         <span
                           className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${

@@ -5,6 +5,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import { validateCPF, formatCPF } from '../utils/cpf.ts';
 import { formatDateBR, maskDateBR, dateBRToISO, isValidDateBR } from '../utils/date.ts';
 import { getDefaultOfficialExpiry } from '../utils/security.ts';
+import { PhotoUploader } from './PhotoUploader.tsx';
 import {
   UserCheck,
   Shield,
@@ -16,6 +17,9 @@ import {
   Info,
   Upload,
   Calendar,
+  Cake,
+  Mail,
+  UserX,
 } from 'lucide-react';
 
 interface FormProps {
@@ -28,18 +32,16 @@ interface FormProps {
     phone?: string;
     photoUrl?: string;
     category?: string;
+    allowBirthdayPublic?: boolean;
+    allowEventPhotos?: boolean;
+    allowCommunications?: boolean;
+    isMinor?: boolean;
+    parentName?: string;
+    parentCpf?: string;
+    parentAuthorized?: boolean;
   };
   isEditing?: boolean;
 }
-
-const PRESET_AVATARS = [
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=300&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=300&auto=format&fit=crop&q=80',
-];
 
 export const MemberRegistrationForm: React.FC<FormProps> = ({
   onSuccess,
@@ -58,13 +60,41 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
   });
   const [email, setEmail] = useState(initialData?.email || currentUser?.email || '');
   const [phone, setPhone] = useState(initialData?.phone || '');
-  const [photoUrl, setPhotoUrl] = useState(initialData?.photoUrl || currentUser?.photoURL || PRESET_AVATARS[0]);
+  const [photoUrl, setPhotoUrl] = useState(initialData?.photoUrl || currentUser?.photoURL || '');
   const [category, setCategory] = useState(initialData?.category || 'Sócio Efetivo');
   const [lgpdConsent, setLgpdConsent] = useState(isEditing ? true : false);
-  const [showLgpdModal, setShowLgpdModal] = useState(false);
+  const [allowBirthdayPublic, setAllowBirthdayPublic] = useState(Boolean(initialData?.allowBirthdayPublic));
+  const [allowEventPhotos, setAllowEventPhotos] = useState(initialData?.allowEventPhotos !== undefined ? initialData.allowEventPhotos : true);
+  const [allowCommunications, setAllowCommunications] = useState(initialData?.allowCommunications !== undefined ? initialData.allowCommunications : true);
 
+  // Minor protection state
+  const [parentName, setParentName] = useState(initialData?.parentName || '');
+  const [parentCpf, setParentCpf] = useState(initialData?.parentCpf || '');
+  const [parentAuthorized, setParentAuthorized] = useState(Boolean(initialData?.parentAuthorized));
+
+  const [showLgpdModal, setShowLgpdModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Helper to check if birth date indicates a minor under 18
+  const checkIsMinor = (dateBr: string) => {
+    if (!isValidDateBR(dateBr)) return false;
+    const parts = dateBr.split('/');
+    const d = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    const y = parseInt(parts[2], 10);
+    if (!d || !m || !y) return false;
+    const birth = new Date(y, m - 1, d);
+    const now = new Date();
+    let age = now.getFullYear() - birth.getFullYear();
+    const mDiff = now.getMonth() - birth.getMonth();
+    if (mDiff < 0 || (mDiff === 0 && now.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age < 18;
+  };
+
+  const isMinor = checkIsMinor(birthDateBR);
 
   const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setCpf(formatCPF(e.target.value));
@@ -120,6 +150,21 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
       return;
     }
 
+    if (isMinor) {
+      if (!parentName.trim() || parentName.trim().length < 3) {
+        setErrorMsg('O cadastro de menores de 18 anos exige o nome completo do responsável legal.');
+        return;
+      }
+      if (!validateCPF(parentCpf)) {
+        setErrorMsg('CPF do responsável legal inválido.');
+        return;
+      }
+      if (!parentAuthorized) {
+        setErrorMsg('É obrigatório que o responsável legal declare expressa autorização para cadastro do menor.');
+        return;
+      }
+    }
+
     if (!lgpdConsent) {
       setErrorMsg('Você deve concordar com os termos de consentimento e tratamento de dados (LGPD).');
       return;
@@ -131,6 +176,7 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
       const memberId = currentMember?.id || currentUser.uid;
       const path = 'members';
       const normalizedBirthDate = dateBRToISO(birthDateBR);
+      const nowIso = new Date().toISOString();
 
       const payload = {
         id: memberId,
@@ -146,11 +192,22 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
         status: isEditing && currentMember?.status === 'aprovado' ? 'aprovado' : 'pendente',
         rejectionReason: '',
         lgpdConsent: true,
-        lgpdConsentDate: new Date().toISOString(),
+        lgpdConsentDate: nowIso,
+        allowBirthdayPublic,
+        birthdayConsentDate: allowBirthdayPublic ? nowIso : undefined,
+        allowEventPhotos,
+        eventPhotosConsentDate: allowEventPhotos ? nowIso : undefined,
+        allowCommunications,
+        communicationsConsentDate: allowCommunications ? nowIso : undefined,
+        consentVersion: 'v2_lgpd_granular',
+        isMinor,
+        parentName: isMinor ? parentName.trim() : undefined,
+        parentCpf: isMinor ? parentCpf.trim() : undefined,
+        parentAuthorized: isMinor ? parentAuthorized : undefined,
         validUntil: currentMember?.validUntil || getDefaultOfficialExpiry(),
         renewalCount: currentMember?.renewalCount || 0,
-        createdAt: currentMember?.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: currentMember?.createdAt || nowIso,
+        updatedAt: nowIso,
       };
 
       await setDoc(doc(db, path, memberId), payload, { merge: true });
@@ -200,77 +257,18 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Photo Selection */}
-        <div className="p-5 rounded-2xl bg-zinc-950/90 border-2 border-emerald-500/30 shadow-md">
-          <div className="flex items-center gap-2 mb-3">
-            <Camera className="w-4 h-4 text-emerald-400" />
-            <label className="text-xs font-bold uppercase tracking-wider text-emerald-300">
-              Local para Colocar a Foto (3x4 Oficial da Carteirinha) *
-            </label>
-          </div>
+        {/* Photo Selection with 3x4 crop and camera */}
+        <PhotoUploader
+          aspectRatio="3:4"
+          storageFolder="members"
+          currentPhotoUrl={photoUrl}
+          onPhotoSelected={setPhotoUrl}
+          label="Foto Oficial do Sócio (Formato 3x4) *"
+          helperText="Arraste uma foto, escolha um arquivo ou tire foto com a câmera do celular com recorte 3x4."
+          enableCamera={true}
+        />
 
-          <div className="flex flex-col sm:flex-row items-center gap-6">
-            {/* 3x4 Frame with Portrait Aspect Ratio */}
-            <div className="relative group shrink-0">
-              <div className="relative w-28 h-36 rounded-2xl overflow-hidden border-2 border-emerald-400 shadow-xl bg-zinc-900 flex items-center justify-center">
-                {photoUrl ? (
-                  <img src={photoUrl} alt="Foto 3x4 do Sócio" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="flex flex-col items-center justify-center text-zinc-500 p-2 text-center text-xs">
-                    <Camera className="w-8 h-8 opacity-40 mb-1" />
-                    <span>Foto 3x4</span>
-                  </div>
-                )}
-              </div>
-              <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-emerald-500 text-zinc-950 font-bold text-[9px] uppercase tracking-wider shadow-sm whitespace-nowrap">
-                Padrão 3x4
-              </span>
-            </div>
 
-            {/* Upload Buttons & Options */}
-            <div className="space-y-3 text-center sm:text-left flex-1">
-              <div>
-                <h4 className="text-xs font-bold text-white">Carregue sua foto de identificação</h4>
-                <p className="text-[11px] text-zinc-400 mt-0.5">
-                  Esta foto será impressa na sua credencial e exibida ao apresentar a carteirinha digital.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
-                <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer transition-all shadow-md">
-                  <Upload className="w-4 h-4" />
-                  <span>Selecionar Foto do Aparelho</span>
-                  <input
-                    type="file"
-                    accept="image/png, image/jpeg, image/jpg, image/webp"
-                    onChange={handlePhotoUpload}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-
-              <div className="pt-1">
-                <span className="text-[10px] uppercase font-mono text-zinc-500 block mb-1.5">
-                  Ou selecione uma foto de exemplo para testes:
-                </span>
-                <div className="flex flex-wrap gap-1.5 justify-center sm:justify-start">
-                  {PRESET_AVATARS.map((url, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setPhotoUrl(url)}
-                      className={`w-8 h-8 rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
-                        photoUrl === url ? 'border-emerald-400 scale-110 shadow-md' : 'border-zinc-700 opacity-60 hover:opacity-100'
-                      }`}
-                    >
-                      <img src={url} alt={`Avatar ${i}`} className="w-full h-full object-cover" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Full Name */}
         <div>
@@ -368,6 +366,57 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
           </div>
         </div>
 
+        {/* Minor Protection: Required parent info if age < 18 */}
+        {isMinor && (
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-3">
+            <div className="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase tracking-wider">
+              <UserX className="w-4 h-4" />
+              <span>Autorização Obrigatória de Menor de 18 Anos (ECA & LGPD)</span>
+            </div>
+            <p className="text-[11px] text-zinc-300">
+              O cadastro de associados menores de idade necessita de expressa anuência e dados do responsável legal.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-zinc-300 font-semibold block mb-1">Nome Completo do Responsável Legal *</label>
+                <input
+                  type="text"
+                  value={parentName}
+                  onChange={e => setParentName(e.target.value)}
+                  placeholder="Nome do pai, mãe ou tutor"
+                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-white"
+                  required={isMinor}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-zinc-300 font-semibold block mb-1">CPF do Responsável Legal *</label>
+                <input
+                  type="text"
+                  maxLength={14}
+                  value={parentCpf}
+                  onChange={e => setParentCpf(formatCPF(e.target.value))}
+                  placeholder="000.000.000-00"
+                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-white font-mono"
+                  required={isMinor}
+                />
+              </div>
+            </div>
+            <div className="flex items-start gap-2.5 pt-1">
+              <input
+                type="checkbox"
+                id="parentAuth"
+                checked={parentAuthorized}
+                onChange={e => setParentAuthorized(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded text-emerald-600 border-zinc-700 cursor-pointer"
+                required={isMinor}
+              />
+              <label htmlFor="parentAuth" className="text-xs text-zinc-300 cursor-pointer select-none">
+                <strong className="text-amber-300">Autorização Expressa:</strong> Como responsável legal pelo menor, autorizo expressamente seu cadastro e filiação à Sociedade nos termos do Art. 14 da Lei 13.709/2018 (LGPD).
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* Email & Phone */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -413,7 +462,7 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
           </span>
         </div>
 
-        {/* LGPD Consent Banner */}
+        {/* LGPD Required Consent */}
         <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30">
           <div className="flex items-start gap-3">
             <input
@@ -439,6 +488,55 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
           </div>
         </div>
 
+        {/* Granular Optional Consents */}
+        <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 space-y-3">
+          <span className="text-[10px] uppercase font-mono text-zinc-400 font-bold block">
+            Preferências de Privacidade Adicionais (Opcionais)
+          </span>
+
+          {/* Birthday consent */}
+          <div className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              id="birthdayConsent"
+              checked={allowBirthdayPublic}
+              onChange={e => setAllowBirthdayPublic(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded border-zinc-700 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+            />
+            <label htmlFor="birthdayConsent" className="text-xs text-zinc-300 cursor-pointer select-none">
+              <span className="font-semibold text-white">Autorizo mostrar meu nome e dia/mês de nascimento aos demais sócios</span> (o ano de nascimento e idade nunca são exibidos).
+            </label>
+          </div>
+
+          {/* Event photos consent */}
+          <div className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              id="eventPhotosConsent"
+              checked={allowEventPhotos}
+              onChange={e => setAllowEventPhotos(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded border-zinc-700 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+            />
+            <label htmlFor="eventPhotosConsent" className="text-xs text-zinc-300 cursor-pointer select-none">
+              Autorizo o uso de minha imagem em registros fotográficos de competições, torneios de tiro e eventos tradicionais da Sociedade.
+            </label>
+          </div>
+
+          {/* Communications consent */}
+          <div className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              id="communicationsConsent"
+              checked={allowCommunications}
+              onChange={e => setAllowCommunications(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded border-zinc-700 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+            />
+            <label htmlFor="communicationsConsent" className="text-xs text-zinc-300 cursor-pointer select-none">
+              Desejo receber avisos, convocações de assembleia e informativos da Sociedade por e-mail ou WhatsApp.
+            </label>
+          </div>
+        </div>
+
         {/* Submit Button */}
         <div className="pt-2">
           <button
@@ -455,9 +553,9 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
               </>
             )}
           </button>
-          <p className="text-[11px] text-zinc-500 text-center mt-2.5 flex items-center justify-center gap-1">
-            <Lock className="w-3 h-3" />
-            Seus dados são criptografados e armazenados com segurança institucional no Firebase.
+          <p className="text-[11px] text-zinc-400 text-center mt-2.5 flex items-center justify-center gap-1">
+            <Lock className="w-3 h-3 text-emerald-400" />
+            Seus dados são protegidos em trânsito e em repouso pela infraestrutura do Google Cloud.
           </p>
         </div>
       </form>
@@ -497,7 +595,7 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
               </p>
               <p>
                 <strong>4. Validade da Credencial:</strong> Em consonância com o estatuto social, a credencial digital
-                permanece válida até <strong>31 de Outubro de 2027</strong>, exigindo revalidação e consentimento anual
+                permanece válida pelo ciclo vigente oficial ({formatDateBR(getDefaultOfficialExpiry())}), exigindo revalidação e consentimento anual
                 subsequente.
               </p>
             </div>

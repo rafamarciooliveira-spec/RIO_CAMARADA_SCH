@@ -174,3 +174,17 @@ export async function uploadImageWithFallback(
     };
   }
 }
+
+/**
+ * Convenience helper to upload a single file with fallback
+ */
+export async function uploadImageFile(
+  file: File,
+  folder = 'uploads',
+  options: ImageProcessOptions = {}
+): Promise<string> {
+  const path = `${folder}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+  const res = await uploadImageWithFallback(file, path, options);
+  return res.url;
+}
+

@@ -6,6 +6,7 @@ import { formatDateBR, maskDateBR, dateBRToISO, isValidDateBR } from '../utils/d
 import { triggerPushNotification } from '../utils/pushNotification.ts';
 import { useAuth } from '../context/AuthContext.tsx';
 import { saveOfflineCard } from '../utils/security.ts';
+import { PhotoUploader } from './PhotoUploader.tsx';
 import {
   User,
   Calendar,
@@ -212,67 +213,15 @@ export const EditMemberProfileModal: React.FC<EditModalProps> = ({
           )}
 
           {/* 1. TROCA DE FOTO 3X4 */}
-          <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-3">
-            <label className="block text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-              <Camera className="w-4 h-4" /> Foto do Sócio (Troca de Foto)
-            </label>
-
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div className="w-20 h-24 rounded-2xl overflow-hidden border-2 border-emerald-500/50 bg-zinc-900 shrink-0 shadow-lg relative group">
-                {photoUrl ? (
-                  <img src={photoUrl} alt="Foto do Sócio" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center text-zinc-600 text-xs font-mono">
-                    <User className="w-8 h-8 opacity-40 mb-1" />
-                    <span>Sem Foto</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2 flex-1 text-center sm:text-left">
-                <span className="text-xs font-semibold text-white block">
-                  Foto para a Carteirinha Digital
-                </span>
-                <p className="text-[11px] text-zinc-400 leading-snug">
-                  Selecione uma imagem com boa iluminação (formato 3x4 ou selfie nítida).
-                </p>
-
-                <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer hover:scale-102">
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Escolher Nova Foto do Celular</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handlePhotoUpload}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-            </div>
-
-            {/* Avatares Rápidos de Teste */}
-            <div className="pt-2 border-t border-zinc-800/80">
-              <span className="text-[10px] uppercase font-mono text-zinc-500 block mb-1.5">
-                Ou selecione uma foto da galeria rápida:
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {PRESET_AVATARS.map((url, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setPhotoUrl(url)}
-                    className={`w-9 h-9 rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
-                      photoUrl === url
-                        ? 'border-emerald-400 scale-110 shadow-md ring-1 ring-emerald-400'
-                        : 'border-zinc-700 opacity-60 hover:opacity-100'
-                    }`}
-                  >
-                    <img src={url} alt={`Avatar ${i}`} className="w-full h-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+          <PhotoUploader
+            aspectRatio="3:4"
+            storageFolder="members"
+            currentPhotoUrl={photoUrl}
+            onPhotoSelected={setPhotoUrl}
+            label="Foto Oficial do Sócio (Formato 3x4)"
+            helperText="Arraste uma foto, escolha um arquivo ou tire com a câmera do celular com recorte 3x4."
+            enableCamera={true}
+          />
 
           {/* 2. NOME COMPLETO */}
           <div>

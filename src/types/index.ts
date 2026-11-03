@@ -225,6 +225,7 @@ export interface HomepageSettings {
   heroBadge: string;
   heroTitle: string;
   heroSubtitle: string;
+  associationSubtitle?: string;
   aboutTitle: string;
   aboutText: string;
   associationAddress: string;

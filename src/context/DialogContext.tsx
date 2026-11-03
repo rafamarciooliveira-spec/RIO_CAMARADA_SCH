@@ -22,8 +22,16 @@ export interface AlertDialogOptions {
 }
 
 interface DialogContextType {
-  confirm: (options: ConfirmDialogOptions | string) => Promise<boolean>;
-  alert: (options: AlertDialogOptions | string) => Promise<void>;
+  confirm: (
+    optionsOrTitle: ConfirmDialogOptions | string,
+    messageOrOptions?: any,
+    extraOptions?: any
+  ) => Promise<boolean>;
+  alert: (
+    optionsOrTitle: AlertDialogOptions | string,
+    messageOrOptions?: any,
+    extraOptions?: any
+  ) => Promise<void>;
 }
 
 const DialogContext = createContext<DialogContextType | undefined>(undefined);
@@ -40,47 +48,96 @@ export const DialogProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     resolve: (val: boolean) => void;
   } | null>(null);
 
-  const confirm = useCallback((options: ConfirmDialogOptions | string): Promise<boolean> => {
-    return new Promise<boolean>(resolve => {
-      const isString = typeof options === 'string';
-      const title = !isString && options.title ? options.title : 'Confirmação do Sistema';
-      const message = isString ? options : options.message;
-      const confirmText = (!isString && (options.confirmText || options.confirmLabel)) || 'Confirmar';
-      const cancelText = (!isString && (options.cancelText || options.cancelLabel)) || 'Cancelar';
-      const variant = (!isString && options.variant) || 'warning';
+  const confirm = useCallback(
+    (optionsOrTitle: ConfirmDialogOptions | string, messageOrOptions?: any, extraOptions?: any): Promise<boolean> => {
+      return new Promise<boolean>(resolve => {
+        let title = 'Confirmação do Sistema';
+        let message = '';
+        let confirmText = 'Confirmar';
+        let cancelText = 'Cancelar';
+        let variant: DialogVariant = 'warning';
 
-      setDialogState({
-        isOpen: true,
-        type: 'confirm',
-        title,
-        message,
-        confirmText,
-        cancelText,
-        variant,
-        resolve,
+        if (typeof optionsOrTitle === 'object') {
+          title = optionsOrTitle.title || title;
+          message = optionsOrTitle.message;
+          confirmText = optionsOrTitle.confirmText || optionsOrTitle.confirmLabel || confirmText;
+          cancelText = optionsOrTitle.cancelText || optionsOrTitle.cancelLabel || cancelText;
+          variant = optionsOrTitle.variant || variant;
+        } else if (typeof messageOrOptions === 'object') {
+          message = optionsOrTitle;
+          title = messageOrOptions?.title || title;
+          confirmText = messageOrOptions?.confirmText || messageOrOptions?.confirmLabel || confirmText;
+          cancelText = messageOrOptions?.cancelText || messageOrOptions?.cancelLabel || cancelText;
+          variant = messageOrOptions?.variant || variant;
+        } else if (typeof messageOrOptions === 'string') {
+          title = optionsOrTitle;
+          message = messageOrOptions;
+          if (extraOptions && typeof extraOptions === 'object') {
+            confirmText = extraOptions.confirmText || extraOptions.confirmLabel || confirmText;
+            cancelText = extraOptions.cancelText || extraOptions.cancelLabel || cancelText;
+            variant = extraOptions.variant || variant;
+          }
+        } else {
+          message = String(optionsOrTitle);
+        }
+
+        setDialogState({
+          isOpen: true,
+          type: 'confirm',
+          title,
+          message,
+          confirmText,
+          cancelText,
+          variant,
+          resolve,
+        });
       });
-    });
-  }, []);
+    },
+    []
+  );
 
-  const alert = useCallback((options: AlertDialogOptions | string): Promise<void> => {
-    return new Promise<void>(resolve => {
-      const isString = typeof options === 'string';
-      const title = !isString && options.title ? options.title : 'Aviso do Sistema';
-      const message = isString ? options : options.message;
-      const buttonText = (!isString && (options.buttonText || options.buttonLabel)) || 'Entendido';
-      const variant = (!isString && options.variant) || 'info';
+  const alert = useCallback(
+    (optionsOrTitle: AlertDialogOptions | string, messageOrOptions?: any, extraOptions?: any): Promise<void> => {
+      return new Promise<void>(resolve => {
+        let title = 'Aviso do Sistema';
+        let message = '';
+        let buttonText = 'Entendido';
+        let variant: DialogVariant = 'info';
 
-      setDialogState({
-        isOpen: true,
-        type: 'alert',
-        title,
-        message,
-        confirmText: buttonText,
-        variant,
-        resolve: () => resolve(),
+        if (typeof optionsOrTitle === 'object') {
+          title = optionsOrTitle.title || title;
+          message = optionsOrTitle.message;
+          buttonText = optionsOrTitle.buttonText || optionsOrTitle.buttonLabel || buttonText;
+          variant = optionsOrTitle.variant || variant;
+        } else if (typeof messageOrOptions === 'object') {
+          message = optionsOrTitle;
+          title = messageOrOptions?.title || title;
+          buttonText = messageOrOptions?.buttonText || messageOrOptions?.buttonLabel || buttonText;
+          variant = messageOrOptions?.variant || variant;
+        } else if (typeof messageOrOptions === 'string') {
+          title = optionsOrTitle;
+          message = messageOrOptions;
+          if (extraOptions && typeof extraOptions === 'object') {
+            buttonText = extraOptions.buttonText || extraOptions.buttonLabel || buttonText;
+            variant = extraOptions.variant || variant;
+          }
+        } else {
+          message = String(optionsOrTitle);
+        }
+
+        setDialogState({
+          isOpen: true,
+          type: 'alert',
+          title,
+          message,
+          confirmText: buttonText,
+          variant,
+          resolve: () => resolve(),
+        });
       });
-    });
-  }, []);
+    },
+    []
+  );
 
   const handleConfirm = () => {
     if (!dialogState) return;
@@ -196,3 +253,5 @@ export const useAppDialog = () => {
   }
   return context;
 };
+
+export const useDialog = useAppDialog;

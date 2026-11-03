@@ -4,8 +4,8 @@ export const DEFAULT_TEMPLATES: CardTemplate[] = [
   {
     id: 'template_institucional_ouro',
     name: 'Esmeralda & Ouro Institucional',
-    associationName: 'Associação Beneficente & Cultural União',
-    associationSubtitle: 'Entidade Sem Fins Lucrativos • Fundada em 1984 • CNPJ 12.345.678/0001-90',
+    associationName: 'Associação Rio Camarada',
+    associationSubtitle: 'Schroeder SC, fundado em 21 de Julho de 1955',
     logoUrl: 'shield',
     logoSize: 76,
     logoPosition: 'center',

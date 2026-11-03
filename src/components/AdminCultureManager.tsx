@@ -408,7 +408,7 @@ export const AdminCultureManager: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleSave} className="space-y-4 text-xs">
+            <form onSubmit={e => { e.preventDefault(); handleSave(); }} className="space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-zinc-400 mb-1 font-bold">Categoria Temática *</label>

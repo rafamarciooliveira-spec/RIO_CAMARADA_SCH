@@ -121,6 +121,14 @@ service cloud.firestore {
               'photoUrl',
               'phone',
               'email',
+              'allowBirthdayPublic',
+              'allowEventPhotos',
+              'allowCommunications',
+              'consentVersion',
+              'parentName',
+              'parentCpf',
+              'parentAuthorized',
+              'isMinor',
               'updatedAt',
               'lastGeneratedAt',
               'lastViewToken'
@@ -141,7 +149,7 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // 3. Admin accounts (Membros da diretoria e administradores)
+    // 3. Admin accounts (Membros da diretoria, tesoureiro, conselho fiscal)
     match /admins/{adminId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
@@ -186,13 +194,13 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // 8. Registro de auditoria administrativa (Exportação CSV, etc.)
+    // 8. Registro de auditoria administrativa (Exportação CSV, estornos, etc.)
     match /auditLogs/{logId} {
       allow read, create: if isAdmin();
       allow update, delete: if false;
     }
 
-    // 9. Configurações do Sistema (Modelos de e-mail, etc.)
+    // 9. Configurações do Sistema
     match /systemSettings/{settingId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
@@ -208,6 +216,61 @@ service cloud.firestore {
     match /cultureArticles/{articleId} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // 12. Notícias de Tiro Esportivo
+    match /news/{newsId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 13. Módulo Financeiro: Lançamentos & Livro Caixa (Imutável: nunca pode ser apagado, somente estornado)
+    match /financialTransactions/{transId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if false; // Lançamentos nunca podem ser apagados, só estornados
+    }
+
+    // 14. Módulo Financeiro: Contas e Categorias
+    match /financialAccounts/{accId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /financialCategories/{catId} {
+      allow read, write: if isAdmin();
+    }
+
+    // 15. Módulo Financeiro: Fechamentos Mensais
+    match /financialMonthlyClosures/{closureId} {
+      allow read, write: if isAdmin();
+    }
+
+    // 16. Módulo Financeiro: Mensalidades dos Sócios
+    match /financialMemberFees/{feeId} {
+      allow read, write: if isAdmin();
+    }
+
+    // 17. Módulo Financeiro: Prestação de Contas & Relatórios Publicados para os Sócios
+    match /financialPublishedReports/{reportId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // 18. Configurações Públicas do Site (Quem somos, endereço, telefone, rodapé, DPO)
+    match /siteSettings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 19. LGPD: Fila de Solicitações de Titulares
+    match /dataRequests/{requestId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid
+      );
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow update, delete: if isAdmin();
     }
   }
 }
