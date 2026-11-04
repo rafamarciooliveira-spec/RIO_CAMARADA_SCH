@@ -403,6 +403,7 @@ function EditModal({ m, pii, onClose }: { m: MemberDoc & { id: string }; pii: Pi
   const [fullName, setFullName] = useState(m.fullName);
   const [categoryId, setCategoryId] = useState(m.categoryId);
   const [groups, setGroups] = useState((m.groups || []).join(', '));
+  const [since, setSince] = useState(m.memberSinceYear ? String(m.memberSinceYear) : '');
   const [email, setEmail] = useState(pii?.email || '');
   const [phone, setPhone] = useState(pii?.phone || '');
   const [birthDate, setBirthDate] = useState(pii?.birthDate || '');
@@ -413,6 +414,7 @@ function EditModal({ m, pii, onClose }: { m: MemberDoc & { id: string }; pii: Pi
       fullName: fullName.trim(),
       categoryId,
       groups: groups.split(',').map(g => g.trim()).filter(Boolean).slice(0, 20),
+      ...(/^\d{4}$/.test(since) ? { memberSinceYear: Number(since) } : {}),
     };
     if (canPii && pii) {
       if (email.trim() !== (pii.email || '')) data.email = email.trim();
@@ -450,6 +452,9 @@ function EditModal({ m, pii, onClose }: { m: MemberDoc & { id: string }; pii: Pi
             ))}
           </Select>
         )}
+      </Field>
+      <Field label="Sócio desde (ano)" hint="Aparece na carteirinha.">
+        {id => <Input id={id} inputMode="numeric" maxLength={4} value={since} onChange={e => setSince(e.target.value.replace(/\D/g, '').slice(0, 4))} />}
       </Field>
       <Field label="Grupos" hint="Separados por vírgula. Exemplo: coral, dança">
         {id => <Input id={id} value={groups} onChange={e => setGroups(e.target.value)} />}

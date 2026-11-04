@@ -18,6 +18,7 @@ export interface MemberFormValue {
   email: string;
   phone: string;
   socials: { instagram: string; facebook: string };
+  memberSinceYear: string;
   address: { street: string; number: string; district: string; city: string; state: string; zip: string };
   guardian: { name: string; email: string; phone: string; cpf: string; consent: boolean };
   categoryId: string;
@@ -33,6 +34,7 @@ export function emptyMemberForm(categoryId = ''): MemberFormValue {
     email: '',
     phone: '',
     socials: { instagram: '', facebook: '' },
+    memberSinceYear: '',
     address: { street: '', number: '', district: '', city: '', state: '', zip: '' },
     guardian: { name: '', email: '', phone: '', cpf: '', consent: false },
     categoryId,
@@ -72,6 +74,7 @@ export function toPayload(v: MemberFormValue, tz?: string) {
           }
         : {}),
       categoryId: v.categoryId,
+      ...(/^\d{4}$/.test(v.memberSinceYear || '') ? { memberSinceYear: Number(v.memberSinceYear) } : {}),
       ...(Object.keys(custom).length ? { custom } : {}),
     },
     consents: { cadastro: true as const, imagem: v.consents.imagem, comunicacao: v.consents.comunicacao, marketing: v.consents.marketing },
@@ -84,6 +87,7 @@ export function validateMemberForm(v: MemberFormValue, fields: CustomFieldDef[],
   if (v.cpf.trim() && !validateCPF(v.cpf)) e.cpf = 'CPF inválido.';
   if (v.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email.trim())) e.email = 'E-mail inválido.';
   if (!v.categoryId) e.categoryId = 'Escolha a categoria.';
+  if (v.memberSinceYear && (!/^\d{4}$/.test(v.memberSinceYear) || Number(v.memberSinceYear) < 1850 || Number(v.memberSinceYear) > new Date().getFullYear())) e.memberSinceYear = 'Informe o ano com 4 números.';
   if (v.birthDate && v.birthDate > localDateKey(new Date(), opts.tz)) e.birthDate = 'Data no futuro.';
   if (isMinor(v.birthDate, opts.tz)) {
     if (v.guardian.name.trim().length < 3) e.guardianName = 'Informe o responsável legal.';
@@ -217,6 +221,12 @@ export function MemberForm({ value: v, onChange, categories, customFields, error
             </div>
           </div>
         )}
+      </Block>
+
+      <Block n={++n} title="Associação">
+        <Field label="Sócio desde (ano)" hint="Se você já era sócio antes do sistema, informe o ano em que entrou. Aparece na carteirinha." error={errors.memberSinceYear}>
+          {id => <Input id={id} inputMode="numeric" maxLength={4} value={v.memberSinceYear || ''} onChange={e => set({ memberSinceYear: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder={String(new Date().getFullYear())} />}
+        </Field>
       </Block>
 
       {categories.length > 1 && <Block n={++n} title="Categoria">

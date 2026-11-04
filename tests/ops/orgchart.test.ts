@@ -80,3 +80,12 @@ describe('passagem de cargo', () => {
     await expect(h.call('orgchart.handover', { tenantId: t, positionId: 'tes', memberId: b.memberId, since: '2027-01-01' }, h.actors.secretario)).rejects.toMatchObject({ code: 'permission-denied' });
   });
 });
+
+describe('campos vazios enviados como nulo', () => {
+  it('o organograma salva mesmo quando o site manda null nos campos vazios', async () => {
+    const h = await makeTestTenant();
+    await h.call('orgchart.save', { tenantId: h.tenantId, style: 'corte', title: 'Diretoria', showOnPublicPage: false, positions: [{ id: 'a', title: 'Vice secretária', group: 'Diretoria', order: 1, highlight: false, parentId: null, memberId: null, roleId: null, personName: null }] }, h.actors.presidente);
+    const doc = await h.store.get<{ positions: { title: string }[] }>(P.orgchart(h.tenantId));
+    expect(doc!.positions[0].title).toBe('Vice secretária');
+  });
+});

@@ -32,6 +32,7 @@ const zSocials = z.object({ instagram: zText(120).optional(), facebook: zText(20
 const zPersonal = z.object({
   fullName: zText(150).min(3),
   socials: zSocials,
+  memberSinceYear: z.number().int().min(1850).max(2100).optional(),
   cpf: zText(20).optional(),
   birthDate: zDateKey.optional(),
   email: z.string().email().max(120).optional().or(z.literal('')),
@@ -121,6 +122,7 @@ export async function createMemberCore(ctx: OpContext, a: CreateArgs): Promise<s
     status: a.status,
     birthMonthDay: birthMonthDay(a.data.birthDate),
     isMinor,
+    ...(a.data.memberSinceYear ? { memberSinceYear: a.data.memberSinceYear } : {}),
     ...(a.dependentOf ? { dependentOf: a.dependentOf } : {}),
     groups: [],
     custom: a.data.custom || {},
@@ -388,6 +390,7 @@ export const updateMember = defineOp({
     }
     if (d.groups) basic.groups = d.groups;
     if (d.custom) basic.custom = d.custom;
+    if (d.memberSinceYear) basic.memberSinceYear = d.memberSinceYear;
     if (d.birthDate) Object.assign(basic, { birthMonthDay: birthMonthDay(d.birthDate), isMinor: validateMinor(ctx, d.birthDate, d.guardian || pii.guardian) });
     const piiPatch: Record<string, unknown> = { updatedAt: ctx.nowIso };
     if (d.cpf !== undefined) {

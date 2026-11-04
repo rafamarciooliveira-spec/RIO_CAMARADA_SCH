@@ -15,11 +15,12 @@ type PanelId = 'identidade' | 'cores' | 'layout' | 'campos' | 'verso';
 const SAMPLE = {
   fullName: 'Maria Aparecida dos Santos',
   displayName: 'Maria S.',
-  categoryName: 'Sócio efetivo',
-  membershipNumber: '0042',
+  categoryName: 'Sócio',
   validUntil: '2027-12-31',
   status: 'ativo' as const,
   birthDate: '1980-04-12',
+  memberSince: '1998',
+  roles: ['Rainha do tiro'],
 };
 
 function pickFields(v: CardTemplateDoc): Record<string, unknown> {

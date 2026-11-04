@@ -26,6 +26,10 @@ export interface CardMemberData {
   status: MemberStatus;
   birthDate?: string;
   joinedAt?: string;
+  /** Ano de entrada na sociedade ("Sócio desde") */
+  memberSince?: string;
+  /** Cargos no organograma (Presidente, Rei do tiro...) */
+  roles?: string[];
 }
 
 interface Props {
@@ -48,7 +52,7 @@ interface Props {
 
 export const CARD_BASE = { vertical: { w: 320, h: 508 }, horizontal: { w: 508, h: 320 } } as const;
 /** Maior logo que cabe na faixa do cabeçalho */
-export const LOGO_MAX = { vertical: 96, horizontal: 64 } as const;
+export const LOGO_MAX = { vertical: 88, horizontal: 64 } as const;
 
 const NAME_PX = { sm: 15, base: 17, lg: 19, xl: 22, '2xl': 25 } as const;
 const DETAIL_PX = { xs: 11, sm: 12, base: 13 } as const;
@@ -128,7 +132,7 @@ export const CardView = forwardRef<HTMLDivElement, Props>(function CardView(
   );
 
   const photo = t.showPhoto ? (
-    <div className="shrink-0 rounded-xl overflow-hidden border-2 bg-black/20 flex items-center justify-center" style={{ borderColor: t.accentColor, width: vertical ? 92 : 84, height: vertical ? 112 : 104 }}>
+    <div className="shrink-0 rounded-xl overflow-hidden border-2 bg-black/20 flex items-center justify-center" style={{ borderColor: t.accentColor, width: vertical ? 96 : 84, height: vertical ? 118 : 104 }}>
       {photoUrl ? <img src={photoUrl} alt={`Foto de ${m.fullName}`} className="w-full h-full object-cover" /> : <User className="w-10 h-10 opacity-50" aria-hidden />}
     </div>
   ) : null;
@@ -137,16 +141,24 @@ export const CardView = forwardRef<HTMLDivElement, Props>(function CardView(
   if (m.membershipNumber) rows.push(['Matrícula', m.membershipNumber]);
   if (t.showCategory && m.categoryName) rows.push(['Categoria', m.categoryName]);
   rows.push(['Validade', m.validUntil ? formatDate(m.validUntil) : 'Sem prazo']);
+  if (m.memberSince) rows.push(['Sócio desde', m.memberSince]);
   if (t.showBirthDate && m.birthDate) rows.push(['Nascimento', formatDate(m.birthDate)]);
 
   const name = (
-    <div className="font-extrabold leading-tight break-words" style={{ fontFamily: 'var(--sd-font)', fontSize: namePx, ...lines(2) }}>
-      {m.fullName}
+    <div className="min-w-0">
+      <div className="font-extrabold leading-tight break-words" style={{ fontFamily: 'var(--sd-font)', fontSize: namePx, ...lines(2) }}>
+        {m.fullName}
+      </div>
+      {m.roles?.length ? (
+        <div className="font-semibold uppercase mt-0.5" style={{ color: t.accentColor, fontSize: 10, letterSpacing: '0.12em', ...lines(1) }}>
+          {m.roles.join(' · ')}
+        </div>
+      ) : null}
     </div>
   );
 
   const details = (
-    <dl className="grid gap-x-3 gap-y-1 min-w-0" style={{ fontSize: detailPx, gridTemplateColumns: !vertical && rows.length > 2 ? '1fr 1fr' : '1fr' }}>
+    <dl className="grid gap-x-3 gap-y-1 min-w-0" style={{ fontSize: detailPx, gridTemplateColumns: rows.length > 2 || vertical ? '1fr 1fr' : '1fr' }}>
       {rows.slice(0, 4).map(([k, v]) => (
         <div key={k} className="min-w-0">
           <dt className="opacity-70 uppercase" style={{ fontSize: 9, letterSpacing: '0.08em' }}>
@@ -197,16 +209,17 @@ export const CardView = forwardRef<HTMLDivElement, Props>(function CardView(
     <Face t={t} w={w} h={h}>
       <div className="h-full flex flex-col" style={{ padding: 18, gap: 10 }}>
         {header}
-        <div className="shrink-0 min-h-0" style={{ textAlign, maxHeight: Math.ceil(namePx * 1.25 * 2) }}>
+        <div className="shrink-0 min-h-0" style={{ textAlign }}>
           {name}
         </div>
-        <div className={cx('flex-1 min-h-0 flex gap-3 overflow-hidden', textAlign === 'center' && !photo && 'justify-center')} style={{ textAlign: photo ? 'left' : textAlign }}>
-          {photo}
-          <div className="min-w-0 flex-1 flex flex-col justify-center">{details}</div>
-        </div>
+        {/* Foto no centro da faixa do meio */}
+        <div className="flex-1 min-h-0 flex items-center justify-center overflow-hidden">{photo}</div>
         <div className="shrink-0 flex items-end justify-between gap-3">
-          {statusBlock}
-          {qrBox(92)}
+          <div className="min-w-0 flex-1 flex flex-col gap-2 text-left">
+            {details}
+            {statusBlock}
+          </div>
+          {qrBox(88)}
         </div>
       </div>
     </Face>

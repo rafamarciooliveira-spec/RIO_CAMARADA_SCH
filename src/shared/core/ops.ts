@@ -100,6 +100,13 @@ export function defineOp<S extends ZodType, O>(def: OpDef<S, O>): OpDef<S, O> {
   return def;
 }
 
+/** Tira as chaves com valor null (também dentro de listas e objetos) */
+function dropNulls(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(dropNulls);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).filter(([, x]) => x !== null).map(([k, x]) => [k, dropNulls(x)]));
+  return v;
+}
+
 const registry = new Map<string, OpDef>();
 
 export function registerOps(defs: OpDef[]): void {
@@ -152,7 +159,13 @@ export async function executeOp(env: Env, args: ExecuteArgs): Promise<unknown> {
   const d = def as OpDef;
   if (d.internal && !args.internal) fail('permission-denied', 'Operação interna.');
 
-  const parsed = d.input.safeParse(args.input ?? {});
+  let parsed = d.input.safeParse(args.input ?? {});
+  // O envio das Functions transforma campo vazio em null; se só isso derrubou a validação, tenta sem os nulos
+  // (campos que aceitam null de propósito, como voto em branco, passam já na primeira tentativa)
+  if (!parsed.success) {
+    const retry = d.input.safeParse(dropNulls(args.input ?? {}));
+    if (retry.success) parsed = retry;
+  }
   if (!parsed.success) {
     const first = parsed.error.issues[0];
     fail('invalid-argument', `Dados inválidos${first?.path?.length ? ` em ${first.path.join('.')}` : ''}: ${first?.message || ''}`);

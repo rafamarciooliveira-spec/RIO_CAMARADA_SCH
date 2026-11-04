@@ -122,7 +122,9 @@ export function createFirebaseClient(): DataClient {
     },
     async call<T>(op: string, input: object): Promise<T> {
       try {
-        const res = await api({ op, input });
+        // O envio das Functions troca campo vazio (undefined) por null, que o servidor recusa como "nulo":
+        // tirar os vazios antes de enviar vale para todas as telas de uma vez
+        const res = await api({ op, input: JSON.parse(JSON.stringify(input)) });
         return res.data as T;
       } catch (e) {
         const err = e as { code?: string; message?: string };

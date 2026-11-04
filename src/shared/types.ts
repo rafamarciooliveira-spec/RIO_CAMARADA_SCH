@@ -256,6 +256,7 @@ export interface MemberDoc {
   guardianMemberId?: string;
   dependentOf?: string;
   changePending?: boolean; // há pedido de alteração esperando a diretoria
+  memberSinceYear?: number; // ano em que entrou na sociedade (informado; vale mais que a data de aprovação no sistema)
   groups: string[];
   custom: Record<string, string>;
   createdAt: ISODateTime;

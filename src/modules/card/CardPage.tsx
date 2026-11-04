@@ -83,7 +83,7 @@ function useCardWidth(vertical: boolean): number {
   return w;
 }
 
-const toCardData = (m: MemberDoc, showNumber = true): CardMemberData => ({
+const toCardData = (m: MemberDoc, showNumber = true, roles: string[] = []): CardMemberData => ({
   fullName: m.fullName,
   displayName: m.displayName,
   categoryName: m.categoryName,
@@ -91,6 +91,9 @@ const toCardData = (m: MemberDoc, showNumber = true): CardMemberData => ({
   validUntil: m.validUntil,
   status: m.status,
   joinedAt: m.joinedAt,
+  // Sócio desde: o ano informado na ficha; sem ele, o ano da aprovação no sistema
+  memberSince: m.memberSinceYear ? String(m.memberSinceYear) : m.joinedAt ? m.joinedAt.slice(0, 4) : undefined,
+  roles,
 });
 
 export default function CardPage() {
@@ -155,6 +158,8 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
   const tz = t.tenant.timezone;
   const status: VerifyStatus = cardStatusFor(member, localDateKey(new Date(), tz));
   const orgChart = useDoc<OrgChartDoc>(P.orgchart(t.tenantId));
+  // Cargos da pessoa no organograma vão para a carteirinha (Presidente, Rei do tiro...)
+  const roles = useMemo(() => (orgChart.data?.positions || []).filter(p => p.memberId === member.id).sort((a, b) => a.order - b.order).map(p => p.title), [orgChart.data, member.id]);
   const needsPhoto = t.settings?.cardRequiresPhoto !== false && !member.photoPath;
   const key = offlineKey(t.tenantId, member.id);
   const [offline, setOffline] = useState<OfflineCopy | null>(() => readOffline(key));
@@ -167,14 +172,14 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
 
   // Cópia offline mínima: sem CPF, sem foto, sem contato
   useEffect(() => {
-    const copy: OfflineCopy = { ...toCardData(member, t.settings?.showMembershipNumber === true), tenantName: t.tenant.name, savedAt: new Date().toISOString() };
+    const copy: OfflineCopy = { ...toCardData(member, t.settings?.showMembershipNumber === true, roles), tenantName: t.tenant.name, savedAt: new Date().toISOString() };
     try {
       localStorage.setItem(key, JSON.stringify(copy));
       setOffline(copy);
     } catch {
       /* armazenamento cheio ou bloqueado: segue sem cópia */
     }
-  }, [member, key, t.tenant.name]);
+  }, [member, key, t.tenant.name, t.settings?.showMembershipNumber, roles]);
 
   const issue = useCallback(async () => {
     const r = await run<IssueResult>('card.issue', { tenantId: t.tenantId, memberId: member.id, kind: 'rotativo' }, { silent: true });
@@ -205,7 +210,7 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
     return () => window.clearInterval(id);
   }, [qr]);
 
-  const data = online ? toCardData(member, t.settings?.showMembershipNumber === true) : offline || toCardData(member, t.settings?.showMembershipNumber === true);
+  const data = online ? toCardData(member, t.settings?.showMembershipNumber === true, roles) : offline || toCardData(member, t.settings?.showMembershipNumber === true, roles);
   const caption = !online
     ? 'Sem internet: o QR volta quando a conexão voltar'
     : status !== 'valido'
@@ -312,7 +317,7 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
         </FullScreen>
       )}
 
-      <DownloadDialog open={askDownload} onClose={() => setAskDownload(false)} member={member} template={template} logoSrc={logoSrc} photoUrl={photoUrl} />
+      <DownloadDialog open={askDownload} onClose={() => setAskDownload(false)} member={member} template={template} logoSrc={logoSrc} photoUrl={photoUrl} roles={roles} />
     </div>
   );
 }
@@ -341,6 +346,7 @@ function DownloadDialog({
   template,
   logoSrc,
   photoUrl,
+  roles,
 }: {
   open: boolean;
   onClose: () => void;
@@ -348,6 +354,7 @@ function DownloadDialog({
   template: CardTemplateDoc;
   logoSrc: string;
   photoUrl: string | null;
+  roles: string[];
 }) {
   const t = useTenant();
   const { run } = useOp();
@@ -428,7 +435,7 @@ function DownloadDialog({
       {error && <Notice tone="bad">{error}</Notice>}
       {render && (
         <div className="fixed -left-[9999px] top-0" aria-hidden>
-          <CardView ref={node} both template={template} member={toCardData(member, t.settings?.showMembershipNumber === true)} logoSrc={logoSrc} photoUrl={photoUrl} qrDataUrl={render.qr} qrCaption="Escaneie para autenticar" banner={render.banner} labelCard={t.labels.card} />
+          <CardView ref={node} both template={template} member={toCardData(member, t.settings?.showMembershipNumber === true, roles)} logoSrc={logoSrc} photoUrl={photoUrl} qrDataUrl={render.qr} qrCaption="Escaneie para autenticar" banner={render.banner} labelCard={t.labels.card} />
         </div>
       )}
     </Modal>
