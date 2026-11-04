@@ -83,11 +83,11 @@ function useCardWidth(vertical: boolean): number {
   return w;
 }
 
-const toCardData = (m: MemberDoc): CardMemberData => ({
+const toCardData = (m: MemberDoc, showNumber = true): CardMemberData => ({
   fullName: m.fullName,
   displayName: m.displayName,
   categoryName: m.categoryName,
-  membershipNumber: m.membershipNumber,
+  membershipNumber: showNumber ? m.membershipNumber : undefined,
   validUntil: m.validUntil,
   status: m.status,
   joinedAt: m.joinedAt,
@@ -167,7 +167,7 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
 
   // Cópia offline mínima: sem CPF, sem foto, sem contato
   useEffect(() => {
-    const copy: OfflineCopy = { ...toCardData(member), tenantName: t.tenant.name, savedAt: new Date().toISOString() };
+    const copy: OfflineCopy = { ...toCardData(member, t.settings?.showMembershipNumber === true), tenantName: t.tenant.name, savedAt: new Date().toISOString() };
     try {
       localStorage.setItem(key, JSON.stringify(copy));
       setOffline(copy);
@@ -205,7 +205,7 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
     return () => window.clearInterval(id);
   }, [qr]);
 
-  const data = online ? toCardData(member) : offline || toCardData(member);
+  const data = online ? toCardData(member, t.settings?.showMembershipNumber === true) : offline || toCardData(member, t.settings?.showMembershipNumber === true);
   const caption = !online
     ? 'Sem internet: o QR volta quando a conexão voltar'
     : status !== 'valido'
@@ -221,7 +221,7 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
       <div className="max-w-md space-y-3 p-4 rounded-2xl border border-line bg-surface">
         <div className="font-semibold">Falta a foto de {member.displayName}</div>
         <p className="text-sm text-muted">A {t.labels.card.toLowerCase()} só é liberada com foto. Use uma foto de rosto, de frente e com boa luz. Ela fica guardada com segurança e só aparece na carteirinha.</p>
-        <PhotoUpload memberId={member.id} hasPhoto={false} label="Tirar ou escolher a foto" />
+        <PhotoUpload memberId={member.id} hasPhoto={false} own={member.id === t.member?.id} />
       </div>
     );
   }
@@ -255,7 +255,7 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
               icon={<FileText className="w-4 h-4" />}
               onClick={async () => {
                 const { memberDeclarationPdf, presidentSigner } = await import('../../app/pdf.ts');
-                await memberDeclarationPdf(t.tenant, member, { memberLabel: t.labels.member, signer: presidentSigner(orgChart.data) });
+                await memberDeclarationPdf(t.tenant, { ...member, membershipNumber: t.settings?.showMembershipNumber === true ? member.membershipNumber : undefined }, { memberLabel: t.labels.member, signer: presidentSigner(orgChart.data) });
               }}
             >
               Declaração de {t.labels.member.toLowerCase()}
@@ -428,7 +428,7 @@ function DownloadDialog({
       {error && <Notice tone="bad">{error}</Notice>}
       {render && (
         <div className="fixed -left-[9999px] top-0" aria-hidden>
-          <CardView ref={node} both template={template} member={toCardData(member)} logoSrc={logoSrc} photoUrl={photoUrl} qrDataUrl={render.qr} qrCaption="Escaneie para autenticar" banner={render.banner} labelCard={t.labels.card} />
+          <CardView ref={node} both template={template} member={toCardData(member, t.settings?.showMembershipNumber === true)} logoSrc={logoSrc} photoUrl={photoUrl} qrDataUrl={render.qr} qrCaption="Escaneie para autenticar" banner={render.banner} labelCard={t.labels.card} />
         </div>
       )}
     </Modal>

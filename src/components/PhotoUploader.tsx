@@ -1,8 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { uploadImageWithFallback } from '../utils/imageStorage.ts';
+import { auth } from '../firebase/config.ts';
+import { fetchRemoteImageAsBlob } from '../utils/image.ts';
 import {
   Camera,
   Upload,
+  Image as ImageIcon,
   Trash2,
   RefreshCw,
   Crop,
@@ -24,6 +27,7 @@ interface PhotoUploaderProps {
   label?: string;
   helperText?: string;
   enableCamera?: boolean;
+  googlePhotoUrl?: string;
 }
 
 export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
@@ -32,8 +36,9 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
   aspectRatio = 'free',
   storageFolder = 'photos',
   label = 'Carregar Foto',
-  helperText = 'Arraste uma foto ou selecione do seu aparelho.',
+  helperText = 'Escolha da galeria, tire com a câmera ou use sua foto da conta Google.',
   enableCamera = true,
+  googlePhotoUrl,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -47,8 +52,42 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  // File input ref
+  // File input refs
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const mobileCameraInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [authGooglePhoto, setAuthGooglePhoto] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (googlePhotoUrl) {
+      setAuthGooglePhoto(googlePhotoUrl);
+      return;
+    }
+    try {
+      const u = auth?.currentUser;
+      const photo = u?.photoURL || u?.providerData?.find(p => p.photoURL)?.photoURL || null;
+      if (photo) setAuthGooglePhoto(photo);
+    } catch {
+      // ignore
+    }
+  }, [googlePhotoUrl]);
+
+  const handleUseGooglePhoto = async () => {
+    if (!authGooglePhoto) return;
+    setProcessing(true);
+    setUploadProgress(15);
+    setWarningNotice(null);
+    try {
+      const blob = await fetchRemoteImageAsBlob(authGooglePhoto, 600);
+      await processAndUpload(blob);
+    } catch (err: any) {
+      console.error('Erro ao buscar foto do Google:', err);
+      setWarningNotice('Erro ao buscar foto do Google: ' + (err.message || 'Falha de conexão.'));
+    } finally {
+      setProcessing(false);
+      setUploadProgress(null);
+    }
+  };
 
   // Stop camera when modal closes
   const stopCamera = () => {
@@ -125,7 +164,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
     processAndUpload(capturedDataUrl);
   };
 
-  const processAndUpload = async (fileOrDataUrl: File | string) => {
+  const processAndUpload = async (fileOrDataUrl: File | Blob | string) => {
     setProcessing(true);
     setUploadProgress(10);
     setWarningNotice(null);
@@ -258,6 +297,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
 
             {/* Buttons Row */}
             <div className="flex flex-wrap items-center justify-center gap-2 pt-2.5">
+              {/* File input sem capture para abrir a Galeria de fotos */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -266,29 +306,68 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
                 className="hidden"
               />
 
+              {/* File input com capture="user" para acionar a câmera nativa no celular */}
+              <input
+                ref={mobileCameraInputRef}
+                type="file"
+                accept="image/png, image/jpeg, image/jpg, image/webp"
+                capture="user"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+
+              {/* Botão Galeria */}
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={processing}
-                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                title="Escolha uma foto da sua galeria de fotos ou arquivos"
               >
-                <Upload className="w-3.5 h-3.5" />
-                <span>{currentPhotoUrl ? 'Trocar Foto' : 'Escolher Arquivo'}</span>
+                <ImageIcon className="w-3.5 h-3.5" />
+                <span>{currentPhotoUrl ? 'Trocar da Galeria' : 'Escolher da Galeria'}</span>
               </button>
 
+              {/* Botão Câmera */}
               {enableCamera && (
                 <button
                   type="button"
-                  onClick={handleStartCamera}
+                  onClick={() => {
+                    if (typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+                      mobileCameraInputRef.current?.click();
+                    } else {
+                      handleStartCamera();
+                    }
+                  }}
                   disabled={processing}
                   className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold transition-all border border-zinc-700 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  title="Abrir câmera do celular ou computador"
+                  title="Tirar foto com a câmera do celular ou computador"
                 >
                   <Camera className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Tirar com a Câmera</span>
                 </button>
               )}
 
+              {/* Botão Foto do Google */}
+              {authGooglePhoto && (
+                <button
+                  type="button"
+                  onClick={handleUseGooglePhoto}
+                  disabled={processing}
+                  className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold transition-all border border-zinc-700 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  title="Usar a foto do seu perfil da conta Google"
+                >
+                  <img
+                    src={authGooglePhoto}
+                    alt=""
+                    className="w-3.5 h-3.5 rounded-full object-cover border border-emerald-500/50"
+                    crossOrigin="anonymous"
+                  />
+                  <span>Foto do Google</span>
+                </button>
+              )}
+
+              {/* Botão Remover */}
               {currentPhotoUrl && (
                 <button
                   type="button"

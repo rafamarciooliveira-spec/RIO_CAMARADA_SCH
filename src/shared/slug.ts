@@ -6,7 +6,7 @@ export const RESERVED_SLUGS = new Set([
   'cadastro', 'conta', 'config', 'configuracoes', 'portal', 'painel', 'dashboard', 'blog',
   'precos', 'planos', 'contato', 'sobre', 'status', 'docs', 'mail', 'email', 'ftp', 'cdn',
   'auth', 'oauth', 'callback', 'webhook', 'webhooks', 'ics', 'robots.txt', 'sitemap.xml',
-  'favicon.ico', 'manifest.webmanifest', 'sw.js', 'convite', 'invite', 'null', 'undefined', 'entrar', 'federacao', 'federacoes',
+  'favicon.ico', 'manifest.webmanifest', 'sw.js', 'convite', 'invite', 'null', 'undefined', 'entrar', 'federacao', 'federacoes', 'plataforma',
 ]);
 
 export function normalizeSlug(input: string): string {

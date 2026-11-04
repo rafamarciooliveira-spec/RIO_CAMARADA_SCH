@@ -1,16 +1,16 @@
 import { PushToggle } from './PushToggle.tsx';
 /** Meu perfil e privacidade: dados, contato, foto, consentimentos, cópia dos dados e pedidos LGPD. */
 import { useCallback, useEffect, useState } from 'react';
-import { Camera, Download, FileJson, ShieldCheck, Trash2 } from 'lucide-react';
-import { useData, useFileUrl, useList, useOp, useSession } from '../../app/DataContext.tsx';
+import { Download, FileJson, ShieldCheck, Trash2 } from 'lucide-react';
+import { useFileUrl, useList, useOp, useSession } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
 import { P } from '../../shared/paths.ts';
 import { formatCPF } from '../../shared/cpf.ts';
 import { formatDate, formatDateTime } from '../../shared/dates.ts';
 import { MEMBER_STATUS_LABEL, type MemberPiiDoc, type PrivacyRequestDoc } from '../../shared/types.ts';
 import { buildSafeCsv, downloadCsv } from '../../utils/csv.ts';
-import { randomId, resizeImage } from '../../utils/image.ts';
 import { RequestChangeModal } from './RequestChangeModal.tsx';
+import { PhotoUpload } from './PhotoUpload.tsx';
 import { Badge, Button, Card, EmptyState, Field, Input, Loading, Notice, PageHeader, Section, Select, Textarea, Toggle, useConfirm } from '../../ui/index.tsx';
 
 type Pii = Omit<MemberPiiDoc, 'cpfEnc' | 'cpfHmac'>;
@@ -62,7 +62,7 @@ export default function ProfilePage() {
 
 function Profile() {
   const t = useTenant();
-  const { client } = useData();
+
   const { run, busy } = useOp();
   const confirm = useConfirm();
   const m = t.member!;
@@ -70,12 +70,11 @@ function Profile() {
   const [pii, setPii] = useState<Pii | null>(null);
   const [loading, setLoading] = useState(true);
   const [phone, setPhone] = useState('');
+  const [socials, setSocials] = useState({ instagram: '', facebook: '' });
   const [address, setAddress] = useState({ street: '', number: '', district: '', city: '', state: '', zip: '' });
   const [fullName, setFullName] = useState(m.fullName);
   const [birthDate, setBirthDate] = useState('');
   const [cpf, setCpf] = useState('');
-  const [photoBusy, setPhotoBusy] = useState(false);
-  const [photoError, setPhotoError] = useState('');
   const photo = useFileUrl(m.photoPath);
   const identityEditable = m.status === 'pendente' || m.status === 'rejeitado';
   const [changeOpen, setChangeOpen] = useState(false);
@@ -86,6 +85,7 @@ function Profile() {
     const p = r || ({ consents: [] } as unknown as Pii);
     setPii(p);
     setPhone(p.phone || '');
+    setSocials({ instagram: p.socials?.instagram || '', facebook: p.socials?.facebook || '' });
     setAddress({ street: '', number: '', district: '', city: '', state: '', zip: '', ...(p.address || {}) });
     setBirthDate(p.birthDate || '');
     setLoading(false);
@@ -97,7 +97,7 @@ function Profile() {
 
   const saveContact = async (resubmit = false) => {
     const addr = Object.fromEntries(Object.entries(address).filter(([, v]) => String(v).trim()));
-    const input: Record<string, unknown> = { tenantId: t.tenantId, memberId: m.id, phone: phone.trim(), address: addr };
+    const input: Record<string, unknown> = { tenantId: t.tenantId, memberId: m.id, phone: phone.trim(), address: addr, socials: { ...(socials.instagram.trim() ? { instagram: socials.instagram.trim() } : {}), ...(socials.facebook.trim() ? { facebook: socials.facebook.trim() } : {}) } };
     if (identityEditable) {
       if (fullName.trim() && fullName.trim() !== m.fullName) input.fullName = fullName.trim();
       if (birthDate && birthDate !== pii?.birthDate) input.birthDate = birthDate;
@@ -116,23 +116,6 @@ function Profile() {
     if (r) load();
   };
 
-  const uploadPhoto = async (f: File | undefined) => {
-    if (!f) return;
-    setPhotoBusy(true);
-    setPhotoError('');
-    try {
-      if (f.size > 15 * 1024 * 1024) throw new Error('Foto grande demais (máximo de 15 MB).');
-      // Redesenhar no canvas reduz para 600 px e descarta os metadados EXIF (inclusive localização)
-      const blob = await resizeImage(f, 600, 'image/jpeg', 0.85);
-      const path = `tenants/${t.tenantId}/members/${m.id}/photo/${randomId()}.jpg`;
-      await client.upload(path, blob, 'image/jpeg');
-      await run('members.setPhoto', { tenantId: t.tenantId, memberId: m.id, path }, { success: 'Foto atualizada.' });
-    } catch (e) {
-      setPhotoError((e as Error).message || 'Não foi possível enviar a foto.');
-    } finally {
-      setPhotoBusy(false);
-    }
-  };
 
   const exportData = async (fmt: 'json' | 'csv') => {
     const r = await run<Record<string, unknown>>('privacy.myData', { tenantId: t.tenantId, memberId: m.id });
@@ -168,13 +151,8 @@ function Profile() {
           <div className="w-32 h-40 rounded-2xl overflow-hidden bg-surface-2 flex items-center justify-center text-xs text-muted">
             {photo ? <img src={photo} alt="Sua foto" className="w-full h-full object-cover" /> : 'Sem foto'}
           </div>
-          <label className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold bg-surface-2 border border-line cursor-pointer ${photoBusy ? 'opacity-50' : ''}`}>
-            <Camera className="w-4 h-4" aria-hidden />
-            {photoBusy ? 'Enviando...' : photo ? 'Trocar foto' : 'Enviar foto'}
-            <input type="file" accept="image/jpeg,image/png,image/webp" capture="user" className="sr-only" disabled={photoBusy} onChange={e => uploadPhoto(e.target.files?.[0])} />
-          </label>
+          <PhotoUpload memberId={m.id} hasPhoto={!!m.photoPath} />
           <p className="text-[11px] text-muted">Foto de rosto, de frente, para a {t.labels.card.toLowerCase()}. A imagem é reduzida e os dados de localização são removidos.</p>
-          {photoError && <Notice tone="bad">{photoError}</Notice>}
         </Card>
 
         <Card className="space-y-4">
@@ -187,10 +165,12 @@ function Profile() {
               <dt className="text-xs text-muted">Categoria</dt>
               <dd>{m.categoryName}</dd>
             </div>
-            <div>
-              <dt className="text-xs text-muted">Matrícula</dt>
-              <dd>{m.membershipNumber || 'Após aprovação'}</dd>
-            </div>
+            {t.settings?.showMembershipNumber === true && (
+              <div>
+                <dt className="text-xs text-muted">Matrícula</dt>
+                <dd>{m.membershipNumber || 'Após aprovação'}</dd>
+              </div>
+            )}
             <div>
               <dt className="text-xs text-muted">CPF</dt>
               <dd className="tabular-nums">{pii?.cpfMasked || 'Não informado'}</dd>
@@ -227,6 +207,8 @@ function Profile() {
           )}
           <div className="grid sm:grid-cols-2 gap-3">
             <Field label="Telefone ou WhatsApp">{id => <Input id={id} type="tel" value={phone} maxLength={30} onChange={e => setPhone(e.target.value)} />}</Field>
+            <Field label="Instagram (opcional)">{id => <Input id={id} value={socials.instagram} maxLength={120} placeholder="@seuperfil" onChange={e => setSocials({ ...socials, instagram: e.target.value })} />}</Field>
+            <Field label="Facebook (opcional)">{id => <Input id={id} value={socials.facebook} maxLength={200} onChange={e => setSocials({ ...socials, facebook: e.target.value })} />}</Field>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
             <div className="col-span-2 sm:col-span-4">

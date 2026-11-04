@@ -33,12 +33,23 @@ export const SOCIETY_TYPES: SocietyTypePreset[] = [
     memberLabel: 'Sócio',
     orgStyle: 'corte',
     positions: [
-      ...DIRECAO,
-      { title: 'Diretor(a) de tiro', group: 'Diretoria', order: 5, highlight: false },
-      { title: 'Rei do tiro', group: 'Majestades', order: 20, highlight: true },
-      { title: 'Rainha do tiro', group: 'Majestades', order: 21, highlight: true },
-      { title: 'Cavaleiro', group: 'Majestades', order: 22, highlight: false },
-      { title: 'Dama', group: 'Majestades', order: 23, highlight: false },
+      // O tiro vem primeiro; depois a festa (Schützenfest), as outras modalidades, o juvenil e a diretoria.
+      // Cada sociedade renomeia, apaga ou cria grupos e cargos no editor.
+      { title: 'Rei do tiro', group: 'Tiro', order: 1, highlight: true },
+      { title: 'Rainha do tiro', group: 'Tiro', order: 2, highlight: true },
+      { title: '1º Cavaleiro', group: 'Tiro', order: 3, highlight: false },
+      { title: '2º Cavaleiro', group: 'Tiro', order: 4, highlight: false },
+      { title: 'Suplente', group: 'Tiro', order: 5, highlight: false },
+      { title: 'Rei da Schützenfest', group: 'Schützenfest', order: 6, highlight: true },
+      { title: 'Rainha da seta', group: 'Schützenfest', order: 7, highlight: true },
+      { title: 'Rei do dado', group: 'Dado', order: 8, highlight: false },
+      { title: 'Rainha do dado', group: 'Dado', order: 9, highlight: false },
+      { title: 'Rei do pássaro', group: 'Pássaro', order: 10, highlight: false },
+      { title: 'Rainha do pássaro', group: 'Pássaro', order: 11, highlight: false },
+      { title: 'Rei juvenil', group: 'Juvenil', order: 12, highlight: false },
+      { title: 'Rainha juvenil', group: 'Juvenil', order: 13, highlight: false },
+      ...DIRECAO.map(p => ({ ...p, order: p.order + 20 })),
+      { title: 'Diretor(a) de tiro', group: 'Diretoria', order: 25, highlight: false },
     ],
     competition: { format: 'individual', unit: 'pontos', higherIsBetter: true, label: 'Ranking de tiro' },
   },
@@ -144,3 +155,32 @@ export const STATE_NAMES: Record<string, string> = {
   PE: 'Pernambuco', PI: 'Piauí', PR: 'Paraná', RJ: 'Rio de Janeiro', RN: 'Rio Grande do Norte', RO: 'Rondônia', RR: 'Roraima',
   RS: 'Rio Grande do Sul', SC: 'Santa Catarina', SE: 'Sergipe', SP: 'São Paulo', TO: 'Tocantins',
 };
+
+/** Modalidades sugeridas por tipo de sociedade (a sociedade edita a própria lista) */
+const MODALITIES: Record<string, string[]> = {
+  tiro_esportivo: ['Tiro', 'Dado', 'Pássaro', 'Seta', 'Juvenil', 'Carabina', 'Pistola'],
+  bolao: ['Bolão 23', 'Bolão 16', 'Bocha', 'Juvenil'],
+  futebol: ['Futebol de campo', 'Futebol society', 'Futsal', 'Veteranos', 'Base (sub)', 'Feminino'],
+  folclore: ['Dança', 'Mirim', 'Juvenil', 'Adulto', 'Sênior'],
+  canto: ['Coral misto', 'Coral masculino', 'Coral feminino', 'Infantil'],
+  ginastica: ['Artística', 'Rítmica', 'Geral', 'Infantil'],
+  musica: ['Banda', 'Fanfarra', 'Orquestra', 'Solistas'],
+};
+
+/** Tipos de competição sugeridos (torneio, campeonato, copa...) */
+const KINDS_BASE = ['Torneio', 'Campeonato', 'Copa', 'Liga', 'Desafio', 'Amistoso', 'Etapa externa'];
+const KINDS: Record<string, string[]> = {
+  tiro_esportivo: ['Festa do Rei', 'Schützenfest', 'Rei do dado', 'Rei do pássaro', ...KINDS_BASE],
+  bolao: ['Festa do Rei', ...KINDS_BASE],
+  folclore: ['Festival', 'Mostra', 'Concurso', ...KINDS_BASE],
+  canto: ['Festival', 'Encontro de coros', 'Concurso'],
+  musica: ['Festival', 'Concurso', 'Encontro'],
+};
+
+export function suggestedModalities(typeId?: string): string[] {
+  return MODALITIES[typeId || ''] || [];
+}
+
+export function suggestedCompetitionKinds(typeId?: string): string[] {
+  return KINDS[typeId || ''] || KINDS_BASE;
+}

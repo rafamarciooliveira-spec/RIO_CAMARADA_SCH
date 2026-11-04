@@ -54,7 +54,7 @@ export default function DependentsPage() {
               </div>
               <div className="text-xs text-muted">
                 {d.categoryName}
-                {d.membershipNumber && ` · Matrícula ${d.membershipNumber}`}
+                {d.membershipNumber && t.settings?.showMembershipNumber === true && ` · Matrícula ${d.membershipNumber}`}
                 {d.validUntil && ` · Validade ${formatDate(d.validUntil)}`}
               </div>
               {d.status === 'rejeitado' && d.statusReason && <p className="text-xs text-warn">Ajuste pedido: {d.statusReason}</p>}

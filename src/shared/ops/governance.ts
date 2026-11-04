@@ -758,14 +758,19 @@ export const surveysVote = defineOp({
     const t = tid(ctx);
     const sPath = `${P.surveys(t)}/${input.surveyId}`;
     const vPath = P.surveyVoter(t, input.surveyId, ctx.actor!.uid);
+    // Nome na lista de presença: o do cadastro de sócio, ou o da conta
+    const mine = ctx.membership?.memberId ? await ctx.store.get<MemberDoc>(P.member(t, ctx.membership.memberId)) : null;
+    const name = mine?.displayName || ctx.actor!.displayName || ctx.actor!.email.split('@')[0];
     await ctx.store.runTransaction(async tx => {
       const s = await tx.get<SurveyDoc>(sPath);
       if (!s) fail('not-found', 'Enquete não encontrada.');
-      if (!s!.open) fail('failed-precondition', 'Esta enquete está encerrada.');
+      if (!s!.open || (s!.closesAt && s!.closesAt < ctx.nowIso)) fail('failed-precondition', 'Esta enquete está encerrada.');
       if (input.optionIndex >= s!.options.length) fail('invalid-argument', 'Opção inválida.');
-      if (await tx.get(vPath)) fail('already-exists', 'Você já respondeu esta enquete.');
-      const counts = s!.options.map((_, i) => (s!.counts?.[i] || 0) + (i === input.optionIndex ? 1 : 0));
-      tx.create(vPath, { at: ctx.nowIso });
+      const prev = await tx.get<{ optionIndex?: number }>(vPath);
+      if (prev && !s!.allowChange) fail('already-exists', 'Você já respondeu esta enquete.');
+      if (prev && prev.optionIndex === input.optionIndex) return;
+      const counts = s!.options.map((_, i) => Math.max(0, (s!.counts?.[i] || 0) + (i === input.optionIndex ? 1 : 0) - (prev && i === prev.optionIndex ? 1 : 0)));
+      tx.set(vPath, { at: ctx.nowIso, optionIndex: input.optionIndex, ...(s!.showNames ? { name } : {}) });
       tx.update(sPath, { counts });
     });
     return { ok: true };

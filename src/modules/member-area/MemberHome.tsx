@@ -99,7 +99,7 @@ export default function MemberHome() {
                   <span className="text-sm">{MEMBER_STATUS_LABEL[m.status]}</span>
                 </div>
                 <div className="text-xs text-muted mt-2">
-                  {m.membershipNumber && `Matrícula ${m.membershipNumber}. `}
+                  {m.membershipNumber && t.settings?.showMembershipNumber === true && `Matrícula ${m.membershipNumber}. `}
                   {m.validUntil && `Validade ${formatDate(m.validUntil)}.`}
                 </div>
                 <div className="text-sm text-accent mt-3 flex items-center gap-1">

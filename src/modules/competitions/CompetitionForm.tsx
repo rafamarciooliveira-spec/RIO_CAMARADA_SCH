@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { useOp } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
-import { societyType } from '../../shared/societyTypes.ts';
+import { societyType, suggestedCompetitionKinds, suggestedModalities } from '../../shared/societyTypes.ts';
 import { isTimeUnit } from '../../shared/rankings.ts';
 import type { CompetitionDoc } from '../../shared/types.ts';
 import { Button, Field, Input, Modal, Notice, Select, Textarea, Toggle } from '../../ui/index.tsx';
@@ -55,6 +55,8 @@ export default function CompetitionForm({ competition, hasResults, onClose, onSa
   const [cats, setCats] = useState(() => d.categories.join('\n'));
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD(x => ({ ...x, [k]: v }));
   const isTeams = d.format === 'times';
+  const modalities = t.settings?.modalities?.length ? t.settings.modalities : suggestedModalities(t.tenant.societyType);
+  const kinds = t.settings?.competitionKinds?.length ? t.settings.competitionKinds : suggestedCompetitionKinds(t.tenant.societyType);
   // Filial de federação: a competição pode valer para um campeonato da federação
   const [champs, setChamps] = useState<{ id: string; name: string; season: string }[]>([]);
   const { run } = op;
@@ -113,6 +115,32 @@ export default function CompetitionForm({ competition, hasResults, onClose, onSa
             </Field>
             <Field label="Temporada" hint="Ex.: 2026">
               {id => <Input id={id} value={d.season} maxLength={20} onChange={e => set('season', e.target.value)} />}
+            </Field>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Modalidade" hint="Escolha da lista ou escreva outra">
+              {id => (
+                <>
+                  <Input id={id} list={`${id}-mod`} value={d.modality || ''} maxLength={60} onChange={e => set('modality', e.target.value)} placeholder="Ex.: Tiro, Dado, Futebol society" />
+                  <datalist id={`${id}-mod`}>
+                    {modalities.map(m => (
+                      <option key={m} value={m} />
+                    ))}
+                  </datalist>
+                </>
+              )}
+            </Field>
+            <Field label="Tipo de competição" hint="Torneio, campeonato, copa...">
+              {id => (
+                <>
+                  <Input id={id} list={`${id}-kind`} value={d.kind || ''} maxLength={60} onChange={e => set('kind', e.target.value)} placeholder="Ex.: Campeonato" />
+                  <datalist id={`${id}-kind`}>
+                    {kinds.map(m => (
+                      <option key={m} value={m} />
+                    ))}
+                  </datalist>
+                </>
+              )}
             </Field>
           </div>
           <Field label="Organizador" hint="A própria sociedade, a liga regional, a federação...">

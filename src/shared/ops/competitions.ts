@@ -36,6 +36,8 @@ const zCompetitionData = z.object({
   status: z.enum(['planejada', 'em_andamento', 'encerrada']),
   publicRanking: z.boolean(),
   federationChampionshipId: z.union([zId, z.literal('')]).optional(), // vazio = não vale para campeonato
+  modality: zText(60).optional(),
+  kind: zText(60).optional(),
 });
 
 type CompetitionData = z.infer<typeof zCompetitionData>;

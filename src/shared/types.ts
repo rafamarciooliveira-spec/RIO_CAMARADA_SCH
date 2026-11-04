@@ -173,6 +173,10 @@ export interface TenantSettings {
   doubleApprovalAboveCents: number; // 0 = desligado
   showPhotoOnValidation: boolean;
   cardRequiresPhoto?: boolean; // sem foto, a carteirinha não é emitida (padrão: sim)
+  showMembershipNumber?: boolean; // mostrar o número do sócio para os sócios (padrão: não, para evitar disputa por número baixo)
+  memberMenuHidden?: string[]; // páginas da área do sócio escondidas pela diretoria
+  modalities?: string[]; // modalidades da sociedade (tiro, dado, futebol society...); vazio = sugestão do tipo
+  competitionKinds?: string[]; // tipos de competição (torneio, campeonato, copa...)
   retentionYears: { financeiro: number; atas: number; inativos: number };
   emailTemplates: Record<string, { subject: string; body: string }>;
   activeCardTemplateId: string;
@@ -283,6 +287,7 @@ export interface MemberPiiDoc {
   birthDate?: DateKey;
   email?: string;
   phone?: string;
+  socials?: { instagram?: string; facebook?: string }; // redes sociais do sócio (opcional)
   address?: { street?: string; number?: string; district?: string; city?: string; state?: string; zip?: string };
   guardian?: { name: string; email?: string; phone?: string; cpfMasked?: string; consentAt?: ISODateTime };
   consents: ConsentRecord[];
@@ -746,6 +751,10 @@ export interface SurveyDoc {
   options: string[];
   counts: number[];
   open: boolean;
+  showNames?: boolean; // lista de presença: todos veem quem escolheu cada opção
+  allowChange?: boolean; // a pessoa pode mudar a resposta
+  closesAt?: ISODateTime;
+  createdBy?: string;
   createdAt: ISODateTime;
 }
 
@@ -839,6 +848,8 @@ export interface CompetitionDoc {
   status: 'planejada' | 'em_andamento' | 'encerrada';
   publicRanking: boolean;
   federationChampionshipId?: string; // vale para o campeonato da federação
+  modality?: string; // ex.: Tiro, Dado, Futebol society
+  kind?: string; // ex.: Torneio, Campeonato, Copa, Festa do Rei
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }

@@ -8,6 +8,8 @@ import { EMAIL_TEMPLATES } from '../../../shared/templates.ts';
 import type { CustomFieldDef, MemberCategory, TenantSettings } from '../../../shared/types.ts';
 import { Badge, Button, Card, Field, Input, MoneyInput, Notice, Select, Textarea, Toggle, useConfirm } from '../../../ui/index.tsx';
 import { SaveBar, slugId } from './common.tsx';
+import { suggestedCompetitionKinds, suggestedModalities } from '../../../shared/societyTypes.ts';
+import { PAGES } from '../../registry.tsx';
 
 function useSettingsSave() {
   const t = useTenant();
@@ -32,6 +34,7 @@ export function RulesTab({ readOnly }: { readOnly: boolean }) {
     suspendAfterDays: s.suspendAfterDays,
     showPhotoOnValidation: s.showPhotoOnValidation,
     cardRequiresPhoto: s.cardRequiresPhoto !== false,
+    showMembershipNumber: s.showMembershipNumber === true,
   });
   const [dirty, setDirty] = useState(false);
   const setCat = (i: number, p: Partial<MemberCategory>) => (setCats(c => c.map((x, j) => (j === i ? { ...x, ...p } : x))), setDirty(true));
@@ -98,6 +101,8 @@ export function RulesTab({ readOnly }: { readOnly: boolean }) {
         </div>
         <Toggle checked={r.approvalRequired} onChange={v => setRule({ approvalRequired: v })} label="Propostas online precisam de aprovação" />
         <Toggle checked={r.cardRequiresPhoto} onChange={v => setRule({ cardRequiresPhoto: v })} label="Foto obrigatória para liberar a carteirinha" />
+        <Toggle checked={r.showMembershipNumber} onChange={v => setRule({ showMembershipNumber: v })} label="Mostrar o número do sócio na carteirinha e no portal" />
+        <p className="text-[11px] text-muted">Desligado, o número continua existindo para a secretaria, mas não aparece para os sócios.</p>
         <Toggle checked={r.showPhotoOnValidation} onChange={v => setRule({ showPhotoOnValidation: v })} label="Mostrar a foto na validação do QR" />
         <p className="text-[11px] text-muted">A foto aparece só para quem lê o QR, por um link que expira em 2 minutos.</p>
       </div>
@@ -211,7 +216,70 @@ export function ModulesTab({ readOnly }: { readOnly: boolean }) {
         ))}
       </div>
       {!readOnly && <SaveBar dirty={dirty} busy={busy} onSave={save} />}
+      <MemberMenu readOnly={readOnly} />
+      <CompetitionLists readOnly={readOnly} />
     </fieldset>
+  );
+}
+
+/** Modalidades e tipos de competição da sociedade (uma por linha) */
+function CompetitionLists({ readOnly }: { readOnly: boolean }) {
+  const t = useTenant();
+  const { save, busy } = useSettingsSave();
+  const s = t.settings;
+  const [mods, setMods] = useState((s?.modalities?.length ? s.modalities : suggestedModalities(t.tenant.societyType)).join('\n'));
+  const [kinds, setKinds] = useState((s?.competitionKinds?.length ? s.competitionKinds : suggestedCompetitionKinds(t.tenant.societyType)).join('\n'));
+  const [dirty, setDirty] = useState(false);
+  const lines = (x: string) => [...new Set(x.split('\n').map(l => l.trim()).filter(Boolean))].slice(0, 40);
+  if (!t.moduleOn('competicoes')) return null;
+  return (
+    <div className="space-y-3 pt-4 border-t border-line">
+      <div>
+        <h3 className="font-semibold text-sm">Modalidades e tipos de competição</h3>
+        <p className="text-sm text-muted">Aparecem como sugestão ao criar uma competição e viram filtro no ranking. Uma por linha; dá para escrever outra na hora.</p>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Field label="Modalidades" hint="Ex.: Tiro, Dado, Pássaro, Juvenil ou Futebol society, Futsal">
+          {id => <Textarea id={id} rows={7} value={mods} onChange={e => (setMods(e.target.value), setDirty(true))} />}
+        </Field>
+        <Field label="Tipos de competição" hint="Ex.: Torneio, Campeonato, Copa, Festa do Rei">
+          {id => <Textarea id={id} rows={7} value={kinds} onChange={e => (setKinds(e.target.value), setDirty(true))} />}
+        </Field>
+      </div>
+      {!readOnly && <SaveBar dirty={dirty} busy={busy} onSave={async () => (await save({ modalities: lines(mods), competitionKinds: lines(kinds) }, 'Listas salvas.')) && setDirty(false)} />}
+    </div>
+  );
+}
+
+// Início e Meu perfil ficam sempre: é por eles que o sócio se orienta e cuida dos próprios dados
+const FIXED_MEMBER_PAGES = ['inicio', 'perfil'];
+
+/** Quais botões o sócio vê no menu (sem desligar o módulo para a diretoria) */
+function MemberMenu({ readOnly }: { readOnly: boolean }) {
+  const t = useTenant();
+  const { save, busy } = useSettingsSave();
+  const [hidden, setHidden] = useState<string[]>(t.settings?.memberMenuHidden || []);
+  const [dirty, setDirty] = useState(false);
+  const pages = PAGES.filter(p => p.area === 'socio' && !FIXED_MEMBER_PAGES.includes(p.path) && (!p.module || t.moduleOn(p.module)));
+  return (
+    <div className="space-y-3 pt-4 border-t border-line">
+      <div>
+        <h3 className="font-semibold text-sm">Menu do {t.labels.member.toLowerCase()}</h3>
+        <p className="text-sm text-muted">Escolha os botões que aparecem para os sócios. Início e Meu perfil ficam sempre.</p>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-2">
+        {pages.map(p => (
+          <div key={p.path} className="p-3 rounded-xl border border-line">
+            <Toggle
+              checked={!hidden.includes(p.path)}
+              onChange={v => (setHidden(h => (v ? h.filter(x => x !== p.path) : [...h, p.path])), setDirty(true))}
+              label={p.label}
+            />
+          </div>
+        ))}
+      </div>
+      {!readOnly && <SaveBar dirty={dirty} busy={busy} onSave={async () => (await save({ memberMenuHidden: hidden }, 'Menu do sócio salvo.')) && setDirty(false)} />}
+    </div>
   );
 }
 

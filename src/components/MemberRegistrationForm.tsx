@@ -332,8 +332,9 @@ export const MemberRegistrationForm: React.FC<FormProps> = ({
           currentPhotoUrl={photoUrl}
           onPhotoSelected={setPhotoUrl}
           label="Foto Oficial do Sócio (Formato 3x4) *"
-          helperText="Arraste uma foto, escolha um arquivo ou tire com a câmera do celular com recorte 3x4."
+          helperText="Escolha da galeria, tire com a câmera ou use sua foto da conta Google."
           enableCamera={true}
+          googlePhotoUrl={currentUser?.photoURL || ''}
         />
 
         {/* Nome Completo */}

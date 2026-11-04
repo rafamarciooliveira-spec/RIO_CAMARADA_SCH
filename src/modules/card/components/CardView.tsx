@@ -76,7 +76,8 @@ export const CardView = forwardRef<HTMLDivElement, Props>(function CardView(
   const w = width || (vertical ? 300 : 440);
   const h = Math.round(vertical ? w * 1.586 : w / 1.586);
   const align = t.infoAlignment === 'left' ? 'text-left items-start' : t.infoAlignment === 'right' ? 'text-right items-end' : 'text-center items-center';
-  const logoPx = Math.min(t.logoSize || 56, vertical ? 56 : 52);
+  // O controle vai de 28 a 160 px num cartão de 300 px; acompanha a largura real e não passa de 42% (em pé) ou 26% (deitado)
+  const logoPx = Math.round(Math.min((t.logoSize || 64) * (w / 300), w * (vertical ? 0.42 : 0.26)));
   const detail = DETAIL[t.detailsFontSize || 'xs'];
   const visibleCustom = (t.customFields || []).filter(f => f.visible !== false && f.label);
 

@@ -1,5 +1,5 @@
 /**
- * Landing do Sodalis. Regras de movimento em docs/landing/MOTION.md.
+ * Landing do Verein. Regras de movimento em docs/landing/MOTION.md.
  * Não usa Firebase: carrega rápido e é segura para visitantes.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -41,7 +41,7 @@ export function SodalisMark({ size = 32 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden>
       <circle cx="32" cy="32" r="30" fill="none" stroke={BRASS} strokeWidth="1.5" />
       <circle cx="32" cy="32" r="25" fill="none" stroke={BRASS} strokeWidth="0.75" strokeDasharray="1.5 2.5" />
-      <path d="M41 22c-2-3-5.5-4.5-9.5-4.5-5.5 0-9 3-9 7 0 9.5 19 5.5 19 15 0 4.5-4 7.5-10 7.5-4.5 0-8-1.8-10-5" fill="none" stroke={PAPER} strokeWidth="3.2" strokeLinecap="round" />
+      <path d="M21 19 L32 46 L43 19" fill="none" stroke={PAPER} strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -392,7 +392,7 @@ function Story() {
 
   const c = CHAPTERS[idx];
   return (
-    <section ref={ref} style={{ height: `${CHAPTERS.length * 90}vh` }} className="relative" aria-label="Como o Sodalis ajuda">
+    <section ref={ref} style={{ height: `${CHAPTERS.length * 90}vh` }} className="relative" aria-label={`Como o ${BRAND.name} ajuda`}>
       <div className="sticky top-0 h-screen flex items-center overflow-hidden">
         <div className="max-w-6xl mx-auto w-full px-5 grid md:grid-cols-2 gap-8 items-center">
           <div className="relative min-h-[260px]">

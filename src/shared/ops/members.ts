@@ -27,8 +27,11 @@ const zGuardian = z
   .object({ name: zText(120).min(3), email: z.string().email().max(120).optional(), phone: zText(30).optional(), cpf: zText(20).optional(), consent: z.literal(true) })
   .optional();
 
+const zSocials = z.object({ instagram: zText(120).optional(), facebook: zText(200).optional() }).optional();
+
 const zPersonal = z.object({
   fullName: zText(150).min(3),
+  socials: zSocials,
   cpf: zText(20).optional(),
   birthDate: zDateKey.optional(),
   email: z.string().email().max(120).optional().or(z.literal('')),
@@ -129,6 +132,7 @@ export async function createMemberCore(ctx: OpContext, a: CreateArgs): Promise<s
     ...(a.data.birthDate ? { birthDate: a.data.birthDate } : {}),
     ...(a.data.email ? { email: a.data.email.toLowerCase() } : {}),
     ...(a.data.phone ? { phone: a.data.phone } : {}),
+    ...(a.data.socials && (a.data.socials.instagram || a.data.socials.facebook) ? { socials: a.data.socials } : {}),
     ...(a.data.address ? { address: a.data.address } : {}),
     ...(a.data.guardian
       ? {
@@ -405,6 +409,7 @@ export const updateSelf = defineOp({
   input: zTenant.extend({
     memberId: zId,
     phone: zText(30).optional(),
+    socials: zSocials,
     address: zAddress,
     consents: zConsents.partial().omit({ cadastro: true }).optional(),
     fullName: zText(150).min(3).optional(),
@@ -427,6 +432,7 @@ export const updateSelf = defineOp({
     const pii = (await ctx.store.get<MemberPiiDoc>(P.memberPii(t, input.memberId))) || ({ consents: [] } as unknown as MemberPiiDoc);
     const piiPatch: Record<string, unknown> = { updatedAt: ctx.nowIso };
     if (input.phone !== undefined) piiPatch.phone = input.phone;
+    if (input.socials !== undefined) piiPatch.socials = input.socials;
     if (input.address !== undefined) piiPatch.address = input.address;
     if (input.birthDate) piiPatch.birthDate = input.birthDate;
     if (input.cpf) {

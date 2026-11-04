@@ -45,7 +45,7 @@ const FIRESTORE_DATABASE_ID = defineString('FIRESTORE_DATABASE_ID', {
   description: 'Banco do Firestore usado pelo servidor ((default) recomendado nos projetos novos)',
 });
 const APP_URL = defineString('APP_URL', { default: 'http://localhost:3000', description: 'URL pública do app (links e QR)' });
-const MAIL_FROM = defineString('MAIL_FROM', { default: 'Sodalis <nao-responda@sodalis.app>', description: 'Remetente dos e-mails (domínio verificado na Resend)' });
+const MAIL_FROM = defineString('MAIL_FROM', { default: 'Verein <nao-responda@verein.app>', description: 'Remetente dos e-mails (domínio verificado na Resend)' });
 const REQUIRE_MASTER_MFA = defineBoolean('REQUIRE_MASTER_MFA', { default: false, description: 'Exigir verificação em duas etapas do administrador geral (precisa do Identity Platform)' });
 const ENFORCE_APP_CHECK = defineBoolean('ENFORCE_APP_CHECK', { default: false, description: 'Exigir App Check na api' });
 

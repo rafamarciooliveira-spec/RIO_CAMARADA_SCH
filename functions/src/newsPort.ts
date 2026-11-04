@@ -8,7 +8,7 @@ import { googleNewsRssUrl, parseFeed } from '../../src/shared/rss.ts';
 
 const TIMEOUT_MS = 8000;
 const MAX_BYTES = 1024 * 1024;
-const USER_AGENT = 'SodalisBot/1.0 (plataforma Sodalis de sociedades culturais; manchetes para associados)';
+const USER_AGENT = 'VereinBot/1.0 (plataforma Verein de sociedades culturais; manchetes para associados)';
 
 async function readLimited(res: Response, maxBytes: number): Promise<string> {
   const declared = Number(res.headers.get('content-length') || 0);

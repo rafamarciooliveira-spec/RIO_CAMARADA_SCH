@@ -24,7 +24,7 @@ export interface ImageUploadResult {
  * Resizes and compresses an image data URL or Image object using HTML5 canvas
  */
 export async function compressImageCanvas(
-  dataUrlOrFile: string | File,
+  dataUrlOrFile: string | File | Blob,
   options: ImageProcessOptions = {}
 ): Promise<{ dataUrl: string; blob: Blob; sizeKb: number }> {
   const {
@@ -135,7 +135,7 @@ export async function compressImageCanvas(
  * Uploads an image to Firebase Storage if possible; otherwise returns tiny compressed base64.
  */
 export async function uploadImageWithFallback(
-  fileOrDataUrl: File | string,
+  fileOrDataUrl: File | Blob | string,
   storagePath: string,
   options: ImageProcessOptions = {}
 ): Promise<ImageUploadResult> {

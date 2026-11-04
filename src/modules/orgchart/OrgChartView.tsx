@@ -78,11 +78,19 @@ function Tree({ positions }: { positions: OrgPosition[] }) {
 function Court({ positions }: { positions: OrgPosition[] }) {
   const highlights = positions.filter(p => p.highlight).sort(sortPos);
   const others = positions.filter(p => !p.highlight);
+  // Destaques por grupo, na ordem dos cargos (ex.: Tiro, depois Schützenfest)
+  const hg = new Map<string, OrgPosition[]>();
+  for (const p of highlights) hg.set(p.group, [...(hg.get(p.group) || []), p]);
   return (
     <div className="space-y-8">
       {highlights.length > 0 && (
-        <div className="rounded-3xl p-6 border border-accent/30 bg-gradient-to-b from-accent/10 to-transparent">
-          <div className="flex flex-wrap justify-center gap-4">{highlights.map(p => <Person key={p.id} p={p} big />)}</div>
+        <div className="rounded-3xl p-6 border border-accent/30 bg-gradient-to-b from-accent/10 to-transparent space-y-5">
+          {[...hg.entries()].map(([g, list]) => (
+            <div key={g} className="space-y-2">
+              {hg.size > 1 && <h3 className="text-xs uppercase tracking-wider text-accent text-center">{g}</h3>}
+              <div className="flex flex-wrap justify-center gap-4">{list.map(p => <Person key={p.id} p={p} big />)}</div>
+            </div>
+          ))}
         </div>
       )}
       <Groups positions={others} />

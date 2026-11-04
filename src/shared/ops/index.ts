@@ -15,6 +15,7 @@ import { competitionOps } from './competitions.ts';
 import { orgchartOps } from './orgchart.ts';
 import { federationOps } from './federation.ts';
 import { billingOps } from './billing.ts';
+import { surveyOps } from './surveys.ts';
 
 let done = false;
 export function registerAllOps(): void {
@@ -36,6 +37,7 @@ export function registerAllOps(): void {
     ...orgchartOps,
     ...federationOps,
     ...billingOps,
+    ...surveyOps,
     jobRunnerOp,
   ] as OpDef[]);
 }

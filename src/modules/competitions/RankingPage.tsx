@@ -83,13 +83,15 @@ function CompetitionList() {
   const [scope, setScope] = useState('');
   const [status, setStatus] = useState('');
   const [season, setSeason] = useState('');
+  const [modality, setModality] = useState('');
   const [q, setQ] = useState('');
   const [creating, setCreating] = useState(false);
   const list = useList<CompetitionDoc>(P.competitions(t.tenantId), { orderBy: [['season', 'desc']], limit: 200 });
   const seasons = [...new Set(list.data.map(c => c.season))].sort().reverse();
+  const modalities = [...new Set(list.data.map(c => c.modality || '').filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const qn = q.trim().toLowerCase();
   const rows = list.data
-    .filter(c => (!scope || c.scope === scope) && (!status || c.status === status) && (!season || c.season === season))
+    .filter(c => (!scope || c.scope === scope) && (!status || c.status === status) && (!season || c.season === season) && (!modality || c.modality === modality))
     .filter(c => !qn || `${c.name} ${c.organizer}`.toLowerCase().includes(qn));
   const columns: Column<WithId<CompetitionDoc>>[] = [
     {
@@ -99,7 +101,7 @@ function CompetitionList() {
         <div className="min-w-0">
           <div className="font-medium truncate">{c.name}</div>
           <div className="text-xs text-muted truncate">
-            {SCOPE[c.scope]}
+            {[c.modality, c.kind || SCOPE[c.scope]].filter(Boolean).join(' · ')}
             {c.organizer ? ` · ${c.organizer}` : ''}
           </div>
         </div>
@@ -132,6 +134,16 @@ function CompetitionList() {
             <option value="interno">Torneios internos</option>
             <option value="externo">Etapas externas</option>
           </Select>
+          {modalities.length > 1 && (
+            <Select aria-label="Filtrar por modalidade" value={modality} onChange={e => setModality(e.target.value)} className="sm:w-48">
+              <option value="">Todas as modalidades</option>
+              {modalities.map(m => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </Select>
+          )}
           <Select aria-label="Filtrar por situação" value={status} onChange={e => setStatus(e.target.value)} className="sm:w-44">
             <option value="">Todas as situações</option>
             {Object.entries(STATUS).map(([k, v]) => (

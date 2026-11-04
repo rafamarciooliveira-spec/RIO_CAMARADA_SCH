@@ -3,7 +3,7 @@
  * Menor de 18 anos exige responsável legal com consentimento (LGPD art. 14).
  * Consentimentos separados: cadastro obrigatório; imagem, comunicação e marketing opcionais.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { ageOn, localDateKey } from '../../../shared/dates.ts';
 import { formatCPF, validateCPF } from '../../../shared/cpf.ts';
@@ -17,6 +17,7 @@ export interface MemberFormValue {
   birthDate: string;
   email: string;
   phone: string;
+  socials: { instagram: string; facebook: string };
   address: { street: string; number: string; district: string; city: string; state: string; zip: string };
   guardian: { name: string; email: string; phone: string; cpf: string; consent: boolean };
   categoryId: string;
@@ -31,6 +32,7 @@ export function emptyMemberForm(categoryId = ''): MemberFormValue {
     birthDate: '',
     email: '',
     phone: '',
+    socials: { instagram: '', facebook: '' },
     address: { street: '', number: '', district: '', city: '', state: '', zip: '' },
     guardian: { name: '', email: '', phone: '', cpf: '', consent: false },
     categoryId,
@@ -55,6 +57,7 @@ export function toPayload(v: MemberFormValue, tz?: string) {
       ...(v.cpf.trim() ? { cpf: v.cpf.trim() } : {}),
       ...(v.birthDate ? { birthDate: v.birthDate } : {}),
       ...(v.email.trim() ? { email: v.email.trim() } : {}),
+      ...(v.socials?.instagram.trim() || v.socials?.facebook.trim() ? { socials: { ...(v.socials.instagram.trim() ? { instagram: v.socials.instagram.trim() } : {}), ...(v.socials.facebook.trim() ? { facebook: v.socials.facebook.trim() } : {}) } } : {}),
       ...(v.phone.trim() ? { phone: v.phone.trim() } : {}),
       ...(Object.keys(addr).length ? { address: addr } : {}),
       ...(minor
@@ -125,6 +128,11 @@ interface Props {
 
 export function MemberForm({ value: v, onChange, categories, customFields, errors, tz, tenantName, selfService, emailLocked, memberLabel }: Props) {
   const set = (patch: Partial<MemberFormValue>) => onChange({ ...v, ...patch });
+  // Uma categoria só: ela é escolhida sozinha e o bloco nem aparece
+  const only = categories.length === 1 ? categories[0].id : '';
+  useEffect(() => {
+    if (only && v.categoryId !== only) onChange({ ...v, categoryId: only });
+  }, [only, v, onChange]);
   const minor = useMemo(() => isMinor(v.birthDate, tz), [v.birthDate, tz]);
   const [showAddress, setShowAddress] = useState(Object.values(v.address).some(Boolean));
   let n = 0;
@@ -176,6 +184,12 @@ export function MemberForm({ value: v, onChange, categories, customFields, error
           <Field label="Telefone ou WhatsApp">
             {id => <Input id={id} type="tel" autoComplete="tel" value={v.phone} maxLength={30} onChange={e => set({ phone: e.target.value })} placeholder="(47) 90000-0000" />}
           </Field>
+          <Field label="Instagram (opcional)">
+            {id => <Input id={id} value={v.socials?.instagram || ''} maxLength={120} onChange={e => set({ socials: { ...(v.socials || { instagram: '', facebook: '' }), instagram: e.target.value } })} placeholder="@seuperfil" />}
+          </Field>
+          <Field label="Facebook (opcional)">
+            {id => <Input id={id} value={v.socials?.facebook || ''} maxLength={200} onChange={e => set({ socials: { ...(v.socials || { instagram: '', facebook: '' }), facebook: e.target.value } })} placeholder="Nome ou endereço do perfil" />}
+          </Field>
         </div>
         {!showAddress ? (
           <Button type="button" variant="ghost" size="sm" onClick={() => setShowAddress(true)}>
@@ -205,7 +219,7 @@ export function MemberForm({ value: v, onChange, categories, customFields, error
         )}
       </Block>
 
-      <Block n={++n} title="Categoria">
+      {categories.length > 1 && <Block n={++n} title="Categoria">
         <Field label={`Categoria de ${memberLabel.toLowerCase()}`} required error={errors.categoryId}>
           {id => (
             <Select id={id} value={v.categoryId} onChange={e => set({ categoryId: e.target.value })}>
@@ -219,7 +233,7 @@ export function MemberForm({ value: v, onChange, categories, customFields, error
             </Select>
           )}
         </Field>
-      </Block>
+      </Block>}
 
       {customFields.length > 0 && (
         <Block n={++n} title="Outras informações">

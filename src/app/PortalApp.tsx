@@ -28,6 +28,8 @@ export function visiblePages(t: ReturnType<typeof useTenant>, area: PageDef['are
     if (p.module && !t.moduleOn(p.module)) return false;
     if (p.needsMember && !t.member) return false;
     if (p.perm && !t.can(p.perm[0], p.perm[1])) return false;
+    // Botões que a diretoria escondeu do menu do sócio
+    if (area === 'socio' && t.settings?.memberMenuHidden?.includes(p.path)) return false;
     return true;
   });
 }
