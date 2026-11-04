@@ -6,6 +6,7 @@ import { useData, useSession } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
 import { AssociationLogo } from '../../components/AssociationLogos.tsx';
 import { Button, Card, Field, Input, Notice } from '../../ui/index.tsx';
+import { RememberMe } from '../../ui/RememberMe.tsx';
 import { errorMessage } from '../../data/client.ts';
 
 export default function LoginPage() {
@@ -64,6 +65,7 @@ export default function LoginPage() {
         <Button className="w-full" variant="secondary" loading={busy} onClick={google}>
           Continuar com a Conta Google
         </Button>
+        <RememberMe />
         {t.tenant.loginMethods?.emailLink !== false && (
           <>
             <div className="text-center text-xs text-muted">ou receba um link no e-mail</div>

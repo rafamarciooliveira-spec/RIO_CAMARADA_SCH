@@ -26,7 +26,7 @@ export default function ApplyPage() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    if (session.user?.email && !v.email) setV(x => ({ ...x, email: session.user!.email }));
+    if (session.user?.email && !v.email) setV(x => ({ ...x, email: session.user!.email, fullName: x.fullName || session.user!.displayName || '' }));
   }, [session.user, v.email]);
 
   if (session.loading) return <Loading />;

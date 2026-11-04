@@ -172,6 +172,7 @@ export interface TenantSettings {
   pixKey?: string; // chave Pix da sociedade (pública por natureza, exibida ao sócio)
   doubleApprovalAboveCents: number; // 0 = desligado
   showPhotoOnValidation: boolean;
+  cardRequiresPhoto?: boolean; // sem foto, a carteirinha não é emitida (padrão: sim)
   retentionYears: { financeiro: number; atas: number; inativos: number };
   emailTemplates: Record<string, { subject: string; body: string }>;
   activeCardTemplateId: string;

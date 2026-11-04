@@ -142,6 +142,7 @@ export const updateSettings = defineOp({
         pixKey: zText(120).optional(),
         doubleApprovalAboveCents: z.number().int().min(0),
         showPhotoOnValidation: z.boolean(),
+        cardRequiresPhoto: z.boolean(),
         retentionYears: z.object({ financeiro: z.number().int().min(5).max(99), atas: z.number().int().min(5).max(99), inativos: z.number().int().min(1).max(99) }),
         emailTemplates: z.record(z.string().max(40), z.object({ subject: zText(200), body: zText(4000) })),
         activeCardTemplateId: zId,

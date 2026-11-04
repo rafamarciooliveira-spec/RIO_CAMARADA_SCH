@@ -32,6 +32,7 @@ export function defaultSettings(nowIso: string): TenantSettings {
     dueDay: 10,
     doubleApprovalAboveCents: 0,
     showPhotoOnValidation: true,
+    cardRequiresPhoto: true,
     retentionYears: { financeiro: 5, atas: 99, inativos: 5 },
     emailTemplates: Object.fromEntries(Object.entries(EMAIL_TEMPLATES).map(([k, v]) => [k, { subject: v.subject, body: v.body }])),
     activeCardTemplateId: 'padrao',

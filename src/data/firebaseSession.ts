@@ -1,10 +1,13 @@
 /** Sessão real: Google (padrão) ou link mágico por e-mail. Sem login por senha. */
 import {
+  browserLocalPersistence,
+  browserSessionPersistence,
   connectAuthEmulator,
   getAuth,
   GoogleAuthProvider,
   isSignInWithEmailLink,
   onIdTokenChanged,
+  setPersistence,
   sendSignInLinkToEmail,
   signInWithEmailLink,
   signInWithPopup,
@@ -13,6 +16,7 @@ import {
   type User,
 } from 'firebase/auth';
 import { firebaseApp, USE_EMULATORS } from './firebaseClient.ts';
+import { rememberMe } from '../ui/RememberMe.tsx';
 import type { SessionUser } from './client.ts';
 
 const LINK_EMAIL_KEY = 'sodalis_link_email';
@@ -44,7 +48,13 @@ export function watchSession(cb: (u: SessionUser | null) => void): () => void {
   return onIdTokenChanged(getAuthInstance(), async u => cb(u ? await toSessionUser(u) : null));
 }
 
+/** Lembrar de mim: login guardado no aparelho (padrão) ou só até fechar o navegador */
+async function applyRemember(a: Auth) {
+  await setPersistence(a, rememberMe() ? browserLocalPersistence : browserSessionPersistence);
+}
+
 export async function signInGoogle(): Promise<void> {
+  await applyRemember(getAuthInstance());
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
   await signInWithPopup(getAuthInstance(), provider);
@@ -64,6 +74,7 @@ export async function completeMagicLink(): Promise<'ok' | 'none' | 'erro'> {
   const a = getAuthInstance();
   const href = window.location.href;
   if (!isSignInWithEmailLink(a, href)) return 'none';
+  await applyRemember(a);
   let email: string | null = null;
   try {
     email = localStorage.getItem(LINK_EMAIL_KEY);

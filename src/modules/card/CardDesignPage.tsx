@@ -146,8 +146,8 @@ export default function CardDesignPage() {
       {!draft || !panelProps ? (
         <EmptyState title="Nenhum modelo ainda" action={canEdit && <Button onClick={fresh}>Criar o primeiro modelo</Button>} />
       ) : (
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_auto] gap-6 items-start">
-          <Card>
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-6 items-start">
+          <Card className="min-w-0">
             <Tabs
               value={panel}
               onChange={setPanel}

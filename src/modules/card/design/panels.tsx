@@ -8,6 +8,7 @@ import { extractPaletteFromLogo, type ExtractedLogoPalette } from '../../../util
 import { randomId, resizeImage } from '../../../utils/image.ts';
 import { Badge, Button, cx, Field, Input, Notice, Select, Toggle } from '../../../ui/index.tsx';
 import { PATTERN_LABEL, type CardPattern, type CardTemplateDoc } from '../cardTemplate.ts';
+import { ColorPicker } from '../../../ui/ColorPicker.tsx';
 
 export interface PanelProps {
   value: CardTemplateDoc;
@@ -147,15 +148,7 @@ export function ColorsPanel({ value, set, logoSrc }: PanelProps) {
         {colors.map(([k, label]) => (
           <Field key={k} label={label}>
             {id => (
-              <div className="flex items-center gap-2">
-                <input id={id} type="color" value={String(value[k])} onChange={e => set({ [k]: e.target.value } as Partial<CardTemplateDoc>)} className="w-10 h-10 rounded-lg border border-line bg-transparent cursor-pointer" />
-                <Input
-                  aria-label={`${label} em hexadecimal`}
-                  value={String(value[k])}
-                  maxLength={7}
-                  onChange={e => /^#[0-9a-fA-F]{0,6}$/.test(e.target.value) && set({ [k]: e.target.value } as Partial<CardTemplateDoc>)}
-                />
-              </div>
+              <ColorPicker id={id} label={label} value={String(value[k])} imageSrc={logoSrc} onChange={v => set({ [k]: v } as Partial<CardTemplateDoc>)} />
             )}
           </Field>
         ))}

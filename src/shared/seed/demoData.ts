@@ -150,7 +150,7 @@ export async function buildDemoData(env: Env, opts: { files?: Map<string, string
       contactEmail: 'contato@exemplo.invalid',
     },
   }, diretoria);
-  await call('tenant.updateSettings', { tenantId: t, settings: { pixKey: 'pix@exemplo.invalid', doubleApprovalAboveCents: 500000, dueDay: 10 } }, diretoria);
+  await call('tenant.updateSettings', { tenantId: t, settings: { pixKey: 'pix@exemplo.invalid', doubleApprovalAboveCents: 500000, dueDay: 10, cardRequiresPhoto: false } }, diretoria);
 
   // ---------- Sócios ----------
   const cats = ['efetivo', 'efetivo', 'efetivo', 'contribuinte', 'benemerito'];
@@ -195,7 +195,7 @@ export async function buildDemoData(env: Env, opts: { files?: Map<string, string
       data: { fullName: 'Marta Schneider', cpf: fakeCpf(r), birthDate: '1969-03-14', email: diretoria.email, categoryId: 'benemerito' },
       consents,
     }, diretoria);
-    await call('members.approve', { tenantId: t, memberId }, diretoria);
+    // A diretoria que se cadastra já entra aprovada
     await env.store.update(P.member(t, memberId), { joinedAt: '2004-05-01' });
     await photo(memberId, 'Marta Schneider', 140, diretoria);
     members.push({ id: memberId, name: 'Marta Schneider', actor: diretoria });

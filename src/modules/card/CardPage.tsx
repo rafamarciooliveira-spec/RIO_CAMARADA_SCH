@@ -5,6 +5,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
+import { Link } from 'react-router-dom';
 import { Download, FileDown, FileText, Maximize2, RefreshCw, RotateCw, WifiOff, X } from 'lucide-react';
 import { useData, useDoc, useFileUrl, useList, useOp } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
@@ -17,6 +18,7 @@ import { Badge, Button, EmptyState, Loading, Modal, Notice, PageHeader, Tabs } f
 import { CardView, type CardMemberData } from './components/CardView.tsx';
 import { fallbackTemplate, type CardTemplateDoc } from './cardTemplate.ts';
 import { useLogoSrc } from './useLogoSrc.ts';
+import { PhotoUpload } from '../member-area/PhotoUpload.tsx';
 
 const ROTATE_MS = 60_000;
 
@@ -114,7 +116,15 @@ export default function CardPage() {
     return (
       <>
         <PageHeader title={t.labels.card} />
-        <EmptyState title="Você ainda não tem cadastro" text={`A ${t.labels.card.toLowerCase()} aparece depois que o seu cadastro de ${t.labels.member.toLowerCase()} for aprovado.`} />
+        <EmptyState
+          title="Você ainda não tem cadastro"
+          text={`A ${t.labels.card.toLowerCase()} aparece depois que o seu cadastro de ${t.labels.member.toLowerCase()} for aprovado. Mesmo quem é da diretoria precisa da própria ficha.`}
+          action={
+            <Link to={t.to('cadastro')}>
+              <Button>Fazer o meu cadastro</Button>
+            </Link>
+          }
+        />
       </>
     );
   }
@@ -145,6 +155,7 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
   const tz = t.tenant.timezone;
   const status: VerifyStatus = cardStatusFor(member, localDateKey(new Date(), tz));
   const orgChart = useDoc<OrgChartDoc>(P.orgchart(t.tenantId));
+  const needsPhoto = t.settings?.cardRequiresPhoto !== false && !member.photoPath;
   const key = offlineKey(t.tenantId, member.id);
   const [offline, setOffline] = useState<OfflineCopy | null>(() => readOffline(key));
   const [side, setSide] = useState<'frente' | 'verso'>('frente');
@@ -177,7 +188,7 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
     setQr({ dataUrl, at: Date.now() });
   }, [run, t.tenantId, member.id]);
 
-  const active = status === 'valido' && online && visible && template.showQrCode;
+  const active = status === 'valido' && online && visible && template.showQrCode && !needsPhoto;
 
   useEffect(() => {
     if (!active) return;
@@ -204,6 +215,16 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
         : qr
           ? `Novo QR em ${left} s`
           : qrError || 'Gerando QR...';
+
+  if (needsPhoto && status === 'valido') {
+    return (
+      <div className="max-w-md space-y-3 p-4 rounded-2xl border border-line bg-surface">
+        <div className="font-semibold">Falta a foto de {member.displayName}</div>
+        <p className="text-sm text-muted">A {t.labels.card.toLowerCase()} só é liberada com foto. Use uma foto de rosto, de frente e com boa luz. Ela fica guardada com segurança e só aparece na carteirinha.</p>
+        <PhotoUpload memberId={member.id} hasPhoto={false} label="Tirar ou escolher a foto" />
+      </div>
+    );
+  }
 
   return (
     <div className="grid lg:grid-cols-[auto_1fr] gap-6 items-start">

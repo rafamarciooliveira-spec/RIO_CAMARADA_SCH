@@ -92,5 +92,7 @@ export async function makeMember(h: Awaited<ReturnType<typeof makeTestTenant>>, 
     who
   );
   await h.call('members.approve', { tenantId: h.tenantId, memberId }, h.actors.presidente);
+  // A carteirinha exige foto: simula o envio (o caminho é o que a tela grava)
+  await h.store.update(P.member(h.tenantId, memberId), { photoPath: `tenants/${h.tenantId}/members/${memberId}/photo/teste.jpg` });
   return { memberId, who };
 }

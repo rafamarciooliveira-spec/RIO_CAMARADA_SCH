@@ -32,6 +32,26 @@ export function visiblePages(t: ReturnType<typeof useTenant>, area: PageDef['are
   });
 }
 
+/** Logado sem ficha de sócio nesta sociedade (ex.: diretoria e administrador geral): atalho para se cadastrar */
+function SelfMemberBanner() {
+  const session = useSession();
+  const { basePath } = useData();
+  const t = useTenant();
+  const location = useLocation();
+  if (basePath || !session.user || t.member || location.pathname.endsWith('/cadastro')) return null;
+  return (
+    <div className="mb-4 p-3 rounded-2xl border border-accent/50 bg-accent/5 flex flex-wrap items-center gap-3">
+      <div className="text-sm flex-1 min-w-48">
+        A sua conta <strong>{session.user.email}</strong> ainda não tem ficha de {t.labels.member.toLowerCase()} na {t.tenant.shortName || t.tenant.name}.
+        {t.can('socios', 'aprovar') && ' Como você é da diretoria, a ficha já entra aprovada.'}
+      </div>
+      <Link to={t.to('cadastro')} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-brand text-on-brand">
+        Adicionar-me como {t.labels.member.toLowerCase()}
+      </Link>
+    </div>
+  );
+}
+
 function TenantSwitcher() {
   const session = useSession();
   const { basePath } = useData();
@@ -221,6 +241,7 @@ function Shell() {
           </div>
         )}
         <main className="flex-1 min-w-0 p-4 sm:p-6">
+          <SelfMemberBanner />
           <Suspense fallback={<Loading />}>
             <Routes>
               {routes.map(p => (

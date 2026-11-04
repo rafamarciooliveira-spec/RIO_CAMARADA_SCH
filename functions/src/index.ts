@@ -142,7 +142,8 @@ function toHttpsError(e: unknown, op: string): HttpsError {
 
 // ---------- api ----------
 export const api = onCall(
-  { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK, secrets: SECRETS, memory: '512MiB', timeoutSeconds: 120 },
+  // invoker public: o site chama sem conta do Google Cloud; login e permissão são conferidos em cada operação
+  { region: REGION, invoker: 'public', enforceAppCheck: ENFORCE_APP_CHECK, secrets: SECRETS, memory: '512MiB', timeoutSeconds: 120 },
   async request => {
     const data = (request.data || {}) as { op?: unknown; input?: unknown };
     if (typeof data.op !== 'string' || !/^[A-Za-z0-9_.]{1,80}$/.test(data.op)) throw new HttpsError('invalid-argument', 'Operação inválida.');

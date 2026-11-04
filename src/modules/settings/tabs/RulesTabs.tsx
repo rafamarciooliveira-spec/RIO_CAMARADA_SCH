@@ -31,6 +31,7 @@ export function RulesTab({ readOnly }: { readOnly: boolean }) {
     gracePeriodDays: s.gracePeriodDays,
     suspendAfterDays: s.suspendAfterDays,
     showPhotoOnValidation: s.showPhotoOnValidation,
+    cardRequiresPhoto: s.cardRequiresPhoto !== false,
   });
   const [dirty, setDirty] = useState(false);
   const setCat = (i: number, p: Partial<MemberCategory>) => (setCats(c => c.map((x, j) => (j === i ? { ...x, ...p } : x))), setDirty(true));
@@ -96,6 +97,7 @@ export function RulesTab({ readOnly }: { readOnly: boolean }) {
           <Field label="Suspender após (dias em atraso)">{id => <Input id={id} type="number" min={1} max={365} value={r.suspendAfterDays} onChange={e => setRule({ suspendAfterDays: Number(e.target.value) })} />}</Field>
         </div>
         <Toggle checked={r.approvalRequired} onChange={v => setRule({ approvalRequired: v })} label="Propostas online precisam de aprovação" />
+        <Toggle checked={r.cardRequiresPhoto} onChange={v => setRule({ cardRequiresPhoto: v })} label="Foto obrigatória para liberar a carteirinha" />
         <Toggle checked={r.showPhotoOnValidation} onChange={v => setRule({ showPhotoOnValidation: v })} label="Mostrar a foto na validação do QR" />
         <p className="text-[11px] text-muted">A foto aparece só para quem lê o QR, por um link que expira em 2 minutos.</p>
       </div>

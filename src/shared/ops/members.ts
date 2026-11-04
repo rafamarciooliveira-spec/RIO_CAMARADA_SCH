@@ -217,7 +217,8 @@ export const applyMember = defineOp({
       // O dependente herda os consentimentos do titular, que responde por ele
       for (const d of input.dependents) depIds.push(await createMemberCore(ctx, { data: d, consents: input.consents, status: 'pendente', dependentOf: memberId }));
     }
-    if (!settings.approvalRequired) {
+    // Sem aprovação exigida, ou quem se cadastra já aprova sócios (diretoria): entra aprovado
+    if (!settings.approvalRequired || ctx.can('socios', 'aprovar')) {
       await approveCore(ctx, memberId, {});
       for (const id of depIds) await approveCore(ctx, id, {});
     } else {

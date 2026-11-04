@@ -28,7 +28,8 @@ describe('carteirinha', () => {
     const { memberId, who } = await makeMember(h);
     const tok = await h.call<{ token: string }>('card.issue', { tenantId: h.tenantId, memberId, kind: 'rotativo' }, who);
     const r = await h.call<Record<string, unknown>>('card.verify', { slug: h.tenant.slug, token: tok.token }, null);
-    expect(Object.keys(r).sort()).toEqual(['categoryName', 'checkedAt', 'displayName', 'status', 'tenantName', 'validUntil'].sort());
+    // A foto entra só como link assinado de curta duração (a sociedade pode desligar)
+    expect(Object.keys(r).sort()).toEqual(['categoryName', 'checkedAt', 'displayName', 'photoUrl', 'status', 'tenantName', 'validUntil'].sort());
     const text = JSON.stringify(r);
     expect(text).not.toMatch(/529|982|247|1990|@|90000/);
     expect(r.displayName).toBe('Pessoa S.');
@@ -59,5 +60,18 @@ describe('carteirinha', () => {
     expect(dump).not.toContain('52998224725');
     expect(dump).not.toContain('529.982.247-25');
     expect(dump).toContain('***.982.247-**');
+  });
+});
+
+describe('foto obrigatória', () => {
+  it('sem foto a carteirinha não é emitida; com a regra desligada, é', async () => {
+    const { makeTestTenant: mk, makeMember: mm } = await import('../helpers/env.ts');
+    const { P: paths } = await import('../../src/shared/paths.ts');
+    const h = await mk();
+    const { memberId, who } = await mm(h);
+    await h.store.update(paths.member(h.tenantId, memberId), { photoPath: '' });
+    await expect(h.call('card.issue', { tenantId: h.tenantId, memberId, kind: 'rotativo' }, who)).rejects.toMatchObject({ code: 'failed-precondition' });
+    await h.store.update(paths.settings(h.tenantId), { cardRequiresPhoto: false });
+    await expect(h.call('card.issue', { tenantId: h.tenantId, memberId, kind: 'rotativo' }, who)).resolves.toBeTruthy();
   });
 });

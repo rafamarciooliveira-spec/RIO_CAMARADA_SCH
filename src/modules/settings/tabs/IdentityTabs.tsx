@@ -11,6 +11,7 @@ import { DEFAULT_LABELS, type Branding, type Labels, type TenantDoc } from '../.
 import { Badge, Button, cx, Field, Input, Notice, Select, Textarea, Toggle, useConfirm } from '../../../ui/index.tsx';
 import { useLogoSrc } from '../../card/useLogoSrc.ts';
 import { SaveBar } from './common.tsx';
+import { ColorPicker } from '../../../ui/ColorPicker.tsx';
 import { BR_STATES, SOCIETY_TYPES } from '../../../shared/societyTypes.ts';
 
 const FONTS: Branding['fontFamily'][] = ['Inter', 'Merriweather', 'Playfair Display', 'Montserrat', 'Lora'];
@@ -144,7 +145,7 @@ export function IdentityTab({ readOnly }: { readOnly: boolean }) {
             Sugerir pela logo
           </Button>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid sm:grid-cols-2 gap-3">
           {(
             [
               ['primaryColor', 'Principal'],
@@ -155,10 +156,7 @@ export function IdentityTab({ readOnly }: { readOnly: boolean }) {
           ).map(([k, l]) => (
             <Field key={k} label={l}>
               {id => (
-                <div className="flex items-center gap-2">
-                  <input id={id} type="color" value={b[k]} onChange={e => set({ [k]: e.target.value })} className="w-10 h-10 rounded-lg border border-line bg-transparent cursor-pointer" />
-                  <span className="text-xs font-mono">{b[k]}</span>
-                </div>
+                <ColorPicker id={id} label={l} value={b[k]} imageSrc={logoSrc} onChange={v => set({ [k]: v })} />
               )}
             </Field>
           ))}

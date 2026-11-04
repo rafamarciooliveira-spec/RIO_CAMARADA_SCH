@@ -11,6 +11,7 @@ import { P } from '../../shared/paths.ts';
 import type { MembershipDoc, UserDoc } from '../../shared/types.ts';
 import { BRAND } from '../../brand.ts';
 import { Badge, Button, Card, Field, Input, Loading, Notice } from '../../ui/index.tsx';
+import { RememberMe } from '../../ui/RememberMe.tsx';
 import { errorMessage } from '../../data/client.ts';
 
 interface Place {
@@ -53,6 +54,7 @@ function LoginBox() {
       >
         Continuar com a Conta Google
       </Button>
+      <RememberMe />
       <div className="text-center text-xs text-muted">ou receba um link no e-mail</div>
       {sent ? (
         <Notice tone="ok">Enviamos um link para <strong>{sent}</strong>. Abra o e-mail neste aparelho e toque no link.</Notice>

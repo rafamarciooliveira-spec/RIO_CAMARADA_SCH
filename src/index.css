@@ -52,6 +52,8 @@
 
 html,
 body {
+  /* Nada empurra a página para o lado no celular (tabelas e abas largas rolam dentro do próprio quadro) */
+  overflow-x: clip;
   background: var(--sd-bg);
   color: var(--sd-fg);
   font-family: var(--font-sans);

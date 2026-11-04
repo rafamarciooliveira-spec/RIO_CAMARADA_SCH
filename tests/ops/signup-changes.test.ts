@@ -106,3 +106,17 @@ describe('alteração depois de aprovado', () => {
     await denied(h.call('members.requestChange', { tenantId: h.tenantId, memberId, kind: 'dados', fullName: 'Nome Alheio Qualquer' }, actor('vizinho')), 'permission-denied');
   });
 });
+
+describe('diretoria se cadastra como sócio', () => {
+  it('quem já aprova sócios entra aprovado ao preencher a própria ficha; sócio comum fica pendente', async () => {
+    const h = await makeTestTenant();
+    const pres = h.actors.presidente;
+    const { memberId } = await h.call<{ memberId: string }>('members.apply', { tenantId: h.tenantId, data: { fullName: 'Presidente da Silva', birthDate: '1970-01-01', categoryId: 'efetivo' }, consents }, pres);
+    expect(['aprovado', 'ativo']).toContain((await h.store.get<MemberDoc>(P.member(h.tenantId, memberId)))!.status);
+    const ms = await h.store.get<{ roleIds: string[]; memberId: string }>(P.membership(h.tenantId, pres.uid));
+    expect(ms!.roleIds).toContain('presidente');
+    expect(ms!.memberId).toBe(memberId);
+    const other = await h.call<{ memberId: string }>('members.apply', { tenantId: h.tenantId, data: { fullName: 'Pessoa Comum Souza', categoryId: 'efetivo' }, consents }, actor('comum'));
+    expect((await h.store.get<MemberDoc>(P.member(h.tenantId, other.memberId)))!.status).toBe('pendente');
+  });
+});

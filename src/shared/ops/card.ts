@@ -34,6 +34,8 @@ export const issueCardToken = defineOp({
     const m = await ownCardMember(ctx, input.memberId);
     const status = cardStatusFor(m, localDateKey(ctx.now(), ctx.tenant!.timezone));
     if (status !== 'valido') fail('failed-precondition', 'A carteirinha não está válida no momento. Fale com a diretoria.');
+    const settings = await ctx.store.get<TenantSettings>(P.settings(tid(ctx)));
+    if (settings?.cardRequiresPhoto !== false && !m.photoPath) fail('failed-precondition', 'Envie a sua foto para liberar a carteirinha.');
     const token = ctx.crypto.randomToken(32);
     const hash = await ctx.crypto.sha256Hex(token);
     const ttl = input.kind === 'download' ? DOWNLOAD_TTL_SEC : ROTATING_TTL_SEC;
