@@ -236,7 +236,7 @@ export async function receiptPdf(tenant: Tenant, c: ChargeDoc): Promise<void> {
   w.table(
     ['Composição', 'Valor'],
     [
-      ['Valor', brl(c.amountCents)],
+      ...(c.items?.length ? c.items.map(i => [i.label, brl(i.amountCents)]) : [['Valor', brl(c.amountCents)]]),
       ...(c.discountCents ? [['Desconto', `-${brl(c.discountCents)}`]] : []),
       ...(c.lateFeeCents ? [['Multa', brl(c.lateFeeCents)]] : []),
       ...(c.interestCents ? [['Juros', brl(c.interestCents)]] : []),

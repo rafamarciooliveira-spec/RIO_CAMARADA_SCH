@@ -29,6 +29,10 @@ export interface CardTemplateDoc {
   showSecurityStamp: boolean;
   customFields: { id: string; label: string; value: string; visible?: boolean }[];
   signatureLabel: string;
+  /** Cores próprias para quem ocupa um cargo ou um grupo do organograma (a primeira regra que bater vale) */
+  roleThemes?: RoleTheme[];
+  /** Verso com o histórico de cargos e honrarias do sócio */
+  showHonors?: boolean;
   isDefault: boolean;
   updatedAt?: string;
 }
@@ -59,6 +63,8 @@ export const TEMPLATE_FIELDS: (keyof CardTemplateDoc)[] = [
   'showSecurityStamp',
   'customFields',
   'signatureLabel',
+  'roleThemes',
+  'showHonors',
   'isDefault',
 ];
 
@@ -126,4 +132,32 @@ export function patternStyle(p: CardPattern): React.CSSProperties {
 /** Logo do modelo: chave de ícone, URL ou caminho público do Storage */
 export function isStoragePath(v: string | undefined): boolean {
   return !!v && v.startsWith('tenants/');
+}
+
+export interface RoleTheme {
+  id: string;
+  match: 'grupo' | 'cargo'; // grupo do organograma (ex.: Majestades) ou um cargo (ex.: Presidente)
+  value: string;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  textColor: string;
+  /** false = a regra só põe o adesivo, sem mudar as cores */
+  applyColors?: boolean;
+  /** Adesivo (imagem) que aparece junto da foto: coroa do rei, luva do goleiro, bola do artilheiro... */
+  stickerPath?: string;
+}
+
+const norm = (x: string) => x.trim().toLowerCase();
+const matches = (r: RoleTheme, positions: { title: string; group: string }[]) => !!r.value && positions.some(p => norm(r.match === 'grupo' ? p.group : p.title) === norm(r.value));
+
+/** Cores da carteirinha conforme os cargos que a pessoa ocupa hoje (a primeira regra com cor que combinar vale) */
+export function themeFor(t: CardTemplateDoc, positions: { title: string; group: string }[]): CardTemplateDoc {
+  const hit = (t.roleThemes || []).find(r => r.applyColors !== false && matches(r, positions));
+  return hit ? { ...t, primaryColor: hit.primaryColor, secondaryColor: hit.secondaryColor, accentColor: hit.accentColor, textColor: hit.textColor } : t;
+}
+
+/** Adesivos de todas as regras que combinam (até 3, na ordem das regras) */
+export function stickersFor(t: CardTemplateDoc, positions: { title: string; group: string }[]): string[] {
+  return [...new Set((t.roleThemes || []).filter(r => r.stickerPath && matches(r, positions)).map(r => r.stickerPath!))].slice(0, 3);
 }

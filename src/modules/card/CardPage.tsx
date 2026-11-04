@@ -13,10 +13,11 @@ import { setupTenantPwa } from '../../app/pwa.ts';
 import { P } from '../../shared/paths.ts';
 import { cardStatusFor, VERIFY_LABEL } from '../../shared/memberStatus.ts';
 import { formatDateTime, localDateKey, tzLabel } from '../../shared/dates.ts';
-import type { MemberDoc, OrgChartDoc, VerifyStatus } from '../../shared/types.ts';
-import { Badge, Button, EmptyState, Loading, Modal, Notice, PageHeader, Tabs } from '../../ui/index.tsx';
+import type { HonorDoc, MandateDoc, MemberDoc, OrgChartDoc, VerifyStatus } from '../../shared/types.ts';
+import { Badge, Button, EmptyState, Loading, lockScroll, Modal, Notice, PageHeader, Tabs } from '../../ui/index.tsx';
 import { CardView, type CardMemberData } from './components/CardView.tsx';
-import { fallbackTemplate, type CardTemplateDoc } from './cardTemplate.ts';
+import { fallbackTemplate, stickersFor, themeFor, type CardTemplateDoc } from './cardTemplate.ts';
+import { useStickerUrls } from './useStickerUrls.ts';
 import { useLogoSrc } from './useLogoSrc.ts';
 import { PhotoUpload } from '../member-area/PhotoUpload.tsx';
 
@@ -83,7 +84,7 @@ function useCardWidth(vertical: boolean): number {
   return w;
 }
 
-const toCardData = (m: MemberDoc, showNumber = true, roles: string[] = []): CardMemberData => ({
+const toCardData = (m: MemberDoc, showNumber = true, roles: string[] = [], honors: string[] = []): CardMemberData => ({
   fullName: m.fullName,
   displayName: m.displayName,
   categoryName: m.categoryName,
@@ -94,6 +95,7 @@ const toCardData = (m: MemberDoc, showNumber = true, roles: string[] = []): Card
   // Sócio desde: o ano informado na ficha; sem ele, o ano da aprovação no sistema
   memberSince: m.memberSinceYear ? String(m.memberSinceYear) : m.joinedAt ? m.joinedAt.slice(0, 4) : undefined,
   roles,
+  honors,
 });
 
 export default function CardPage() {
@@ -148,18 +150,34 @@ export default function CardPage() {
   );
 }
 
-function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template: CardTemplateDoc; logoSrc: string }) {
+function MemberCard({ member, template: baseTemplate, logoSrc }: { member: MemberDoc; template: CardTemplateDoc; logoSrc: string }) {
   const t = useTenant();
   const { run } = useOp();
   const online = useOnline();
   const visible = useVisible();
-  const photoUrl = useFileUrl(template.showPhoto ? member.photoPath : null);
-  const width = useCardWidth(template.orientation !== 'horizontal');
+  const photoUrl = useFileUrl(baseTemplate.showPhoto ? member.photoPath : null);
+  const width = useCardWidth(baseTemplate.orientation !== 'horizontal');
   const tz = t.tenant.timezone;
   const status: VerifyStatus = cardStatusFor(member, localDateKey(new Date(), tz));
   const orgChart = useDoc<OrgChartDoc>(P.orgchart(t.tenantId));
   // Cargos da pessoa no organograma vão para a carteirinha (Presidente, Rei do tiro...)
-  const roles = useMemo(() => (orgChart.data?.positions || []).filter(p => p.memberId === member.id).sort((a, b) => a.order - b.order).map(p => p.title), [orgChart.data, member.id]);
+  const myPositions = useMemo(() => (orgChart.data?.positions || []).filter(p => p.memberId === member.id).sort((a, b) => a.order - b.order), [orgChart.data, member.id]);
+  const roles = useMemo(() => myPositions.map(p => p.title), [myPositions]);
+  // Cores próprias de quem ocupa um cargo ou grupo (regras do modelo)
+  const template = useMemo(() => themeFor(baseTemplate, myPositions), [baseTemplate, myPositions]);
+  const stickers = useStickerUrls(useMemo(() => stickersFor(baseTemplate, myPositions), [baseTemplate, myPositions]));
+  // Histórico para o verso: cargos atuais, mandatos encerrados e honrarias, do mais recente ao mais antigo
+  const mandates = useList<MandateDoc>(baseTemplate.showHonors ? P.mandates(t.tenantId) : null, { where: [['memberId', '==', member.id]], limit: 30 });
+  const honorDocs = useList<HonorDoc>(baseTemplate.showHonors && t.moduleOn('engajamento') ? P.honors(t.tenantId) : null, { where: [['memberId', '==', member.id]], limit: 30 });
+  const honors = useMemo(() => {
+    const y = (d?: string | null) => (d ? d.slice(0, 4) : '');
+    const list: { key: string; text: string }[] = [
+      ...myPositions.map(p => ({ key: y(p.since) || '9999', text: p.since ? `${p.title}: desde ${y(p.since)}` : `${p.title}: atual` })),
+      ...mandates.data.map(m => ({ key: y(m.to), text: `${m.title}: ${m.from && y(m.from) !== y(m.to) ? `${y(m.from)} a ` : ''}${y(m.to)}` })),
+      ...honorDocs.data.map(h => ({ key: y(h.date), text: `${h.title} (${y(h.date)})` })),
+    ];
+    return [...new Map(list.map(i => [i.text, i])).values()].sort((a, b) => b.key.localeCompare(a.key)).map(i => i.text);
+  }, [myPositions, mandates.data, honorDocs.data]);
   const needsPhoto = t.settings?.cardRequiresPhoto !== false && !member.photoPath;
   const key = offlineKey(t.tenantId, member.id);
   const [offline, setOffline] = useState<OfflineCopy | null>(() => readOffline(key));
@@ -172,14 +190,14 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
 
   // Cópia offline mínima: sem CPF, sem foto, sem contato
   useEffect(() => {
-    const copy: OfflineCopy = { ...toCardData(member, t.settings?.showMembershipNumber === true, roles), tenantName: t.tenant.name, savedAt: new Date().toISOString() };
+    const copy: OfflineCopy = { ...toCardData(member, t.settings?.showMembershipNumber === true, roles, honors), tenantName: t.tenant.name, savedAt: new Date().toISOString() };
     try {
       localStorage.setItem(key, JSON.stringify(copy));
       setOffline(copy);
     } catch {
       /* armazenamento cheio ou bloqueado: segue sem cópia */
     }
-  }, [member, key, t.tenant.name, t.settings?.showMembershipNumber, roles]);
+  }, [member, key, t.tenant.name, t.settings?.showMembershipNumber, roles, honors]);
 
   const issue = useCallback(async () => {
     const r = await run<IssueResult>('card.issue', { tenantId: t.tenantId, memberId: member.id, kind: 'rotativo' }, { silent: true });
@@ -210,7 +228,7 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
     return () => window.clearInterval(id);
   }, [qr]);
 
-  const data = online ? toCardData(member, t.settings?.showMembershipNumber === true, roles) : offline || toCardData(member, t.settings?.showMembershipNumber === true, roles);
+  const data = online ? toCardData(member, t.settings?.showMembershipNumber === true, roles, honors) : offline || toCardData(member, t.settings?.showMembershipNumber === true, roles, honors);
   const caption = !online
     ? 'Sem internet: o QR volta quando a conexão voltar'
     : status !== 'valido'
@@ -235,6 +253,7 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
     <div className="grid lg:grid-cols-[auto_1fr] gap-6 items-start">
       <div className="flex flex-col items-center gap-3">
         <CardView
+          stickers={stickers}
           template={template}
           member={data}
           logoSrc={logoSrc}
@@ -303,6 +322,7 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
       {full && (
         <FullScreen onClose={() => setFull(false)}>
           <CardView
+            stickers={stickers}
             template={template}
             member={data}
             logoSrc={logoSrc}
@@ -317,16 +337,25 @@ function MemberCard({ member, template, logoSrc }: { member: MemberDoc; template
         </FullScreen>
       )}
 
-      <DownloadDialog open={askDownload} onClose={() => setAskDownload(false)} member={member} template={template} logoSrc={logoSrc} photoUrl={photoUrl} roles={roles} />
+      <DownloadDialog open={askDownload} onClose={() => setAskDownload(false)} member={member} template={template} logoSrc={logoSrc} photoUrl={photoUrl} roles={roles} honors={honors} stickers={stickers} />
     </div>
   );
+}
+
+/** Texto do prazo do arquivo baixado, conforme a escolha da sociedade */
+function validityText(v?: '24h' | 'mes' | 'ano'): string {
+  return v === 'mes' ? 'até o fim deste mês' : v === 'ano' ? 'até o fim deste ano' : 'por 24 horas a partir de agora';
 }
 
 function FullScreen({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', k);
-    return () => document.removeEventListener('keydown', k);
+    const unlock = lockScroll();
+    return () => {
+      document.removeEventListener('keydown', k);
+      unlock();
+    };
   }, [onClose]);
   return (
     <div role="dialog" aria-modal="true" aria-label="Carteirinha em tela cheia" className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 gap-4">
@@ -347,6 +376,8 @@ function DownloadDialog({
   logoSrc,
   photoUrl,
   roles,
+  honors,
+  stickers,
 }: {
   open: boolean;
   onClose: () => void;
@@ -355,6 +386,8 @@ function DownloadDialog({
   logoSrc: string;
   photoUrl: string | null;
   roles: string[];
+  honors: string[];
+  stickers: string[];
 }) {
   const t = useTenant();
   const { run } = useOp();
@@ -429,13 +462,13 @@ function DownloadDialog({
       }
     >
       <Notice tone="warn">
-        <strong>Leia antes de baixar.</strong> O arquivo fica no seu aparelho e não se apaga sozinho, mas o QR dele só vale por 24 horas a partir de agora. Se a carteirinha for suspensa, o QR deixa de validar na mesma hora. A data e a hora limite aparecem em destaque no arquivo.
+        <strong>Leia antes de baixar.</strong> O arquivo fica no seu aparelho e não se apaga sozinho, mas o QR dele só vale {validityText(t.settings?.cardDownloadValidity)}. Se a carteirinha for suspensa, o QR deixa de validar na mesma hora. A data e a hora limite aparecem em destaque no arquivo.
       </Notice>
       <p className="text-sm text-muted">Para o dia a dia, prefira mostrar a carteirinha aberta no portal: o QR de lá se renova sozinho.</p>
       {error && <Notice tone="bad">{error}</Notice>}
       {render && (
         <div className="fixed -left-[9999px] top-0" aria-hidden>
-          <CardView ref={node} both template={template} member={toCardData(member, t.settings?.showMembershipNumber === true, roles)} logoSrc={logoSrc} photoUrl={photoUrl} qrDataUrl={render.qr} qrCaption="Escaneie para autenticar" banner={render.banner} labelCard={t.labels.card} />
+          <CardView ref={node} both stickers={stickers} template={template} member={toCardData(member, t.settings?.showMembershipNumber === true, roles, honors)} logoSrc={logoSrc} photoUrl={photoUrl} qrDataUrl={render.qr} qrCaption="Escaneie para autenticar" banner={render.banner} labelCard={t.labels.card} />
         </div>
       )}
     </Modal>

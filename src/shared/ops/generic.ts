@@ -170,6 +170,24 @@ export const GENERIC_SCHEMAS: Record<GenericCollection, z.ZodObject<Record<strin
     showSecurityStamp: z.boolean(),
     customFields: z.array(z.object({ id: zId, label: s(40), value: s(80), visible: z.boolean().optional() })).max(6),
     signatureLabel: s(80),
+    roleThemes: z
+      .array(
+        z.object({
+          id: zId,
+          match: z.enum(['grupo', 'cargo']),
+          value: s(120).min(1),
+          primaryColor: zColor,
+          secondaryColor: zColor,
+          accentColor: zColor,
+          textColor: zColor,
+          applyColors: z.boolean().optional(),
+          // Adesivo só na pasta pública de adesivos da própria sociedade
+          stickerPath: z.string().max(300).regex(/^tenants\/[A-Za-z0-9_-]+\/public\/stickers\/[A-Za-z0-9._-]+$/).optional(),
+        })
+      )
+      .max(12)
+      .optional(),
+    showHonors: z.boolean().optional(),
     isDefault: z.boolean(),
   }),
 };

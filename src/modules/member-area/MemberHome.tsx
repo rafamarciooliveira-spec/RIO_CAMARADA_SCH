@@ -11,6 +11,7 @@ import { cardStatusFor, VERIFY_LABEL } from '../../shared/memberStatus.ts';
 import { formatDate, formatDateTime, localDateKey } from '../../shared/dates.ts';
 import { formatBRL } from '../../shared/money.ts';
 import { MEMBER_STATUS_LABEL, type ChargeDoc, type EventDoc, type NotificationDoc } from '../../shared/types.ts';
+import { HandbookNotice } from './HandbookPage.tsx';
 import { Badge, Button, Card, EmptyState, Notice, PageHeader, Section } from '../../ui/index.tsx';
 
 function BoardShortcuts() {
@@ -59,6 +60,7 @@ export default function MemberHome() {
   return (
     <div className="space-y-6">
       <PageHeader title={first ? `Olá, ${first}` : 'Início'} subtitle={t.tenant.name} />
+      <HandbookNotice />
 
       {!m && (
         <>

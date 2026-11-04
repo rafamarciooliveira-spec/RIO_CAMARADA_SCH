@@ -78,6 +78,14 @@ service firebase.storage {
       allow delete: if perm(t, 'noticias', 'editar');
     }
 
+    // PDF do manual do sócio: só sócios leem; quem edita documentos envia
+    match /tenants/{t}/handbook/{file} {
+      allow read: if isMember(t);
+      allow create, update: if okName(file) && request.resource.size > 0 && request.resource.size <= 15 * 1024 * 1024 &&
+        request.resource.contentType == 'application/pdf' && (perm(t, 'sociedade', 'editar') || perm(t, 'documentos', 'editar'));
+      allow delete: if perm(t, 'sociedade', 'editar') || perm(t, 'documentos', 'editar');
+    }
+
     // Foto do sócio: privada (dono ou quem vê sócios)
     match /tenants/{t}/members/{memberId}/photo/{file} {
       allow read: if ownsMember(t, memberId) || perm(t, 'socios', 'ver');

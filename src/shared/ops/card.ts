@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { defineOp, fail, zId, zTenant, type OpContext } from '../core/ops.ts';
 import { P } from '../paths.ts';
 import { cardStatusFor } from '../memberStatus.ts';
-import { localDateKey } from '../dates.ts';
+import { endOfDayIso, endOfMonthKey, localDateKey } from '../dates.ts';
 import type { CardTokenDoc, MemberDoc, SlugDoc, TenantDoc, TenantSettings, VerifyResult } from '../types.ts';
 import { inc } from '../core/store.ts';
 import { tid } from './helpers.ts';
@@ -38,8 +38,21 @@ export const issueCardToken = defineOp({
     if (settings?.cardRequiresPhoto !== false && !m.photoPath) fail('failed-precondition', 'Envie a sua foto para liberar a carteirinha.');
     const token = ctx.crypto.randomToken(32);
     const hash = await ctx.crypto.sha256Hex(token);
-    const ttl = input.kind === 'download' ? DOWNLOAD_TTL_SEC : ROTATING_TTL_SEC;
-    const expiresAt = new Date(ctx.now().getTime() + ttl * 1000).toISOString();
+    let expiresAt = new Date(ctx.now().getTime() + (input.kind === 'download' ? DOWNLOAD_TTL_SEC : ROTATING_TTL_SEC) * 1000).toISOString();
+    if (input.kind === 'download') {
+      // Arquivo baixado ou impresso: a sociedade escolhe 24 horas, até o fim do mês ou até o fim do ano,
+      // nunca além da validade do cadastro. A suspensão continua derrubando o QR na hora.
+      const tz = ctx.tenant!.timezone;
+      const today = localDateKey(ctx.now(), tz);
+      const mode = settings?.cardDownloadValidity || '24h';
+      if (mode === 'mes') expiresAt = endOfDayIso(endOfMonthKey(today), tz);
+      if (mode === 'ano') expiresAt = endOfDayIso(`${today.slice(0, 4)}-12-31`, tz);
+      if (m.validUntil) {
+        const cap = endOfDayIso(m.validUntil, tz);
+        if (cap < expiresAt) expiresAt = cap;
+      }
+    }
+    const ttl = Math.max(1, Math.round((Date.parse(expiresAt) - ctx.now().getTime()) / 1000));
     const doc: CardTokenDoc = { memberId: m.id, kind: input.kind, expiresAt, createdAt: ctx.nowIso };
     await ctx.store.set(P.cardToken(tid(ctx), hash), doc as unknown as Record<string, unknown>);
     if (input.kind === 'download') await ctx.audit('card.downloaded', m.id);

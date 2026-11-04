@@ -1,12 +1,14 @@
 /** Editor do modelo da carteirinha: painéis à esquerda, prévia ao vivo à direita. */
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Copy, Plus, Save, Trash2 } from 'lucide-react';
-import { useList, useOp } from '../../app/DataContext.tsx';
+import { useDoc, useList, useOp } from '../../app/DataContext.tsx';
+import type { OrgChartDoc } from '../../shared/types.ts';
 import { useTenant } from '../../app/TenantContext.tsx';
 import { P } from '../../shared/paths.ts';
-import { Badge, Button, Card, cx, EmptyState, Loading, Notice, PageHeader, Tabs, useConfirm } from '../../ui/index.tsx';
+import { Badge, Button, Card, cx, EmptyState, Loading, Notice, PageHeader, Select, Tabs, useConfirm } from '../../ui/index.tsx';
 import { CardView } from './components/CardView.tsx';
-import { fallbackTemplate, TEMPLATE_FIELDS, type CardTemplateDoc } from './cardTemplate.ts';
+import { fallbackTemplate, stickersFor, TEMPLATE_FIELDS, themeFor, type CardTemplateDoc } from './cardTemplate.ts';
+import { useStickerUrls } from './useStickerUrls.ts';
 import { BackPanel, ColorsPanel, FieldsPanel, IdentityPanel, LayoutPanel } from './design/panels.tsx';
 import { useLogoSrc } from './useLogoSrc.ts';
 
@@ -22,6 +24,7 @@ const SAMPLE = {
   memberSince: '1998',
   roles: ['Rainha do tiro'],
 };
+const SAMPLE_HONORS = ['Rainha do tiro: desde 2025', 'Rainha do dado: 2019 a 2020', 'Diretoria social: 2015 a 2018', 'Sócio destaque (2014)'];
 
 function pickFields(v: CardTemplateDoc): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -40,6 +43,21 @@ export default function CardDesignPage() {
   const [draft, setDraft] = useState<CardTemplateDoc | null>(null);
   const [dirty, setDirty] = useState(false);
   const [panel, setPanel] = useState<PanelId>('identidade');
+  const [previewAs, setPreviewAs] = useState('');
+  // "Ver como grupo X": usa um cargo de verdade daquele grupo do organograma (ex.: Rainha do tiro), não o nome do grupo
+  const orgChart = useDoc<OrgChartDoc>(P.orgchart(t.tenantId));
+  const rule = draft?.roleThemes?.find(r => r.value === previewAs);
+  const ruleMatch = rule?.match;
+  const previewPos = useMemo(
+    () =>
+      !previewAs
+        ? null
+        : ruleMatch === 'grupo'
+          ? orgChart.data?.positions.find(p => p.group === previewAs) || { title: previewAs, group: previewAs }
+          : orgChart.data?.positions.find(p => p.title === previewAs) || { title: previewAs, group: '' },
+    [previewAs, ruleMatch, orgChart.data]
+  );
+  const previewStickers = useStickerUrls(useMemo(() => (draft && previewPos ? stickersFor(draft, [previewPos]) : []), [draft, previewPos]));
   const [side, setSide] = useState<'frente' | 'verso'>('frente');
   const canEdit = t.can('carteirinha', 'editar');
 
@@ -186,9 +204,20 @@ export default function CardDesignPage() {
           </Card>
           <div className="flex flex-col items-center gap-3 lg:sticky lg:top-20">
             <div className="text-xs text-muted">Prévia com dados fictícios. Toque para virar.</div>
+            {!!draft.roleThemes?.filter(r => r.value).length && (
+              <Select aria-label="Ver a prévia como" value={previewAs} onChange={e => setPreviewAs(e.target.value)} className="max-w-xs">
+                <option value="">Ver como: sócio sem cargo</option>
+                {draft.roleThemes.filter(r => r.value).map(r => (
+                  <option key={r.id} value={r.value}>
+                    Ver como: {r.match === 'grupo' ? `grupo ${r.value}` : r.value}
+                  </option>
+                ))}
+              </Select>
+            )}
             <CardView
-              template={draft}
-              member={SAMPLE}
+              template={previewPos ? themeFor(draft, [previewPos]) : draft}
+              stickers={previewStickers}
+              member={{ ...SAMPLE, roles: previewPos ? [previewPos.title] : SAMPLE.roles, honors: draft.showHonors ? SAMPLE_HONORS : undefined }}
               logoSrc={logoSrc}
               qrDataUrl={null}
               qrCaption="O QR real aparece na carteirinha do sócio"

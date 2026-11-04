@@ -10,6 +10,7 @@ import { formatDate } from '../../shared/dates.ts';
 import { isOverdue } from '../../shared/finance/reports.ts';
 import { MEMBER_STATUS_LABEL, type ChargeDoc } from '../../shared/types.ts';
 import { Badge, Button, Card, EmptyState, ErrorState, Loading, Money, Notice, PageHeader, Section, Textarea, useToast } from '../../ui/index.tsx';
+import { formatBRL } from '../../shared/money.ts';
 import { ChargeBadge, dueNow, SandboxNotice } from './common.tsx';
 
 type Row = ChargeDoc & { id: string };
@@ -96,6 +97,16 @@ function OpenCharge({ c }: { c: Row }) {
         <div>
           <div className="font-semibold">{c.description}</div>
           <div className="text-xs text-muted">Vence em {formatDate(c.dueDate)}</div>
+          {c.items && c.items.length > 0 && (
+            <ul className="mt-1 text-xs text-muted space-y-0.5">
+              {c.items.map(i => (
+                <li key={i.label} className="flex justify-between gap-3">
+                  <span>{i.label}</span>
+                  <span className="tabular-nums">{formatBRL(i.amountCents)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         <ChargeBadge c={c} today={today} />
       </div>

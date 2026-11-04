@@ -10,6 +10,7 @@ import { Badge, Button, cx, Field, Input, Notice, Select, Toggle } from '../../.
 import { PATTERN_LABEL, type CardPattern, type CardTemplateDoc } from '../cardTemplate.ts';
 import { ColorPicker } from '../../../ui/ColorPicker.tsx';
 import { LOGO_MAX } from '../components/CardView.tsx';
+import { RoleThemes } from './RoleThemes.tsx';
 
 export interface PanelProps {
   value: CardTemplateDoc;
@@ -176,6 +177,7 @@ export function ColorsPanel({ value, set, logoSrc }: PanelProps) {
           ))}
         </div>
       </div>
+      <RoleThemes value={value} set={set} logoSrc={logoSrc} />
     </div>
   );
 }
@@ -270,6 +272,8 @@ export function BackPanel({ value, set }: PanelProps) {
   return (
     <div className="space-y-4">
       <Toggle checked={value.showQrCode} onChange={v => set({ showQrCode: v })} label="QR de validação no verso" />
+      <Toggle checked={!!value.showHonors} onChange={v => set({ showHonors: v })} label="Histórico de cargos e honrarias no verso" />
+      {value.showHonors && <p className="text-xs text-muted">Sai sozinho do organograma (cargos atuais), da galeria de mandatos e das honrarias de cada sócio. Ex.: "Rei do tiro: 2019 a 2020", "Presidente: desde 2024".</p>}
       {!value.showQrCode && <Notice tone="warn">Sem QR, a portaria não tem como confirmar se a carteirinha está válida.</Notice>}
       <Field label="Texto da assinatura" hint="Exemplo: Diretoria executiva">
         {id => <Input id={id} value={value.signatureLabel} maxLength={80} onChange={e => set({ signatureLabel: e.target.value })} />}

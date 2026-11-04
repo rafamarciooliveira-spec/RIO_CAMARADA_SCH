@@ -156,7 +156,8 @@ export function Field({ label, hint, error, children, required }: { label: strin
   );
 }
 
-const inputCls = 'w-full px-3 py-2.5 rounded-xl bg-bg border border-line text-sm text-fg outline-none focus:border-accent placeholder:text-muted/60 disabled:opacity-60';
+// 16 px no celular: com menos, o iPhone dá zoom sozinho ao tocar no campo e a janela sai do lugar
+const inputCls = 'w-full px-3 py-2.5 rounded-xl bg-bg border border-line text-base sm:text-sm text-fg outline-none focus:border-accent placeholder:text-muted/60 disabled:opacity-60';
 
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...p }, ref) {
   return <input ref={ref} {...p} className={cx(inputCls, className)} />;
@@ -291,30 +292,51 @@ export function Table<T extends { id: string }>({ rows, columns, onRowClick, emp
 }
 
 // ---------- Modal ----------
+// Trava da rolagem do fundo (funciona no iPhone, onde overflow: hidden não basta). Conta quantas
+// janelas estão abertas: a página só volta a rolar quando a última fechar, e volta no mesmo lugar.
+let scrollLocks = 0;
+let savedScroll: { y: number; prev: Partial<CSSStyleDeclaration> } | null = null;
+export function lockScroll(): () => void {
+  if (scrollLocks++ === 0) {
+    const b = document.body.style;
+    savedScroll = { y: window.scrollY, prev: { position: b.position, top: b.top, width: b.width, overflow: b.overflow } };
+    Object.assign(b, { position: 'fixed', top: `-${savedScroll.y}px`, width: '100%', overflow: 'hidden' });
+  }
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    if (--scrollLocks === 0 && savedScroll) {
+      Object.assign(document.body.style, savedScroll.prev);
+      window.scrollTo(0, savedScroll.y);
+      savedScroll = null;
+    }
+  };
+}
+
 export function Modal({ open, onClose, title, children, footer, size = 'md' }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; footer?: React.ReactNode; size?: 'sm' | 'md' | 'lg' | 'xl' }) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const unlock = lockScroll();
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prev;
+      unlock();
     };
   }, [open, onClose]);
   if (!open) return null;
   const w = { sm: 'max-w-md', md: 'max-w-xl', lg: 'max-w-3xl', xl: 'max-w-5xl' }[size];
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label={title} className={cx('bg-surface border border-line w-full sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[92vh]', w)}>
+      <div role="dialog" aria-modal="true" aria-label={title} className={cx('bg-surface border border-line w-full sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[92dvh] min-h-0 max-w-full', w)}>
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-line">
           <h2 className="font-bold text-base">{title}</h2>
           <button onClick={onClose} aria-label="Fechar" className="p-1.5 rounded-lg hover:bg-surface-2 cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="p-5 overflow-y-auto overscroll-contain custom-scrollbar space-y-4">{children}</div>
+        <div className="p-5 flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar space-y-4 [-webkit-overflow-scrolling:touch]">{children}</div>
         {footer && <div className="px-5 py-4 border-t border-line flex flex-wrap justify-end gap-2">{footer}</div>}
       </div>
     </div>

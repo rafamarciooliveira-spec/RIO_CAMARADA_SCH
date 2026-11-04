@@ -336,6 +336,16 @@ service cloud.firestore {
         allow list: if false;
       }
 
+      // Manual do sócio: os sócios leem; rascunho nunca publicado (versão 0) só quem edita
+      match /handbook/{docId} {
+        allow get: if isMember(t) && (resource == null || resource.data.get('version', 0) > 0 || perm(t, 'sociedade', 'editar') || perm(t, 'documentos', 'editar'));
+        allow list: if false;
+        match /acks/{uid} {
+          allow get: if isMember(t) && uid == request.auth.uid;
+          allow list: if false;
+        }
+      }
+
       // Galeria de mandatos encerrados (ex-presidentes, ex-reis...)
       match /mandates/{id} {
         allow read: if isMember(t);

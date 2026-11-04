@@ -12,7 +12,7 @@ import { PAGES, type PageDef } from '../modules/registry.tsx';
 import { P } from '../shared/paths.ts';
 import type { NotificationDoc, UserDoc } from '../shared/types.ts';
 import { AssociationLogo } from '../components/AssociationLogos.tsx';
-import { Badge, Button, cx, ErrorState, Loading, Notice } from '../ui/index.tsx';
+import { Badge, Button, cx, ErrorState, Loading, lockScroll, Notice } from '../ui/index.tsx';
 import { useDoc } from './DataContext.tsx';
 import { formatDateTime } from '../shared/dates.ts';
 
@@ -157,18 +157,11 @@ function Shell() {
   // Menu aberto no celular: trava a rolagem do fundo (inclusive no iOS) até fechar ou tocar fora
   useEffect(() => {
     if (!menuOpen) return;
-    const y = window.scrollY;
-    const b = document.body.style;
-    const prev = { position: b.position, top: b.top, width: b.width, overflow: b.overflow };
-    b.position = 'fixed';
-    b.top = `-${y}px`;
-    b.width = '100%';
-    b.overflow = 'hidden';
+    const unlock = lockScroll();
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenuOpen(false);
     document.addEventListener('keydown', onKey);
     return () => {
-      Object.assign(b, prev);
-      window.scrollTo(0, y);
+      unlock();
       document.removeEventListener('keydown', onKey);
     };
   }, [menuOpen]);

@@ -37,6 +37,8 @@ const MATRIX: { path: string; data: Record<string, unknown>; kind: Kind }[] = [
   { path: 'members/m9/changes/c1', data: { status: 'pendente', cpfMasked: '***' }, kind: { perm: 'socios' } },
   { path: 'cardTemplates/padrao', data: { name: 'Padrão' }, kind: 'member' },
   { path: 'mandates/m1', data: { title: 'Presidente', personName: 'Fulano' }, kind: 'member' },
+  { path: 'handbook/current', data: { title: 'Manual', version: 1, sections: [] }, kind: 'member' },
+  { path: 'handbook/current/acks/ninguem', data: { version: 1 }, kind: 'none' },
   { path: 'checkins/d1', data: { result: 'valido' }, kind: { perm: 'portaria' } },
   { path: 'notices/todos', data: { title: 'Aviso', status: 'publicado', audience: { boardOnly: false } }, kind: 'member' },
   { path: 'notices/agendado', data: { title: 'Futuro', status: 'agendado', audience: { boardOnly: false } }, kind: 'board' },

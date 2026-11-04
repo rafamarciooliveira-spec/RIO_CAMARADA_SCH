@@ -73,7 +73,7 @@ const env: Env = {
   payments: createSandboxPayments(crypto, 'nao-usado'),
   files: { signedUrl: async () => null, remove: async () => undefined },
   now: () => new Date(),
-  appUrl: 'https://riocamarada.vercel.app',
+  appUrl: 'https://vereinapp.vercel.app',
   demo: false,
 };
 

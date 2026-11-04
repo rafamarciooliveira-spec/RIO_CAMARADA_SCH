@@ -121,6 +121,7 @@ export async function createMemberCore(ctx: OpContext, a: CreateArgs): Promise<s
     categoryName: cat.name,
     status: a.status,
     birthMonthDay: birthMonthDay(a.data.birthDate),
+    ...(a.data.birthDate ? { birthYear: Number(a.data.birthDate.slice(0, 4)) } : {}),
     isMinor,
     ...(a.data.memberSinceYear ? { memberSinceYear: a.data.memberSinceYear } : {}),
     ...(a.dependentOf ? { dependentOf: a.dependentOf } : {}),
@@ -391,7 +392,7 @@ export const updateMember = defineOp({
     if (d.groups) basic.groups = d.groups;
     if (d.custom) basic.custom = d.custom;
     if (d.memberSinceYear) basic.memberSinceYear = d.memberSinceYear;
-    if (d.birthDate) Object.assign(basic, { birthMonthDay: birthMonthDay(d.birthDate), isMinor: validateMinor(ctx, d.birthDate, d.guardian || pii.guardian) });
+    if (d.birthDate) Object.assign(basic, { birthMonthDay: birthMonthDay(d.birthDate), birthYear: Number(d.birthDate.slice(0, 4)), isMinor: validateMinor(ctx, d.birthDate, d.guardian || pii.guardian) });
     const piiPatch: Record<string, unknown> = { updatedAt: ctx.nowIso };
     if (d.cpf !== undefined) {
       const c = await cpfFields(ctx, d.cpf, input.memberId);
@@ -454,7 +455,7 @@ export const updateSelf = defineOp({
     await ctx.store.set(P.memberPii(t, input.memberId), piiPatch, { merge: true });
     const basic: Record<string, unknown> = { updatedAt: ctx.nowIso };
     if (input.fullName) Object.assign(basic, { fullName: input.fullName, displayName: shortName(input.fullName) });
-    if (input.birthDate) basic.birthMonthDay = birthMonthDay(input.birthDate);
+    if (input.birthDate) Object.assign(basic, { birthMonthDay: birthMonthDay(input.birthDate), birthYear: Number(input.birthDate.slice(0, 4)) });
     if (input.resubmit && m!.status === 'rejeitado') {
       basic.status = 'pendente';
       basic.statusReason = '';
@@ -541,6 +542,7 @@ export const reviewChange = defineOp({
         if (c!.birthDate) {
           piiPatch.birthDate = c!.birthDate;
           basic.birthMonthDay = birthMonthDay(c!.birthDate);
+          basic.birthYear = Number(c!.birthDate.slice(0, 4));
           basic.isMinor = ageOn(c!.birthDate, today(ctx)) < 18;
         }
         if (c!.cpfEnc) {

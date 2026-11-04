@@ -4,7 +4,7 @@
  */
 export const BRAND = {
   name: 'Verein',
-  domain: 'verein.app', // TODO(decisão): registrar o domínio e trocar no Vercel e no Firebase
+  domain: 'vereinapp.vercel.app', // provisório (04/11/2026); domínio próprio depois: trocar aqui, no Vercel, no Firebase (domínios autorizados) e no cors.json
   tagline: 'Tradição que se organiza.',
   description: 'Plataforma para sociedades culturais: sócios, carteirinha digital, financeiro, eventos, atas e votações, com a identidade de cada sociedade.',
   supportEmail: 'contato@verein.app', // TODO(decisão): e-mail real de contato

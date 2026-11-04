@@ -11,7 +11,7 @@ const IMAGES: SniffedType[] = ['image/jpeg', 'image/png', 'image/webp'];
 const DOCS: SniffedType[] = [...IMAGES, 'application/pdf'];
 
 export interface UploadPolicy {
-  area: 'publico' | 'foto' | 'anexo' | 'biblioteca';
+  area: 'publico' | 'foto' | 'anexo' | 'biblioteca' | 'manual';
   maxBytes: number;
   types: SniffedType[];
 }
@@ -23,6 +23,7 @@ export function policyFor(path: string): UploadPolicy | null {
   if (/^tenants\/[^/]+\/members\/[^/]+\/photo\/[^/]+$/.test(path)) return { area: 'foto', maxBytes: 2 * MB, types: IMAGES };
   if (/^tenants\/[^/]+\/attachments\/[^/]+\/[^/]+$/.test(path)) return { area: 'anexo', maxBytes: 10 * MB, types: DOCS };
   if (/^tenants\/[^/]+\/library\/[^/]+$/.test(path)) return { area: 'biblioteca', maxBytes: 15 * MB, types: DOCS };
+  if (/^tenants\/[^/]+\/handbook\/[^/]+$/.test(path)) return { area: 'manual', maxBytes: 15 * MB, types: ['application/pdf'] };
   return null;
 }
 

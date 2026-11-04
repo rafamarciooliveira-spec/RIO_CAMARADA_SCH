@@ -75,3 +75,27 @@ export function ageOn(birthDateISO: string, onKey: string): number {
   if (m < bm || (m === bm && d < bd)) age--;
   return age;
 }
+
+/** Minutos que o fuso está à frente (+) ou atrás (-) do UTC naquele dia */
+function tzOffsetMinutes(dateKey: string, tz: string): number {
+  const d = new Date(`${dateKey}T12:00:00Z`);
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      .formatToParts(d)
+      .map(x => [x.type, x.value])
+  );
+  const local = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute));
+  return Math.round((local - d.getTime()) / 60000);
+}
+
+/** Instante (ISO) das 23:59:59 do dia no fuso da sociedade */
+export function endOfDayIso(dateKey: string, tz = DEFAULT_TZ): string {
+  return new Date(Date.parse(`${dateKey}T23:59:59Z`) - tzOffsetMinutes(dateKey, tz) * 60000).toISOString();
+}
+
+/** Último dia do mês de uma data (AAAA-MM-DD) */
+export function endOfMonthKey(dateKey: string): string {
+  const [y, m] = dateKey.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${dateKey.slice(0, 7)}-${String(last).padStart(2, '0')}`;
+}

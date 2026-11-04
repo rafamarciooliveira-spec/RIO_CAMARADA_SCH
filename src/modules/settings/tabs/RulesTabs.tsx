@@ -9,6 +9,7 @@ import type { CustomFieldDef, MemberCategory, TenantSettings } from '../../../sh
 import { Badge, Button, Card, Field, Input, MoneyInput, Notice, Select, Textarea, Toggle, useConfirm } from '../../../ui/index.tsx';
 import { SaveBar, slugId } from './common.tsx';
 import { suggestedCompetitionKinds, suggestedModalities } from '../../../shared/societyTypes.ts';
+import { dependentRules, type DependentRules } from '../../../shared/dependents.ts';
 import { PAGES } from '../../registry.tsx';
 
 function useSettingsSave() {
@@ -34,6 +35,7 @@ export function RulesTab({ readOnly }: { readOnly: boolean }) {
     suspendAfterDays: s.suspendAfterDays,
     showPhotoOnValidation: s.showPhotoOnValidation,
     cardRequiresPhoto: s.cardRequiresPhoto !== false,
+    cardDownloadValidity: s.cardDownloadValidity || '24h',
     showMembershipNumber: s.showMembershipNumber === true,
   });
   const [dirty, setDirty] = useState(false);
@@ -101,6 +103,15 @@ export function RulesTab({ readOnly }: { readOnly: boolean }) {
         </div>
         <Toggle checked={r.approvalRequired} onChange={v => setRule({ approvalRequired: v })} label="Propostas online precisam de aprovação" />
         <Toggle checked={r.cardRequiresPhoto} onChange={v => setRule({ cardRequiresPhoto: v })} label="Foto obrigatória para liberar a carteirinha" />
+        <Field label="Carteirinha baixada ou impressa vale" hint="Na tela do portal o QR se renova sozinho; isto vale para o arquivo salvo ou o papel. Nunca passa da validade do cadastro, e a suspensão derruba o QR na hora.">
+          {id => (
+            <Select id={id} className="sm:max-w-md" value={r.cardDownloadValidity} onChange={e => setRule({ cardDownloadValidity: e.target.value as '24h' | 'mes' | 'ano' })}>
+              <option value="24h">Por 24 horas (mais seguro)</option>
+              <option value="mes">Até o fim do mês em que foi baixada</option>
+              <option value="ano">Até o fim do ano em que foi baixada</option>
+            </Select>
+          )}
+        </Field>
         <Toggle checked={r.showMembershipNumber} onChange={v => setRule({ showMembershipNumber: v })} label="Mostrar o número do sócio na carteirinha e no portal" />
         <p className="text-[11px] text-muted">Desligado, o número continua existindo para a secretaria, mas não aparece para os sócios.</p>
         <Toggle checked={r.showPhotoOnValidation} onChange={v => setRule({ showPhotoOnValidation: v })} label="Mostrar a foto na validação do QR" />
@@ -108,7 +119,49 @@ export function RulesTab({ readOnly }: { readOnly: boolean }) {
       </div>
       {!readOnly && <SaveBar dirty={dirty} busy={busy} onSave={submit} disabled={r.suspendAfterDays <= r.gracePeriodDays} />}
       {r.suspendAfterDays <= r.gracePeriodDays && <Notice tone="warn">A suspensão precisa vir depois da carência.</Notice>}
+      <DependentRulesBlock readOnly={readOnly} />
     </fieldset>
+  );
+}
+
+/** Dependente na mensalidade: modo, valor, idade grátis, idade limite e teto da família */
+function DependentRulesBlock({ readOnly }: { readOnly: boolean }) {
+  const t = useTenant();
+  const { save, busy } = useSettingsSave();
+  const [r, setR] = useState<DependentRules>(() => dependentRules(t.settings));
+  const [dirty, setDirty] = useState(false);
+  const set = (p: Partial<DependentRules>) => (setR(x => ({ ...x, ...p })), setDirty(true));
+  const num = (v: string) => Math.max(0, Math.min(99, Number(v.replace(/\D/g, '')) || 0));
+  return (
+    <div className="space-y-3 pt-4 border-t border-line">
+      <div>
+        <h3 className="font-semibold text-sm">Dependentes na mensalidade</h3>
+        <p className="text-sm text-muted">O dependente nunca recebe cobrança separada: o valor entra na mensalidade do titular, discriminado no recibo.</p>
+      </div>
+      <Field label="Como o dependente paga">
+        {id => (
+          <Select id={id} value={r.mode} onChange={e => set({ mode: e.target.value as DependentRules['mode'] })}>
+            <option value="gratis">Não paga (incluído na mensalidade do titular)</option>
+            <option value="valor_fixo">Valor fixo por dependente, somado à mensalidade do titular</option>
+            <option value="categoria">Pelo valor da categoria do dependente, somado à mensalidade do titular</option>
+          </Select>
+        )}
+      </Field>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {r.mode === 'valor_fixo' && <Field label="Valor por dependente">{id => <MoneyInput id={id} value={r.feeCents} onChange={c => set({ feeCents: c })} />}</Field>}
+        {r.mode !== 'gratis' && (
+          <Field label="Não paga até (anos)" hint="0 = paga em qualquer idade">
+            {id => <Input id={id} inputMode="numeric" value={String(r.freeUntilAge)} onChange={e => set({ freeUntilAge: num(e.target.value) })} />}
+          </Field>
+        )}
+        {r.mode !== 'gratis' && <Field label="Teto da família para dependentes" hint="0 = sem teto">{id => <MoneyInput id={id} value={r.familyCapCents} onChange={c => set({ familyCapCents: c })} />}</Field>}
+        <Field label="Pode ser dependente até (anos)" hint="0 = sem limite. Ao completar, precisa virar sócio titular">
+          {id => <Input id={id} inputMode="numeric" value={String(r.maxAge)} onChange={e => set({ maxAge: num(e.target.value) })} />}
+        </Field>
+      </div>
+      <p className="text-[11px] text-muted">O titular e a diretoria são avisados 30 dias antes de o dependente passar a pagar e 60 dias antes do limite de idade.</p>
+      {!readOnly && <SaveBar dirty={dirty} busy={busy} onSave={async () => (await save({ dependentRules: r }, 'Regras dos dependentes salvas.')) && setDirty(false)} />}
+    </div>
   );
 }
 

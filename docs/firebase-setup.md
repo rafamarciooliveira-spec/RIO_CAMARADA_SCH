@@ -16,7 +16,7 @@ no painel, Functions com `minInstances: 0`, notificação no celular pelo FCM (g
 ## 1. Console (feito em 03/11/2026)
 
 - Projeto criado, app web "Sodalis Web" registrado (configuração pública em `firebase-applet-config.json`).
-- Authentication: Google e E-mail com link (sem senha). Domínio autorizado: `riocamarada.vercel.app`.
+- Authentication: Google e E-mail com link (sem senha). Domínios autorizados: `riocamarada.vercel.app` e `vereinapp.vercel.app`.
 - Firestore `(default)` Standard em `southamerica-east1`, modo produção.
 - Storage em `southamerica-east1`, modo produção.
 - Cloud Messaging: par de chaves Web Push gerado (`vapidKey` no arquivo de configuração).

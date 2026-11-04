@@ -12,12 +12,14 @@ import { emptyMemberForm, MemberForm, toPayload, validateMemberForm, type Member
 import { statusTone } from '../members/statusTone.ts';
 import { useFormOptions } from '../members/useFormOptions.ts';
 import { RequestChangeModal } from './RequestChangeModal.tsx';
+import { useDependentInfo } from '../members/components/FamilyPanel.tsx';
 
 export default function DependentsPage() {
   const t = useTenant();
   const m = t.member;
   const list = useList<MemberDoc>(m ? P.members(t.tenantId) : null, m ? { where: [['dependentOf', '==', m.id]], limit: 20 } : undefined);
   const [open, setOpen] = useState(false);
+  const depInfo = useDependentInfo();
   const [change, setChange] = useState<{ d: MemberDoc & { id: string }; kind: 'dados' | 'remover' } | null>(null);
   const opts = useFormOptions(!!m);
   const holderCat = opts.data?.categories.find(c => c.id === m?.categoryId);
@@ -59,6 +61,22 @@ export default function DependentsPage() {
               </div>
               {d.status === 'rejeitado' && d.statusReason && <p className="text-xs text-warn">Ajuste pedido: {d.statusReason}</p>}
               {d.custom?.parentesco && <div className="text-xs text-muted">{d.custom.parentesco}</div>}
+              {(() => {
+                const i = depInfo(d);
+                return (
+                  <div className="text-xs space-y-0.5 pt-1">
+                    <div className="text-muted">
+                      {i.tl.age !== null ? `${i.tl.age} anos · ` : ''}
+                      {i.feeText}
+                    </div>
+                    {i.notes.map(n => (
+                      <p key={n.text} className={n.tone === 'bad' ? 'text-bad font-medium' : 'text-muted'}>
+                        {n.text}
+                      </p>
+                    ))}
+                  </div>
+                );
+              })()}
               {d.changePending && <p className="text-xs text-info">Pedido de alteração em análise pela diretoria.</p>}
               {['aprovado', 'ativo', 'em_atraso', 'suspenso'].includes(d.status) && (
                 <div className="flex flex-wrap gap-3 pt-1">

@@ -75,3 +75,20 @@ describe('foto obrigatória', () => {
     await expect(h.call('card.issue', { tenantId: h.tenantId, memberId, kind: 'rotativo' }, who)).resolves.toBeTruthy();
   });
 });
+
+describe('validade da carteirinha baixada', () => {
+  it('24 h, fim do mês ou fim do ano, nunca além da validade do cadastro', async () => {
+    const { makeTestTenant: mk, makeMember: mm } = await import('../helpers/env.ts');
+    const { P: paths } = await import('../../src/shared/paths.ts');
+    const h = await mk(); // 02/11/2026 12:00 UTC
+    const { memberId, who } = await mm(h);
+    const issue = () => h.call<{ expiresAt: string }>('card.issue', { tenantId: h.tenantId, memberId, kind: 'download' }, who);
+    expect((await issue()).expiresAt).toBe('2026-11-03T12:00:00.000Z');
+    await h.store.update(paths.settings(h.tenantId), { cardDownloadValidity: 'mes' });
+    expect((await issue()).expiresAt).toBe('2026-12-01T02:59:59.000Z'); // 30/11 23:59:59 em Brasília
+    await h.store.update(paths.settings(h.tenantId), { cardDownloadValidity: 'ano' });
+    expect((await issue()).expiresAt).toBe('2027-01-01T02:59:59.000Z');
+    await h.store.update(paths.member(h.tenantId, memberId), { validUntil: '2026-12-15' });
+    expect((await issue()).expiresAt).toBe('2026-12-16T02:59:59.000Z');
+  });
+});

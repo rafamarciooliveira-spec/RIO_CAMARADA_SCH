@@ -1,8 +1,8 @@
 /** Sócios: lista paginada, busca, filtros, pendentes primeiro, detalhe, cadastro, importação e exportação. */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Link2, Megaphone, Upload, UserPlus, Users } from 'lucide-react';
-import { useList, useOp } from '../../app/DataContext.tsx';
+import { ChevronDown, ChevronRight, CornerDownRight, Download, Link2, Megaphone, Upload, UserPlus, Users } from 'lucide-react';
+import { useData, useList, useOp } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
 import { P } from '../../shared/paths.ts';
 import { formatDate } from '../../shared/dates.ts';
@@ -39,24 +39,91 @@ export default function MembersPage() {
 
   const term = search.trim().toLowerCase();
   const match = (m: MemberDoc) => !term || m.fullName.toLowerCase().includes(term) || (m.membershipNumber || '').toLowerCase().includes(term);
-  const rows = list.data.filter(m => match(m) && (status || m.status !== 'pendente'));
+  const base = list.data.filter(m => match(m) && (status || m.status !== 'pendente'));
+  // Árvore: dependentes embaixo do titular (carregados à parte, porque a lista é paginada por nome)
+  const { client } = useData();
+  const holderIds = useMemo(() => base.filter(m => !m.dependentOf).map(m => m.id), [base]);
+  const holderKey = holderIds.join(',');
+  const [deps, setDeps] = useState<Record<string, (MemberDoc & { id: string })[]>>({});
+  const [holderNames, setHolderNames] = useState<Record<string, string>>({});
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const out: Record<string, (MemberDoc & { id: string })[]> = {};
+      for (let i = 0; i < holderIds.length; i += 30) {
+        const chunk = holderIds.slice(i, i + 30);
+        const found = await client.list<MemberDoc>(P.members(t.tenantId), { where: [['dependentOf', 'in', chunk]], limit: 300 }).catch(() => []);
+        for (const d of found) (out[d.dependentOf!] ||= []).push(d);
+      }
+      for (const k of Object.keys(out)) out[k].sort((a, b) => a.fullName.localeCompare(b.fullName, 'pt-BR'));
+      if (alive) setDeps(out);
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, t.tenantId, holderKey]);
+  // Dependente cujo titular não está nesta página: busca só o nome do titular
+  const orphanHolders = useMemo(() => [...new Set(base.filter(m => m.dependentOf && !holderIds.includes(m.dependentOf)).map(m => m.dependentOf!))], [base, holderIds]);
+  useEffect(() => {
+    const missing = orphanHolders.filter(id => !holderNames[id]);
+    if (!missing.length) return;
+    Promise.all(missing.map(id => client.get<MemberDoc>(P.member(t.tenantId, id)).catch(() => null))).then(list =>
+      setHolderNames(h => ({ ...h, ...Object.fromEntries(list.filter(Boolean).map(m => [m!.id, m!.fullName])) }))
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orphanHolders.join(','), client, t.tenantId]);
+  type Row = MemberDoc & { id: string; _child?: string; _deps?: number };
+  const rows: Row[] = [];
+  for (const m of base) {
+    if (m.dependentOf && holderIds.includes(m.dependentOf)) continue;
+    const kids = !m.dependentOf ? deps[m.id] || [] : [];
+    rows.push({ ...m, _deps: kids.length });
+    if (open[m.id]) for (const d of kids) rows.push({ ...d, _child: m.fullName });
+  }
   const pend = pending.data.filter(match);
   const changes = useList<MemberDoc>(!status && t.can('socios', 'aprovar') ? P.members(t.tenantId) : null, { where: [['changePending', '==', true]], limit: 30 });
 
   const cats = t.settings?.categories || [];
-  const columns: Column<MemberDoc & { id: string }>[] = [
+  const columns: Column<MemberDoc & { id: string; _child?: string; _deps?: number }>[] = [
     {
       key: 'nome',
       label: 'Nome',
       render: m => (
-        <div className="min-w-0">
-          <div className="font-medium truncate">{m.fullName}</div>
-          <div className="text-xs text-muted md:hidden">{m.categoryName}</div>
-          {m.dependentOf && <div className="text-xs text-muted">Dependente{m.custom?.parentesco ? ` · ${m.custom.parentesco}` : ''}</div>}
+        <div className={`min-w-0 flex items-start gap-2 ${m._child ? 'pl-6' : ''}`}>
+          {m._child ? (
+            <CornerDownRight className="w-4 h-4 mt-0.5 text-muted shrink-0" aria-hidden />
+          ) : m._deps ? (
+            <button
+              type="button"
+              aria-label={open[m.id] ? 'Esconder dependentes' : 'Mostrar dependentes'}
+              aria-expanded={!!open[m.id]}
+              className="p-0.5 -ml-1 rounded hover:bg-surface-2 cursor-pointer shrink-0"
+              onClick={e => (e.stopPropagation(), setOpen(o => ({ ...o, [m.id]: !o[m.id] })))}
+            >
+              {open[m.id] ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            </button>
+          ) : null}
+          <div className="min-w-0">
+            <div className="font-medium truncate">{m.fullName}</div>
+            <div className="text-xs text-muted md:hidden">{m.categoryName}</div>
+            {m._deps ? (
+              <button type="button" className="text-xs text-accent cursor-pointer" onClick={e => (e.stopPropagation(), setOpen(o => ({ ...o, [m.id]: !o[m.id] })))}>
+                {m._deps} dependente{m._deps > 1 ? 's' : ''} {open[m.id] ? '(esconder)' : '(ver)'}
+              </button>
+            ) : null}
+            {m.dependentOf && (
+              <div className="text-xs text-muted">
+                Dependente de {m._child || holderNames[m.dependentOf] || 'titular'}
+                {m.custom?.parentesco ? ` · ${m.custom.parentesco}` : ''}
+              </div>
+            )}
+          </div>
         </div>
       ),
     },
-    { key: 'matricula', label: 'Matrícula', render: m => <span className="tabular-nums">{m.membershipNumber || ''}</span>, hideOnMobile: true },
+    ...(t.settings?.showMembershipNumber === true ? [{ key: 'matricula', label: 'Matrícula', render: (m: MemberDoc) => <span className="tabular-nums">{m.membershipNumber || ''}</span>, hideOnMobile: true }] : []),
     { key: 'categoria', label: 'Categoria', render: m => m.categoryName, hideOnMobile: true },
     { key: 'validade', label: 'Validade', render: m => (m.validUntil ? formatDate(m.validUntil) : ''), hideOnMobile: true },
     { key: 'situacao', label: 'Situação', render: m => <Badge tone={statusTone(m.status)}>{MEMBER_STATUS_LABEL[m.status]}</Badge> },

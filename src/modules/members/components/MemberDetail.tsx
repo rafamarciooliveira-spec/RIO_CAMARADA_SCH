@@ -12,6 +12,7 @@ import { Badge, Button, Field, Input, Loading, Modal, Notice, Select, Tabs, Text
 import { statusTone } from '../statusTone.ts';
 import { ChangeReview } from './ChangeReview.tsx';
 import { TransferAction } from './Transfers.tsx';
+import { HolderFamily, PromoteDependent } from './FamilyPanel.tsx';
 
 const FIX_REASONS = [
   'Foto ilegível ou ausente',
@@ -106,6 +107,7 @@ export function MemberDetail({ memberId, onClose }: { memberId: string; onClose:
             })}
           </dl>
           {!anonymized && <Documents m={m} pii={pii} canPii={canPii} />}
+          {!m.dependentOf && <HolderFamily m={m} />}
           {canPii && !anonymized && (
             <div className="space-y-2 p-3 rounded-xl border border-line">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -255,6 +257,7 @@ function Actions({ m, cats, canApprove, anonymized, onDone }: { m: MemberDoc & {
     <div className="space-y-5">
       <ChangeReview m={m} />
       <TransferAction m={m} />
+      <PromoteDependent m={m} />
       {['pendente', 'rejeitado', 'desligado'].includes(m.status) && (
         <section className="space-y-2 p-3 rounded-xl border border-ok/40">
           <h3 className="font-semibold text-sm">{m.status === 'desligado' ? 'Readmitir' : 'Aprovar cadastro'}</h3>

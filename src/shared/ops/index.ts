@@ -16,6 +16,8 @@ import { orgchartOps } from './orgchart.ts';
 import { federationOps } from './federation.ts';
 import { billingOps } from './billing.ts';
 import { surveyOps } from './surveys.ts';
+import { dependentOps } from './dependents.ts';
+import { handbookOps } from './handbook.ts';
 
 let done = false;
 export function registerAllOps(): void {
@@ -38,6 +40,8 @@ export function registerAllOps(): void {
     ...federationOps,
     ...billingOps,
     ...surveyOps,
+    ...dependentOps,
+    ...handbookOps,
     jobRunnerOp,
   ] as OpDef[]);
 }

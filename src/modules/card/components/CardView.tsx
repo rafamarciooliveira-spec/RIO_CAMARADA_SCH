@@ -30,6 +30,8 @@ export interface CardMemberData {
   memberSince?: string;
   /** Cargos no organograma (Presidente, Rei do tiro...) */
   roles?: string[];
+  /** Histórico de cargos e honrarias para o verso (ex.: "Rei do tiro: 2019 a 2020") */
+  honors?: string[];
 }
 
 interface Props {
@@ -48,6 +50,8 @@ interface Props {
   labelCard: string;
   /** Largura em que a carteirinha aparece na tela; o desenho interno não muda */
   width?: number;
+  /** Adesivos do cargo (endereços das imagens), no canto da foto */
+  stickers?: string[];
 }
 
 export const CARD_BASE = { vertical: { w: 320, h: 508 }, horizontal: { w: 508, h: 320 } } as const;
@@ -95,7 +99,7 @@ function Scaled({ base, width, children }: { base: { w: number; h: number }; wid
 }
 
 export const CardView = forwardRef<HTMLDivElement, Props>(function CardView(
-  { template: t, member: m, logoSrc, photoUrl, qrDataUrl, qrCaption, banner, side = 'frente', both, onFlip, labelCard, width },
+  { template: t, member: m, logoSrc, photoUrl, qrDataUrl, qrCaption, banner, side = 'frente', both, onFlip, labelCard, width, stickers = [] },
   ref
 ) {
   const vertical = t.orientation !== 'horizontal';
@@ -131,9 +135,21 @@ export const CardView = forwardRef<HTMLDivElement, Props>(function CardView(
     </div>
   );
 
+  // Adesivos do cargo: em cima do canto da foto (ou no canto da carteirinha, se ela não tiver foto)
+  const stickerRow = stickers.length ? (
+    <div className="flex -space-x-2" aria-label="Adesivos do cargo">
+      {stickers.slice(0, 3).map(src => (
+        <img key={src} src={src} alt="" className="object-contain drop-shadow-md" style={{ width: 40, height: 40 }} />
+      ))}
+    </div>
+  ) : null;
+
   const photo = t.showPhoto ? (
-    <div className="shrink-0 rounded-xl overflow-hidden border-2 bg-black/20 flex items-center justify-center" style={{ borderColor: t.accentColor, width: vertical ? 96 : 84, height: vertical ? 118 : 104 }}>
-      {photoUrl ? <img src={photoUrl} alt={`Foto de ${m.fullName}`} className="w-full h-full object-cover" /> : <User className="w-10 h-10 opacity-50" aria-hidden />}
+    <div className="relative shrink-0" style={{ width: vertical ? 96 : 84, height: vertical ? 118 : 104 }}>
+      <div className="w-full h-full rounded-xl overflow-hidden border-2 bg-black/20 flex items-center justify-center" style={{ borderColor: t.accentColor }}>
+        {photoUrl ? <img src={photoUrl} alt={`Foto de ${m.fullName}`} className="w-full h-full object-cover" /> : <User className="w-10 h-10 opacity-50" aria-hidden />}
+      </div>
+      {stickerRow && <div className="absolute" style={{ top: -14, right: -18 }}>{stickerRow}</div>}
     </div>
   ) : null;
 
@@ -205,15 +221,18 @@ export const CardView = forwardRef<HTMLDivElement, Props>(function CardView(
     </div>
   );
 
+  const cornerStickers = !t.showPhoto && stickerRow ? <div className="absolute z-10" style={{ top: 14, right: 14 }}>{stickerRow}</div> : null;
+
   const front = vertical ? (
     <Face t={t} w={w} h={h}>
+      {cornerStickers}
       <div className="h-full flex flex-col" style={{ padding: 18, gap: 10 }}>
         {header}
         <div className="shrink-0 min-h-0" style={{ textAlign }}>
           {name}
         </div>
         {/* Foto no centro da faixa do meio */}
-        <div className="flex-1 min-h-0 flex items-center justify-center overflow-hidden">{photo}</div>
+        <div className="flex-1 min-h-0 flex items-center justify-center">{photo}</div>
         <div className="shrink-0 flex items-end justify-between gap-3">
           <div className="min-w-0 flex-1 flex flex-col gap-2 text-left">
             {details}
@@ -225,9 +244,10 @@ export const CardView = forwardRef<HTMLDivElement, Props>(function CardView(
     </Face>
   ) : (
     <Face t={t} w={w} h={h}>
+      {cornerStickers}
       <div className="h-full flex flex-col" style={{ padding: 16, gap: 10 }}>
         {header}
-        <div className="flex-1 min-h-0 flex gap-3 items-center overflow-hidden">
+        <div className="flex-1 min-h-0 flex gap-3 items-center">
           {photo}
           <div className="min-w-0 flex-1 flex flex-col gap-2 justify-center">
             {name}
@@ -249,9 +269,27 @@ export const CardView = forwardRef<HTMLDivElement, Props>(function CardView(
         <div className="text-left w-full leading-snug opacity-90 min-h-0 overflow-hidden" style={{ fontSize: vertical ? 10 : 9.5 }}>
           <p className="mb-1.5"><strong>Documento pessoal e intransferível.</strong> Apresente junto com um documento oficial com foto quando for pedido.</p>
           <p className="mb-1.5"><strong>Autenticação:</strong> a validade e a situação verdadeiras são as que aparecem ao escanear o QR da frente. Se a data impressa for diferente da mostrada na conferência, o documento foi alterado.</p>
-          <p className="mb-1.5"><strong>Arquivo baixado:</strong> o QR do arquivo vale por 24 horas. Para uso contínuo, mostre a carteirinha aberta no portal, onde o QR se renova sozinho.</p>
-          <p><strong>Perda ou suspensão:</strong> a diretoria pode suspender a carteirinha a qualquer momento, e o QR deixa de validar na hora.</p>
+          {!(t.showHonors && m.honors?.length) && (
+            <>
+              <p className="mb-1.5"><strong>Arquivo baixado:</strong> o QR do arquivo vale até a data em destaque no próprio arquivo. Para uso contínuo, mostre a carteirinha aberta no portal, onde o QR se renova sozinho.</p>
+              <p><strong>Perda ou suspensão:</strong> a diretoria pode suspender a carteirinha a qualquer momento, e o QR deixa de validar na hora.</p>
+            </>
+          )}
         </div>
+        {t.showHonors && m.honors && m.honors.length > 0 && (
+          <div className="w-full text-left rounded-lg px-3 py-2" style={{ background: 'rgba(0,0,0,0.18)' }}>
+            <div className="uppercase font-semibold mb-1" style={{ color: t.accentColor, fontSize: 9, letterSpacing: '0.15em' }}>
+              Histórico na sociedade
+            </div>
+            <ul className="space-y-0.5" style={{ fontSize: vertical ? 10 : 9 }}>
+              {m.honors.slice(0, vertical ? 6 : 3).map(h => (
+                <li key={h} className="truncate">
+                  {h}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {visibleCustom.length > 0 && (
           <dl className="space-y-0.5 w-full" style={{ fontSize: 10 }}>
             {visibleCustom.slice(0, 4).map(f => (

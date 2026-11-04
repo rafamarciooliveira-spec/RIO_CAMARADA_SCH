@@ -172,9 +172,11 @@ export interface TenantSettings {
   pixKey?: string; // chave Pix da sociedade (pública por natureza, exibida ao sócio)
   doubleApprovalAboveCents: number; // 0 = desligado
   showPhotoOnValidation: boolean;
+  cardDownloadValidity?: '24h' | 'mes' | 'ano'; // até quando vale o QR da carteirinha baixada ou impressa
   cardRequiresPhoto?: boolean; // sem foto, a carteirinha não é emitida (padrão: sim)
   showMembershipNumber?: boolean; // mostrar o número do sócio para os sócios (padrão: não, para evitar disputa por número baixo)
   memberMenuHidden?: string[]; // páginas da área do sócio escondidas pela diretoria
+  dependentRules?: import('./dependents.ts').DependentRules; // dependente na mensalidade e limites de idade
   modalities?: string[]; // modalidades da sociedade (tiro, dado, futebol society...); vazio = sugestão do tipo
   competitionKinds?: string[]; // tipos de competição (torneio, campeonato, copa...)
   retentionYears: { financeiro: number; atas: number; inativos: number };
@@ -256,6 +258,8 @@ export interface MemberDoc {
   guardianMemberId?: string;
   dependentOf?: string;
   changePending?: boolean; // há pedido de alteração esperando a diretoria
+  birthYear?: number; // ano de nascimento (com birthMonthDay dá a idade, sem abrir os dados pessoais)
+  ageAlerts?: string[]; // avisos de idade já enviados (ex.: "paga_2027", "limite_2030")
   memberSinceYear?: number; // ano em que entrou na sociedade (informado; vale mais que a data de aprovação no sistema)
   groups: string[];
   custom: Record<string, string>;
@@ -492,6 +496,7 @@ export interface ChargeDoc {
   provider?: { name: string; externalId: string; pixCopyPaste?: string; boletoUrl?: string; boletoLine?: string };
   ledgerEntryId?: string;
   receiptNumber?: number;
+  items?: { label: string; amountCents: number }[]; // composição: titular e cada dependente
   reminders: { at: ISODateTime; kind: string }[];
   cancelReason?: string;
   canceledAt?: ISODateTime;
@@ -965,4 +970,18 @@ export interface FedTransferDoc {
   decidedAt?: ISODateTime;
   reason?: string;
   newMemberId?: string;
+}
+
+/** tenants/{t}/handbook/current: manual do sócio (direitos, deveres, regras) */
+export interface HandbookDoc {
+  title: string;
+  intro?: string;
+  sections: { id: string; title: string; body: string }[];
+  pdfPath?: string; // PDF opcional (só sócios leem)
+  requireAck: boolean; // pede "Li e estou ciente"
+  version: number; // 0 = rascunho nunca publicado
+  publishedAt?: ISODateTime;
+  versions: { version: number; at: ISODateTime; note?: string }[];
+  updatedAt: ISODateTime;
+  updatedBy: string;
 }

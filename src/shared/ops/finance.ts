@@ -32,6 +32,7 @@ import type {
 } from '../types.ts';
 import { emptyStats, getSettings, notify, sendTemplateMail, tid } from './helpers.ts';
 import { setStatusCore } from './members.ts';
+import { birthDateOf, dependentRules, dependentTimeline, familyDependentsCents } from '../dependents.ts';
 
 /** Motivo gravado quando a situação muda pela régua de adimplência (não aparece na portaria) */
 export const ARREARS_REASON = 'automatico:inadimplencia';
@@ -499,16 +500,38 @@ export const chargesGenerateBatch = defineOp({
     const dueDate = dueDateFor(input.competence, input.dueDay || settings.dueDay || 10);
     const label = ctx.tenant?.labels?.fee || 'Mensalidade';
     const members = await ctx.store.query<MemberDoc>(P.members(t), { where: [['status', 'in', ['ativo', 'aprovado', 'em_atraso']]] });
+    // Dependente nunca recebe cobrança separada: entra na mensalidade do titular, discriminado
+    const rules = dependentRules(settings);
+    const today = localDateKey(ctx.now(), ctx.tenant?.timezone);
+    const depsOf = new Map<string, typeof members>();
+    for (const r of members) if (r.data.dependentOf) depsOf.set(r.data.dependentOf, [...(depsOf.get(r.data.dependentOf) || []), r]);
     let created = 0;
     let skipped = 0;
     let totalCents = 0;
     for (const r of members) {
       const m = r.data;
+      if (m.dependentOf) continue;
       const cat = settings.categories.find(c => c.id === m.categoryId);
-      if (!cat || cat.feeCents <= 0 || cat.period === 'isento' || !dueThisMonth(cat.period, month)) continue;
+      if (!cat || !dueThisMonth(cat.period === 'isento' ? 'mensal' : cat.period, month)) continue;
+      const holderFee = cat.period === 'isento' ? 0 : cat.feeCents;
+      const items: { label: string; amountCents: number }[] = [];
+      if (holderFee > 0) items.push({ label: `Titular (${cat.name})`, amountCents: holderFee });
+      const depFees: number[] = [];
+      for (const d of depsOf.get(r.id) || []) {
+        let birth = birthDateOf(d.data);
+        if (!birth && rules.freeUntilAge > 0) birth = (await ctx.store.get<MemberPiiDoc>(P.memberPii(t, d.id)))?.birthDate || null;
+        const dcat = settings.categories.find(c => c.id === d.data.categoryId);
+        const fee = dependentTimeline(rules, birth, today, dcat && dcat.period !== 'isento' ? dcat.feeCents : 0).feeNowCents;
+        depFees.push(fee);
+        if (fee > 0) items.push({ label: `Dependente: ${d.data.displayName}`, amountCents: fee });
+      }
+      const depTotal = familyDependentsCents(rules, depFees);
+      if (depTotal < depFees.reduce((a, b) => a + b, 0)) items.push({ label: 'Teto da família para dependentes', amountCents: depTotal - depFees.reduce((a, b) => a + b, 0) });
+      const amount = holderFee + depTotal;
+      if (amount <= 0) continue;
       const id = `rec_${input.competence.replace('-', '')}_${r.id}`;
       const path = `${P.charges(t)}/${id}`;
-      const discount = Math.min(input.discountCents, cat.feeCents);
+      const discount = Math.min(input.discountCents, amount);
       const made = await ctx.store.runTransaction(async tx => {
         if (await tx.get(path)) return false;
         const doc: ChargeDoc = {
@@ -516,14 +539,15 @@ export const chargesGenerateBatch = defineOp({
           memberId: r.id,
           ...(m.uid ? { memberUid: m.uid } : {}),
           memberName: m.fullName,
-          description: `${label} ${input.competence.slice(5)}/${input.competence.slice(0, 4)}`,
+          description: `${label} ${input.competence.slice(5)}/${input.competence.slice(0, 4)}${depTotal > 0 ? ` (com ${depFees.filter(f => f > 0).length} dependente${depFees.filter(f => f > 0).length > 1 ? 's' : ''})` : ''}`,
           competence: input.competence,
           kind: 'recorrente',
-          amountCents: cat.feeCents,
+          amountCents: amount,
           discountCents: discount,
           dueDate,
           status: 'aberta',
           reminders: [],
+          ...(items.length > 1 || depTotal > 0 ? { items } : {}),
           createdAt: ctx.nowIso,
         };
         tx.create(path, doc as unknown as Record<string, unknown>);
@@ -531,7 +555,7 @@ export const chargesGenerateBatch = defineOp({
       });
       if (made) {
         created++;
-        totalCents += cat.feeCents - discount;
+        totalCents += amount - discount;
       } else skipped++;
     }
     await ctx.audit('charges.batch_generated', input.competence, { created, skipped, totalCents });
