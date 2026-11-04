@@ -9,6 +9,7 @@ import { randomId, resizeImage } from '../../../utils/image.ts';
 import { Badge, Button, cx, Field, Input, Notice, Select, Toggle } from '../../../ui/index.tsx';
 import { PATTERN_LABEL, type CardPattern, type CardTemplateDoc } from '../cardTemplate.ts';
 import { ColorPicker } from '../../../ui/ColorPicker.tsx';
+import { LOGO_MAX } from '../components/CardView.tsx';
 
 export interface PanelProps {
   value: CardTemplateDoc;
@@ -17,6 +18,7 @@ export interface PanelProps {
 }
 
 export function IdentityPanel({ value, set }: PanelProps) {
+  const logoMax = value.orientation === 'horizontal' ? LOGO_MAX.horizontal : LOGO_MAX.vertical;
   const t = useTenant();
   const { client } = useData();
   const [busy, setBusy] = useState(false);
@@ -77,8 +79,8 @@ export function IdentityPanel({ value, set }: PanelProps) {
             </button>
           ))}
         </div>
-        <Field label={`Tamanho da logo: ${value.logoSize || 64} px`}>
-          {id => <input id={id} type="range" min={28} max={160} value={value.logoSize || 64} onChange={e => set({ logoSize: Number(e.target.value) })} className="w-full accent-[var(--sd-accent)]" />}
+        <Field label={`Tamanho da logo: ${Math.min(value.logoSize || 64, logoMax)} px`} hint={`Vai até ${logoMax} px para não encostar no nome e na foto.`}>
+          {id => <input id={id} type="range" min={28} max={logoMax} value={Math.min(value.logoSize || 64, logoMax)} onChange={e => set({ logoSize: Number(e.target.value) })} className="w-full accent-[var(--sd-accent)]" />}
         </Field>
         <Toggle checked={value.logoBgTransparent !== false} onChange={v => set({ logoBgTransparent: v })} label="Logo sem fundo branco" />
       </div>
