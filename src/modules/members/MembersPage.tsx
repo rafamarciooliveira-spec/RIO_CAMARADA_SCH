@@ -14,6 +14,7 @@ import { ExportModal, ImportModal } from './components/ImportExport.tsx';
 import { emptyMemberForm, MemberForm, toPayload, validateMemberForm, type MemberFormValue } from './components/MemberForm.tsx';
 import { statusTone } from './statusTone.ts';
 import { SignupLinkModal } from './components/SignupLinkModal.tsx';
+import { TransfersSection } from './components/Transfers.tsx';
 
 const PAGE = 50;
 
@@ -129,6 +130,7 @@ export default function MembersPage() {
           <Table rows={pend} columns={columns} onRowClick={m => setOpenId(m.id)} />
         </section>
       )}
+      {!status && <TransfersSection />}
       {changes.data.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-sm font-bold text-info">Alterações para aprovar ({changes.data.length})</h2>

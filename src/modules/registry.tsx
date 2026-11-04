@@ -23,6 +23,7 @@ import {
   Newspaper,
   Trophy,
   Network,
+  CreditCard,
   Music,
   Package,
   ScanLine,
@@ -88,6 +89,7 @@ export const PAGES: PageDef[] = [
   { path: 'engajamento', label: 'Engajamento', icon: Award, area: 'diretoria', module: 'engajamento', perm: ['engajamento', 'ver'], element: L(() => import('./culture/EngagementPage.tsx')) },
   { path: 'modelo-carteirinha', label: 'Modelo da carteirinha', icon: BadgeCheck, area: 'diretoria', perm: ['carteirinha', 'editar'], element: L(() => import('./card/CardDesignPage.tsx')) },
   { path: 'privacidade', label: 'Pedidos de privacidade', icon: ShieldCheck, area: 'diretoria', perm: ['pii', 'ver'], element: L(() => import('./privacy/PrivacyAdminPage.tsx')) },
+  { path: 'plano', label: 'Plano e cobrança', icon: CreditCard, area: 'diretoria', perm: ['sociedade', 'ver'], element: L(() => import('./billing/PlanPage.tsx')) },
   { path: 'configuracoes', label: 'Configurações', icon: Settings, area: 'diretoria', perm: ['sociedade', 'ver'], element: L(() => import('./settings/SettingsPage.tsx')) },
   { path: 'auditoria', label: 'Auditoria', icon: ShieldCheck, area: 'diretoria', perm: ['auditoria', 'ver'], element: L(() => import('./settings/AuditPage.tsx')) },
 ];

@@ -19,8 +19,43 @@ export interface PlanDoc {
   name: string;
   maxMembers: number;
   modules: ModuleId[];
-  priceCents: number; // TODO(decisão comercial): modelo de cobrança do SaaS ainda não definido
+  priceCents: number; // legado (valor fixo); a cobrança atual é por sócio
+  pricePerMemberCents?: number; // por sócio titular ativo, por mês
+  minMonthlyCents?: number; // valor mínimo do mês
+  description?: string;
+  highlights?: string[]; // o que o plano inclui, para a tela da sociedade
+  stripePriceMonthly?: string; // id do preço no Stripe (por sócio, mensal)
+  stripePriceAnnual?: string; // id do preço no Stripe (por sócio, anual com desconto)
   active: boolean;
+}
+
+/** planRequests/{id}: pedido de troca de plano feito pela diretoria, decidido pela plataforma */
+export interface PlanRequestDoc {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  fromPlanId: string;
+  toPlanId: string;
+  period: 'mensal' | 'anual';
+  note?: string;
+  status: 'pendente' | 'aprovado' | 'recusado';
+  byUid: string;
+  at: ISODateTime;
+  decidedBy?: string;
+  decidedAt?: ISODateTime;
+  reason?: string;
+}
+
+/** tenants/{t}/billing/current: assinatura (gravada só pelo servidor e pelo aviso do Stripe) */
+export interface BillingDoc {
+  provider: 'manual' | 'stripe';
+  status: 'sem_assinatura' | 'ativa' | 'atrasada' | 'cancelada';
+  period: 'mensal' | 'anual';
+  customerId?: string;
+  subscriptionId?: string;
+  quantity?: number;
+  currentPeriodEnd?: ISODateTime;
+  updatedAt: ISODateTime;
 }
 
 export interface SlugDoc {
@@ -98,6 +133,7 @@ export interface TenantDoc {
   loginMethods: { google: boolean; emailLink: boolean };
   timezone: string;
   societyType?: string; // id de SOCIETY_TYPES (tiro_esportivo, bolao, futebol, folclore...)
+  federationId?: string; // filial de uma federação
   region?: TenantRegion;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
@@ -801,6 +837,7 @@ export interface CompetitionDoc {
   teams: { id: string; name: string }[]; // formato times
   status: 'planejada' | 'em_andamento' | 'encerrada';
   publicRanking: boolean;
+  federationChampionshipId?: string; // vale para o campeonato da federação
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
@@ -864,4 +901,55 @@ export interface OrgChartDoc {
   positions: OrgPosition[];
   showOnPublicPage: boolean;
   updatedAt: ISODateTime;
+}
+
+// ---------- Federação (várias sociedades como filiais) ----------
+
+/** federations/{f}: só o servidor lê e grava; a diretoria da federação vê tudo por operações */
+export interface FederationDoc {
+  id: string;
+  name: string;
+  slug: string;
+  tenantIds: string[];
+  adminEmails: string[]; // diretoria da federação (e-mail verificado da conta Google)
+  networkCard: boolean; // carteirinha de uma filial aceita na portaria das outras
+  pricePerMemberCents: number; // cobrança por sócio titular ativo somando as filiais
+  primaryColor: string;
+  status: 'ativa' | 'suspensa';
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
+/** federations/{f}/championships/{id}: campeonato que soma as etapas disputadas nas filiais */
+export interface FedChampionshipDoc {
+  id: string;
+  name: string;
+  season: string;
+  unit: string;
+  higherIsBetter: boolean;
+  aggregate: 'soma' | 'media' | 'melhores';
+  bestN?: number;
+  status: 'planejada' | 'em_andamento' | 'encerrada';
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
+/** federations/{f}/transfers/{id}: sócio que muda de filial (pedido pela origem, aprovado pelo destino) */
+export interface FedTransferDoc {
+  id: string;
+  fromTenantId: string;
+  fromTenantName: string;
+  toTenantId: string;
+  toTenantName: string;
+  memberId: string;
+  memberName: string; // nome reduzido
+  dependents: number;
+  note?: string;
+  status: 'pendente' | 'concluida' | 'recusada';
+  requestedBy: string;
+  requestedAt: ISODateTime;
+  decidedBy?: string;
+  decidedAt?: ISODateTime;
+  reason?: string;
+  newMemberId?: string;
 }

@@ -9,6 +9,7 @@ import { can as canPerm, isBoard, type Action, type ModuleId, type Perms } from 
 import { DEFAULT_LABELS, type Labels, type MemberDoc, type MembershipDoc, type SlugDoc, type TenantDoc, type TenantSettings } from '../shared/types.ts';
 import { useData, useDoc, useSession } from './DataContext.tsx';
 import type { WithId } from '../data/client.ts';
+import { userTheme } from '../ui/ThemeToggle.tsx';
 import { ErrorState, Loading } from '../ui/index.tsx';
 
 export interface TenantCtx {
@@ -65,7 +66,8 @@ export function applyBranding(tenant: TenantDoc | null): void {
     return;
   }
   const b = tenant.branding;
-  root.setAttribute('data-theme', b.theme || 'escuro');
+  // A escolha da própria pessoa (botão do sol e da lua) vence o padrão da sociedade
+  root.setAttribute('data-theme', userTheme() || b.theme || 'escuro');
   root.style.setProperty('--sd-brand', b.primaryColor);
   root.style.setProperty('--sd-brand-2', b.secondaryColor);
   root.style.setProperty('--sd-accent', b.accentColor);

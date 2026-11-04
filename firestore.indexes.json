@@ -453,6 +453,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "members",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dependentOf",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

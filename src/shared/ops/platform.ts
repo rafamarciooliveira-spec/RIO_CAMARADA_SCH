@@ -218,9 +218,10 @@ export const updateTenantPlatform = defineOp({
     if (!t) fail('not-found', 'Sociedade não encontrada.');
     const patch: Record<string, unknown> = { updatedAt: ctx.nowIso };
     if (input.status) patch.status = input.status;
-    if (input.planId) {
-      if (!(await ctx.store.get(P.plan(input.planId)))) fail('invalid-argument', 'Plano inexistente.');
-      patch.planId = input.planId;
+    if (input.planId && input.planId !== t!.planId) {
+      // Troca de plano liga e desliga os módulos conforme o plano novo
+      const { applyPlan } = await import('./billing.ts');
+      await applyPlan(ctx, input.tenantId, input.planId);
     }
     if (input.modules) {
       for (const [k, v] of Object.entries(input.modules)) if (MODULE_IDS.includes(k as ModuleId)) patch[`modules.${k}`] = v;
@@ -264,7 +265,13 @@ export const savePlan = defineOp({
     name: zText(60).min(2),
     maxMembers: z.number().int().min(1).max(1_000_000),
     modules: z.array(z.string()).max(40),
-    priceCents: z.number().int().min(0),
+    priceCents: z.number().int().min(0).default(0),
+    pricePerMemberCents: z.number().int().min(0).max(100_000).default(0),
+    minMonthlyCents: z.number().int().min(0).max(10_000_000).default(0),
+    description: zText(200).optional(),
+    highlights: z.array(zText(120)).max(15).default([]),
+    stripePriceMonthly: z.string().regex(/^(price_[A-Za-z0-9]+)?$/).max(80).optional(),
+    stripePriceAnnual: z.string().regex(/^(price_[A-Za-z0-9]+)?$/).max(80).optional(),
     active: z.boolean(),
   }),
   auth: 'master',

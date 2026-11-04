@@ -98,6 +98,10 @@ service cloud.firestore {
       allow list, write: if false;
     }
 
+    // Federações, pedidos de plano: só o servidor (a tela usa as operações, que conferem quem pode)
+    match /federations/{rest=**} { allow read: if false; }
+    match /planRequests/{id} { allow read: if false; }
+
     match /platformAudit/{id} {
       allow read: if isMaster();
       allow write: if false;
@@ -149,6 +153,7 @@ service cloud.firestore {
       match /outbox/{id} { allow read: if false; }
       match /icsTokens/{id} { allow read: if false; }
       match /paymentEvents/{id} { allow read: if false; }
+      match /billing/{id} { allow read: if false; }
 
       // ---------- Papéis e acesso ----------
       match /roles/{id} {

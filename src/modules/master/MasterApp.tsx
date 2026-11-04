@@ -4,11 +4,13 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, Route, Routes } from 'react-router-dom';
-import { Building2, Flag, LayoutDashboard, LogOut, Plus, ScrollText, ShieldCheck, Tags } from 'lucide-react';
+import { Building2, Flag, Inbox, LayoutDashboard, LogOut, Network, Plus, ScrollText, ShieldCheck, Tags } from 'lucide-react';
+import FederationsPage from './FederationsPage.tsx';
+import { ThemeToggle } from '../../ui/ThemeToggle.tsx';
 import { useData, useList, useOp, useSession, useDoc } from '../../app/DataContext.tsx';
 import { P } from '../../shared/paths.ts';
 import { MODULES, type ModuleId } from '../../shared/modules.ts';
-import type { PlanDoc } from '../../shared/types.ts';
+import type { PlanDoc, PlanRequestDoc } from '../../shared/types.ts';
 import { normalizeSlug } from '../../shared/slug.ts';
 import { formatDateTime } from '../../shared/dates.ts';
 import { formatBRL } from '../../shared/money.ts';
@@ -22,22 +24,50 @@ interface TenantRow {
   slug: string;
   status: 'ativa' | 'suspensa';
   planId: string;
-  modules: Partial<Record<ModuleId, boolean>>;
+  planName: string;
+  maxMembers: number;
+  modules?: Partial<Record<ModuleId, boolean>>;
   createdAt: string;
   membersTotal: number;
-  membersActive: number;
+  active: number;
+  holders: number;
+  dependents: number;
+  pending: number;
+  federation: string;
+  monthlyCents: number;
+  billingStatus: string;
+  billingProvider: string;
+  pendingRequest: string | null;
 }
 
-function useTenants() {
+interface Overview {
+  rows: TenantRow[];
+  totals: { tenants: number; active: number; holders: number; monthlyCents: number };
+  requests: (PlanRequestDoc & { id: string })[];
+}
+
+function useOverview() {
   const { run } = useOp();
-  const [rows, setRows] = useState<TenantRow[] | null>(null);
-  const reload = async () => setRows((await run<TenantRow[]>('platform.listTenants', {})) || []);
+  const [data, setData] = useState<Overview | null>(null);
+  const reload = async () => {
+    const [ov, list] = await Promise.all([run<Overview>('billing.overview', {}, { silent: true }), run<{ id: string; modules: TenantRow['modules'] }[]>('platform.listTenants', {}, { silent: true })]);
+    if (!ov) return setData({ rows: [], totals: { tenants: 0, active: 0, holders: 0, monthlyCents: 0 }, requests: [] });
+    const mods = new Map((list || []).map(t => [t.id, t.modules]));
+    setData({ ...ov, rows: ov.rows.map(r => ({ ...r, modules: mods.get(r.id) || {} })) });
+  };
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return { rows, reload };
+  return { data, reload };
 }
+
+const BILLING: Record<string, [string, 'ok' | 'warn' | 'bad' | 'neutral']> = {
+  ativa: ['em dia', 'ok'],
+  atrasada: ['atrasada', 'warn'],
+  cancelada: ['cancelada', 'bad'],
+  sem_assinatura: ['manual', 'neutral'],
+};
 
 function SlugField({ value, onChange, onStatus }: { value: string; onChange: (v: string) => void; onStatus: (ok: boolean) => void }) {
   const { client } = useData();
@@ -206,15 +236,19 @@ function TenantDetail({ row, plans, onClose, onChanged }: { row: TenantRow; plan
   };
   return (
     <Modal open onClose={onClose} title={row.name} size="lg">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Stat label="Sócios" value={row.membersTotal} />
-        <Stat label="Ativos" value={row.membersActive} />
+        <Stat label="Ativos" value={row.active} hint={`Limite ${row.maxMembers.toLocaleString('pt-BR')}`} tone={row.active > row.maxMembers ? 'warn' : undefined} />
+        <Stat label="Titulares cobrados" value={row.holders} hint={`${row.dependents} dependente(s)`} />
+        <Stat label="Valor do mês" value={formatBRL(row.monthlyCents)} hint={row.federation ? `Pela federação ${row.federation}` : undefined} />
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={row.status === 'ativa' ? 'ok' : 'bad'}>{row.status}</Badge>
+        <Badge tone={(BILLING[row.billingStatus] || BILLING.sem_assinatura)[1]}>Assinatura {(BILLING[row.billingStatus] || BILLING.sem_assinatura)[0]}</Badge>
+        {row.pending > 0 && <Badge tone="info">{row.pending} cadastro(s) para aprovar</Badge>}
         <span className="text-xs text-muted">{BRAND.domain}/{row.slug}</span>
       </div>
-      <Field label="Plano">
+      <Field label="Plano" hint="Trocar o plano liga e desliga os módulos conforme o plano.">
         {id => (
           <Select id={id} value={row.planId} onChange={async e => { await run('platform.updateTenant', { tenantId: row.id, planId: e.target.value }, { success: 'Plano alterado.' }); onChanged(); }}>
             {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -248,24 +282,27 @@ function TenantDetail({ row, plans, onClose, onChanged }: { row: TenantRow; plan
 }
 
 function TenantsPage() {
-  const { rows, reload } = useTenants();
+  const { data, reload } = useOverview();
   const plans = useList<PlanDoc>(P.plans());
   const [creating, setCreating] = useState(false);
   const [open, setOpen] = useState<TenantRow | null>(null);
-  if (!rows) return <Loading />;
+  if (!data) return <Loading />;
+  const rows = data.rows;
   return (
     <>
-      <PageHeader title="Sociedades" subtitle="Só números agregados: nenhum dado pessoal aparece aqui." actions={<Button icon={<Plus className="w-4 h-4" />} onClick={() => setCreating(true)}>Nova sociedade</Button>} />
+      <PageHeader title="Sociedades" subtitle="Plano, situação, sócios e valor de cada sociedade. Só números: nenhum dado pessoal aparece aqui." actions={<Button icon={<Plus className="w-4 h-4" />} onClick={() => setCreating(true)}>Nova sociedade</Button>} />
       <Table
         rows={rows}
         onRowClick={r => setOpen(r)}
         empty={<EmptyState title="Nenhuma sociedade ainda" action={<Button onClick={() => setCreating(true)}>Criar a primeira</Button>} />}
         columns={[
           { key: 'n', label: 'Sociedade', render: r => <div><div className="font-medium">{r.name}</div><div className="text-xs text-muted">/{r.slug}</div></div> },
-          { key: 's', label: 'Situação', render: r => <Badge tone={r.status === 'ativa' ? 'ok' : 'bad'}>{r.status}</Badge> },
-          { key: 'p', label: 'Plano', render: r => plans.data.find(p => p.id === r.planId)?.name || r.planId, hideOnMobile: true },
-          { key: 'm', label: 'Sócios', render: r => `${r.membersActive} / ${r.membersTotal}`, className: 'tabular-nums' },
-          { key: 'c', label: 'Criada', render: r => formatDateTime(r.createdAt), hideOnMobile: true },
+          { key: 's', label: 'Situação', render: r => <div className="flex flex-col gap-1 items-start"><Badge tone={r.status === 'ativa' ? 'ok' : 'bad'}>{r.status}</Badge>{r.pendingRequest && <Badge tone="info">pediu troca</Badge>}</div> },
+          { key: 'p', label: 'Plano', render: r => <div><div>{r.planName}</div>{r.federation && <div className="text-xs text-muted">{r.federation}</div>}</div>, hideOnMobile: true },
+          { key: 'm', label: 'Ativos', render: r => `${r.active} / ${r.maxMembers.toLocaleString('pt-BR')}`, className: 'tabular-nums', hideOnMobile: true },
+          { key: 'h', label: 'Titulares', render: r => r.holders, className: 'tabular-nums' },
+          { key: 'v', label: 'Valor/mês', render: r => formatBRL(r.monthlyCents), className: 'tabular-nums' },
+          { key: 'b', label: 'Assinatura', render: r => <Badge tone={(BILLING[r.billingStatus] || BILLING.sem_assinatura)[1]}>{(BILLING[r.billingStatus] || BILLING.sem_assinatura)[0]}</Badge>, hideOnMobile: true },
         ]}
       />
       <CreateTenant open={creating} onClose={() => setCreating(false)} plans={plans.data.filter(p => p.active)} onDone={reload} />
@@ -274,33 +311,92 @@ function TenantsPage() {
   );
 }
 
+function RequestsPage() {
+  const { data, reload } = useOverview();
+  const plans = useList<PlanDoc>(P.plans());
+  const { run, busy } = useOp();
+  const [reason, setReason] = useState<Record<string, string>>({});
+  if (!data) return <Loading />;
+  const name = (id: string) => plans.data.find(p => p.id === id)?.name || id;
+  const decide = async (id: string, approve: boolean) => {
+    if (await run('billing.decideRequest', { requestId: id, approve, ...(reason[id]?.trim() ? { reason: reason[id].trim() } : {}) }, { success: approve ? 'Plano trocado.' : 'Pedido recusado.' })) reload();
+  };
+  return (
+    <>
+      <PageHeader title="Pedidos de troca de plano" subtitle="A diretoria da sociedade pede pelo portal; aprovar troca o plano e os módulos na hora." />
+      {data.requests.length === 0 ? (
+        <EmptyState title="Nenhum pedido esperando" />
+      ) : (
+        <div className="space-y-3">
+          {data.requests.map(r => (
+            <Card key={r.id} className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="font-semibold">{r.tenantName}</div>
+                  <div className="text-sm text-muted">{name(r.fromPlanId)} para <strong>{name(r.toPlanId)}</strong>, {r.period} · {formatDateTime(r.at)}</div>
+                </div>
+              </div>
+              {r.note && <p className="text-sm">Observação: {r.note}</p>}
+              <Textarea aria-label="Motivo da recusa" value={reason[r.id] || ''} onChange={e => setReason({ ...reason, [r.id]: e.target.value })} placeholder="Motivo, se for recusar" />
+              <div className="flex gap-2">
+                <Button loading={busy} onClick={() => decide(r.id, true)}>Aprovar e trocar o plano</Button>
+                <Button variant="secondary" loading={busy} disabled={(reason[r.id] || '').trim().length < 3} onClick={() => decide(r.id, false)}>Recusar</Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function FederationsRoute() {
+  const { data } = useOverview();
+  if (!data) return <Loading />;
+  return <FederationsPage tenants={data.rows.map(r => ({ id: r.id, name: r.name, slug: r.slug, federation: r.federation }))} />;
+}
+
 function PlansPage() {
   const plans = useList<PlanDoc>(P.plans());
   const { run, busy } = useOp();
   const [edit, setEdit] = useState<PlanDoc | null>(null);
-  const blank: PlanDoc = { id: '', name: '', maxMembers: 300, modules: MODULES.map(m => m.id), priceCents: 0, active: true };
+  const blank: PlanDoc = { id: '', name: '', maxMembers: 300, modules: MODULES.map(m => m.id), priceCents: 0, pricePerMemberCents: 0, minMonthlyCents: 0, description: '', highlights: [], active: true };
   return (
     <>
-      <PageHeader title="Planos e limites" subtitle="O modelo de cobrança do SaaS ainda será definido; a cobrança usa adaptador sandbox." actions={<Button icon={<Plus className="w-4 h-4" />} onClick={() => setEdit(blank)}>Novo plano</Button>} />
+      <PageHeader title="Planos e limites" subtitle="Cobrança por sócio titular ativo, por mês, com valor mínimo. Dependentes não contam." actions={<Button icon={<Plus className="w-4 h-4" />} onClick={() => setEdit(blank)}>Novo plano</Button>} />
       <Table
         rows={plans.data}
         onRowClick={p => setEdit(p)}
         columns={[
           { key: 'n', label: 'Plano', render: p => p.name },
           { key: 'm', label: 'Limite de sócios', render: p => p.maxMembers },
-          { key: 'v', label: 'Valor mensal', render: p => formatBRL(p.priceCents) },
+          { key: 'v', label: 'Por titular', render: p => formatBRL(p.pricePerMemberCents || 0) },
+          { key: 'min', label: 'Mínimo', render: p => formatBRL(p.minMonthlyCents || 0), hideOnMobile: true },
+          { key: 'st', label: 'Stripe', render: p => <Badge tone={p.stripePriceMonthly ? 'ok' : 'neutral'}>{p.stripePriceMonthly ? 'configurado' : 'não'}</Badge>, hideOnMobile: true },
           { key: 'a', label: 'Situação', render: p => <Badge tone={p.active ? 'ok' : 'neutral'}>{p.active ? 'ativo' : 'inativo'}</Badge> },
         ]}
       />
       {edit && (
         <Modal open onClose={() => setEdit(null)} title={edit.id ? `Plano ${edit.name}` : 'Novo plano'} size="lg" footer={<Button loading={busy} onClick={async () => {
           const id = edit.id || normalizeSlug(edit.name).replace(/-/g, '_') || 'plano';
-          const r = await run('platform.savePlan', { ...edit, id }, { success: 'Plano salvo.' });
+          const { stripePriceMonthly, stripePriceAnnual, description, ...rest } = edit;
+          const r = await run('platform.savePlan', { ...rest, id, ...(description ? { description } : {}), ...(stripePriceMonthly ? { stripePriceMonthly } : {}), ...(stripePriceAnnual ? { stripePriceAnnual } : {}) }, { success: 'Plano salvo.' });
           if (r) setEdit(null);
         }}>Salvar</Button>}>
           <Field label="Nome" required>{id => <Input id={id} value={edit.name} onChange={e => setEdit({ ...edit, name: e.target.value })} />}</Field>
           <Field label="Limite de sócios">{id => <Input id={id} type="number" value={edit.maxMembers} onChange={e => setEdit({ ...edit, maxMembers: Number(e.target.value) || 1 })} />}</Field>
-          <Field label="Valor mensal (referência)">{id => <MoneyInput id={id} value={edit.priceCents} onChange={c => setEdit({ ...edit, priceCents: c })} />}</Field>
+          <Field label="Descrição curta">{id => <Input id={id} value={edit.description || ''} maxLength={200} onChange={e => setEdit({ ...edit, description: e.target.value })} />}</Field>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="Valor por sócio titular ativo, por mês">{id => <MoneyInput id={id} value={edit.pricePerMemberCents || 0} onChange={c => setEdit({ ...edit, pricePerMemberCents: c })} />}</Field>
+            <Field label="Valor mínimo do mês">{id => <MoneyInput id={id} value={edit.minMonthlyCents || 0} onChange={c => setEdit({ ...edit, minMonthlyCents: c })} />}</Field>
+          </div>
+          <Field label="O que o plano inclui (uma linha por item)" hint="Aparece na tela Plano e cobrança das sociedades.">
+            {id => <Textarea id={id} value={(edit.highlights || []).join('\n')} onChange={e => setEdit({ ...edit, highlights: e.target.value.split('\n').map(x => x.trim()).filter(Boolean).slice(0, 15) })} />}
+          </Field>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="Stripe: preço mensal (price_...)" hint="Deixe vazio enquanto o Stripe não estiver ligado.">{id => <Input id={id} value={edit.stripePriceMonthly || ''} onChange={e => setEdit({ ...edit, stripePriceMonthly: e.target.value.trim() })} placeholder="price_..." />}</Field>
+            <Field label="Stripe: preço anual (price_...)">{id => <Input id={id} value={edit.stripePriceAnnual || ''} onChange={e => setEdit({ ...edit, stripePriceAnnual: e.target.value.trim() })} placeholder="price_..." />}</Field>
+          </div>
           <Toggle label="Plano ativo" checked={edit.active} onChange={v => setEdit({ ...edit, active: v })} />
           <div className="grid sm:grid-cols-2 gap-2">
             {MODULES.map(m => (
@@ -353,12 +449,16 @@ function AuditPage() {
 }
 
 function HealthPage() {
-  const { rows } = useTenants();
+  const { data } = useOverview();
+  const rows = data?.rows;
   const totals = useMemo(() => ({
     tenants: rows?.length || 0,
     active: rows?.filter(r => r.status === 'ativa').length || 0,
     members: rows?.reduce((a, r) => a + r.membersTotal, 0) || 0,
-  }), [rows]);
+    holders: data?.totals.holders || 0,
+    monthly: data?.totals.monthlyCents || 0,
+    requests: data?.requests.length || 0,
+  }), [rows, data]);
   return (
     <>
       <PageHeader title="Visão geral" subtitle="Métricas agregadas, sem dados pessoais." />
@@ -366,6 +466,9 @@ function HealthPage() {
         <Stat label="Sociedades" value={totals.tenants} />
         <Stat label="Ativas" value={totals.active} tone="ok" />
         <Stat label="Sócios na plataforma" value={totals.members} />
+        <Stat label="Titulares cobrados" value={totals.holders} />
+        <Stat label="Faturamento do mês (estimado)" value={formatBRL(totals.monthly)} tone="ok" />
+        <Stat label="Pedidos de troca de plano" value={totals.requests} tone={totals.requests ? 'info' : undefined} />
       </div>
       <Card className="mt-4 space-y-2 text-sm">
         <div className="font-semibold">Saúde do sistema</div>
@@ -392,6 +495,8 @@ export default function MasterApp() {
   const nav = [
     { to: '', label: 'Visão geral', icon: LayoutDashboard },
     { to: 'sociedades', label: 'Sociedades', icon: Building2 },
+    { to: 'pedidos', label: 'Pedidos de plano', icon: Inbox },
+    { to: 'federacoes', label: 'Federações', icon: Network },
     { to: 'planos', label: 'Planos', icon: Tags },
     { to: 'flags', label: 'Feature flags', icon: Flag },
     { to: 'auditoria', label: 'Auditoria', icon: ScrollText },
@@ -404,6 +509,7 @@ export default function MasterApp() {
           <Badge tone="brand">master</Badge>
           <Link to="/entrar" className="text-xs text-muted hover:text-fg">Trocar de acesso</Link>
           <div className="flex-1" />
+          <ThemeToggle />
           <button onClick={() => session.signOut()} aria-label="Sair" className="p-2 rounded-xl hover:bg-surface-2 cursor-pointer"><LogOut className="w-5 h-5" /></button>
         </div>
         <nav className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto">
@@ -418,6 +524,8 @@ export default function MasterApp() {
         <Routes>
           <Route index element={<HealthPage />} />
           <Route path="sociedades" element={<TenantsPage />} />
+          <Route path="pedidos" element={<RequestsPage />} />
+          <Route path="federacoes" element={<FederationsRoute />} />
           <Route path="planos" element={<PlansPage />} />
           <Route path="flags" element={<FlagsPage />} />
           <Route path="auditoria" element={<AuditPage />} />

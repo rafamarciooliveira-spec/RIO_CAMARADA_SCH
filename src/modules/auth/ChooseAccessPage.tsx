@@ -18,7 +18,7 @@ interface Place {
   to: string;
   title: string;
   subtitle: string;
-  kind: 'master' | 'diretoria' | 'socio';
+  kind: 'master' | 'federacao' | 'diretoria' | 'socio';
 }
 
 function LoginBox() {
@@ -94,6 +94,8 @@ function usePlaces(uid: string | undefined, isMaster: boolean) {
     (async () => {
       const out: Place[] = [];
       if (isMaster) out.push({ key: 'master', to: '/master', title: 'Painel da plataforma', subtitle: 'Criar sociedades, planos e acessos', kind: 'master' });
+      const feds = await client.call<{ id: string; name: string; slug: string }[]>('federation.mine', {}).catch(() => []);
+      for (const f of feds) out.push({ key: `fed_${f.id}`, to: `/federacao/${f.slug}`, title: f.name, subtitle: 'Diretoria da federação: números das filiais', kind: 'federacao' });
       for (const [tenantId, info] of tenants) {
         const m = await client.get<MembershipDoc>(P.membership(tenantId, uid)).catch(() => null);
         if (!m || !m.active || (m.expiresAtMs && m.expiresAtMs < Date.now())) continue;
@@ -128,7 +130,7 @@ export default function ChooseAccessPage() {
   }
   if (!places) return <Loading label="Procurando os seus acessos..." />;
   if (places.length === 1) return <Navigate to={places[0].to} replace />;
-  const icon = (k: Place['kind']) => (k === 'master' ? LayoutDashboard : k === 'diretoria' ? KeyRound : BadgeCheck);
+  const icon = (k: Place['kind']) => (k === 'master' || k === 'federacao' ? LayoutDashboard : k === 'diretoria' ? KeyRound : BadgeCheck);
   return (
     <div className="min-h-screen flex items-start sm:items-center justify-center p-4">
       <div className="w-full max-w-lg space-y-4">
@@ -158,8 +160,8 @@ export default function ChooseAccessPage() {
                     <span className="block font-semibold truncate">{p.title}</span>
                     <span className="block text-xs text-muted">{p.subtitle}</span>
                   </span>
-                  <Badge tone={p.kind === 'master' ? 'brand' : p.kind === 'diretoria' ? 'info' : 'neutral'}>
-                    {p.kind === 'master' ? 'Plataforma' : p.kind === 'diretoria' ? 'Diretoria' : 'Sócio'}
+                  <Badge tone={p.kind === 'master' || p.kind === 'federacao' ? 'brand' : p.kind === 'diretoria' ? 'info' : 'neutral'}>
+                    {p.kind === 'master' ? 'Plataforma' : p.kind === 'federacao' ? 'Federação' : p.kind === 'diretoria' ? 'Diretoria' : 'Sócio'}
                   </Badge>
                   <ArrowRight className="w-4 h-4 text-muted" />
                 </Link>

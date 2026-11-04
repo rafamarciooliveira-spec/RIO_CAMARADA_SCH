@@ -1,5 +1,5 @@
 /** Criar ou editar uma competição: formato, unidade, regra do ranking, categorias, etapas e times. */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { useOp } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
@@ -55,6 +55,13 @@ export default function CompetitionForm({ competition, hasResults, onClose, onSa
   const [cats, setCats] = useState(() => d.categories.join('\n'));
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD(x => ({ ...x, [k]: v }));
   const isTeams = d.format === 'times';
+  // Filial de federação: a competição pode valer para um campeonato da federação
+  const [champs, setChamps] = useState<{ id: string; name: string; season: string }[]>([]);
+  const { run } = op;
+  useEffect(() => {
+    if (!t.tenant.federationId) return;
+    run<{ id: string; name: string; season: string }[]>('federation.championships', { tenantId: t.tenantId }, { silent: true }).then(r => setChamps(r || []));
+  }, [run, t.tenantId, t.tenant.federationId]);
 
   const save = async () => {
     const categories = [...new Set(cats.split(/[\n;]/).map(s => s.trim()).filter(Boolean))];
@@ -237,6 +244,20 @@ export default function CompetitionForm({ competition, hasResults, onClose, onSa
           <legend className="text-sm font-bold mb-2">{isTeams ? '5' : '4'}. Publicação</legend>
           <Toggle checked={d.publicRanking} onChange={v => set('publicRanking', v)} label="Ranking público (visitantes da página da sociedade podem ver)" />
           <p className="text-xs text-muted">Aparece só o nome do participante e o resultado. Sem o público ligado, só os sócios veem.</p>
+          {champs.length > 0 && !isTeams && (
+            <Field label="Vale para o campeonato da federação" hint="Os resultados desta competição entram no ranking geral da federação.">
+              {id => (
+                <Select id={id} value={d.federationChampionshipId || ''} onChange={e => set('federationChampionshipId', e.target.value)}>
+                  <option value="">Não vale para campeonato da federação</option>
+                  {champs.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.season})
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          )}
         </fieldset>
       </div>
     </Modal>

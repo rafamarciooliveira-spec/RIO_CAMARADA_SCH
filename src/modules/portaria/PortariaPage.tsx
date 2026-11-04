@@ -105,6 +105,7 @@ function Reader({ eventId }: { eventId: string }) {
   const check = useCallback(
     async (text: string) => {
       const token = extractToken(text);
+      const qrSlug = String(text || '').match(/\/([a-z0-9-]{3,40})\/v\//)?.[1];
       if (!token) {
         setResult({ status: 'invalido', tenantName: t.tenant.name, checkedAt: new Date().toISOString() });
         playNotificationSound('alert');
@@ -114,7 +115,7 @@ function Reader({ eventId }: { eventId: string }) {
       if (lastRef.current.token === token && now - lastRef.current.at < 5000) return; // mesma leitura repetida
       lastRef.current = { token, at: now };
       busyRef.current = true;
-      const r = await run<VerifyResult>('portaria.checkin', { tenantId: t.tenantId, token, ...(eventId ? { eventId } : {}) });
+      const r = await run<VerifyResult>('portaria.checkin', { tenantId: t.tenantId, token, ...(eventId ? { eventId } : {}), ...(qrSlug && qrSlug !== t.tenant.slug ? { slug: qrSlug } : {}) });
       busyRef.current = false;
       if (r) {
         setResult(r);
@@ -269,6 +270,7 @@ function Reader({ eventId }: { eventId: string }) {
                 <div className="text-left">
                   <div className="text-3xl font-bold">{result.displayName}</div>
                   {result.categoryName && <div className="text-lg">{result.categoryName}</div>}
+                  {result.tenantName && result.tenantName !== t.tenant.name && <div className="text-sm font-semibold">Sócio da {result.tenantName} (filial da federação)</div>}
                   <div className="text-sm opacity-90">Validade: {result.validUntil ? formatDate(result.validUntil) : 'sem prazo'}</div>
                 </div>
               </div>

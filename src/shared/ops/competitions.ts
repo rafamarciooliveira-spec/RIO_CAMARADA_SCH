@@ -35,6 +35,7 @@ const zCompetitionData = z.object({
   teams: z.array(zTeam).max(64),
   status: z.enum(['planejada', 'em_andamento', 'encerrada']),
   publicRanking: z.boolean(),
+  federationChampionshipId: z.union([zId, z.literal('')]).optional(), // vazio = não vale para campeonato
 });
 
 type CompetitionData = z.infer<typeof zCompetitionData>;
@@ -100,6 +101,13 @@ function validate(d: CompetitionData): void {
   if (dc.length) fail('invalid-argument', `Categoria repetida: ${dc.join(', ')}.`);
 }
 
+/** O campeonato ligado precisa ser da federação desta filial */
+async function checkChampionship(ctx: OpContext, id: string | undefined) {
+  if (!id) return;
+  const fed = ctx.tenant?.federationId;
+  if (!fed || !(await ctx.store.get(P.fedChampionship(fed, id)))) fail('invalid-argument', 'Campeonato da federação não encontrado.');
+}
+
 export const competitionsSave = defineOp({
   name: 'competitions.save',
   input: zTenant.extend({ id: zId.optional(), data: zCompetitionData.partial().default({}) }),
@@ -115,6 +123,7 @@ export const competitionsSave = defineOp({
       const { id: _id, createdAt: _c, updatedAt: _u, ...curData } = cur;
       const merged = zCompetitionData.parse({ ...curData, ...input.data });
       validate(merged);
+      await checkChampionship(ctx, merged.federationChampionshipId);
       const results = await ctx.store.query<CompetitionResultDoc>(P.competitionResults(t, input.id), { limit: 2000 });
       const matches = await ctx.store.query<CompetitionMatchDoc>(P.competitionMatches(t, input.id), { limit: 2000 });
       if (merged.format !== cur.format && (results.length || matches.length)) {
@@ -135,6 +144,7 @@ export const competitionsSave = defineOp({
     ctx.require('competicoes', 'criar');
     const data = zCompetitionData.parse({ ...competitionDefaults(ctx), ...input.data });
     validate(data);
+    await checkChampionship(ctx, data.federationChampionshipId);
     if (data.aggregate !== 'melhores') delete data.bestN;
     const id = ctx.store.newId();
     const doc: CompetitionDoc = { id, ...data, createdAt: ctx.nowIso, updatedAt: ctx.nowIso };

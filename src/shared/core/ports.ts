@@ -152,3 +152,14 @@ export const simulatedMail: MailPort = {
     return { id: `sim_${Date.now().toString(36)}`, status: 'simulado' };
   },
 };
+
+/** Cobrança da assinatura do SaaS (Stripe quando ligado; sem porta, os pedidos de plano vão para a plataforma) */
+export interface BillingPort {
+  name: 'stripe';
+  /** Página de pagamento da assinatura; quantity = sócios cobrados (já com o mínimo do plano) */
+  createCheckout(args: { tenantId: string; tenantName: string; planId: string; period: 'mensal' | 'anual'; priceId: string; quantity: number; customerEmail: string; successUrl: string; cancelUrl: string; customerId?: string }): Promise<{ url: string }>;
+  /** Portal do cliente (trocar cartão, ver faturas, cancelar) */
+  portal(args: { customerId: string; returnUrl: string }): Promise<{ url: string }>;
+  /** Atualiza a quantidade cobrada quando o número de sócios muda */
+  updateQuantity(subscriptionId: string, quantity: number): Promise<void>;
+}

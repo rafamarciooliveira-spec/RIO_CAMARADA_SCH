@@ -11,6 +11,7 @@ import { MEMBER_STATUS_LABEL, type OrgChartDoc, type MemberDoc, type MemberHisto
 import { Badge, Button, Field, Input, Loading, Modal, Notice, Select, Tabs, Textarea, Toggle, useConfirm } from '../../../ui/index.tsx';
 import { statusTone } from '../statusTone.ts';
 import { ChangeReview } from './ChangeReview.tsx';
+import { TransferAction } from './Transfers.tsx';
 
 const FIX_REASONS = [
   'Foto ilegível ou ausente',
@@ -253,6 +254,7 @@ function Actions({ m, cats, canApprove, anonymized, onDone }: { m: MemberDoc & {
   return (
     <div className="space-y-5">
       <ChangeReview m={m} />
+      <TransferAction m={m} />
       {['pendente', 'rejeitado', 'desligado'].includes(m.status) && (
         <section className="space-y-2 p-3 rounded-xl border border-ok/40">
           <h3 className="font-semibold text-sm">{m.status === 'desligado' ? 'Readmitir' : 'Aprovar cadastro'}</h3>

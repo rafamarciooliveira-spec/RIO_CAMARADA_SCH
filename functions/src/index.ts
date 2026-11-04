@@ -32,6 +32,8 @@ import { EMULATOR_WEBHOOK_SECRET, emulatorCpfKeys } from './emulatorKeys.ts';
 import { judgeUpload } from './uploadCheck.ts';
 import { googleNewsPort } from './newsPort.ts';
 import { fcmPush } from './pushPort.ts';
+import { stripeBilling, stripeEventToOp, verifyStripeSignature } from './stripeBilling.ts';
+import type { PlanDoc } from '../../src/shared/types.ts';
 
 const REGION = 'southamerica-east1';
 setGlobalOptions({ region: REGION, maxInstances: 20 });
@@ -52,8 +54,14 @@ const CPF_ENCRYPTION_KEY = defineSecret('CPF_ENCRYPTION_KEY');
 const CPF_HMAC_KEY = defineSecret('CPF_HMAC_KEY');
 const SANDBOX_WEBHOOK_SECRET = defineSecret('SANDBOX_WEBHOOK_SECRET');
 
+// Stripe: desligado até existir a conta. Para ligar: criar os dois segredos e pôr STRIPE_ENABLED=true em .env.prod
+const STRIPE_ON = !IS_EMULATOR && process.env.STRIPE_ENABLED === 'true';
+// Declarados só com o Stripe ligado: declarar exige que o segredo exista na publicação
+const STRIPE_SECRET_KEY = STRIPE_ON ? defineSecret('STRIPE_SECRET_KEY') : null;
+const STRIPE_WEBHOOK_SECRET = STRIPE_ON ? defineSecret('STRIPE_WEBHOOK_SECRET') : null;
+
 // No emulador os segredos não existem: nada é declarado e as chaves locais são usadas
-const SECRETS = IS_EMULATOR ? [] : [RESEND_API_KEY, CPF_ENCRYPTION_KEY, CPF_HMAC_KEY, SANDBOX_WEBHOOK_SECRET];
+const SECRETS = IS_EMULATOR ? [] : [RESEND_API_KEY, CPF_ENCRYPTION_KEY, CPF_HMAC_KEY, SANDBOX_WEBHOOK_SECRET, ...(STRIPE_SECRET_KEY ? [STRIPE_SECRET_KEY] : [])];
 
 /** Banco efetivo. Lido do ambiente na carga (o deploy grava os parâmetros em process.env). */
 const DB_ID = IS_EMULATOR ? '(default)' : process.env.FIRESTORE_DATABASE_ID || DEFAULT_DB;
@@ -91,6 +99,7 @@ function env(): Env {
     payments: createSandboxPayments(crypto, webhookSecret),
     files: storageFiles(a),
     news: googleNewsPort(),
+    ...(STRIPE_SECRET_KEY ? { billing: stripeBilling(STRIPE_SECRET_KEY.value()) } : {}),
     push: IS_EMULATOR ? undefined : fcmPush(a, APP_URL.value().replace(/\/+$/, '')),
     now: () => new Date(),
     appUrl: APP_URL.value().replace(/\/+$/, ''),
@@ -328,5 +337,42 @@ export const mirrorMember = MIRROR_ON
         return;
       }
       await ref.set({ ...(after.uid ? { uid: after.uid } : {}), ...(after.dependentOf ? { dependentOf: after.dependentOf } : {}) });
+    })
+  : undefined;
+
+// ---------- stripeWebhook (só existe com STRIPE_ENABLED=true) ----------
+async function planForPrice(priceId: string): Promise<{ planId: string; period: 'mensal' | 'anual' } | null> {
+  const rows = await getFirestore(app(), DB_ID).collection('plans').get();
+  for (const d of rows.docs) {
+    const p = d.data() as PlanDoc;
+    if (p.stripePriceMonthly === priceId) return { planId: d.id, period: 'mensal' };
+    if (p.stripePriceAnnual === priceId) return { planId: d.id, period: 'anual' };
+  }
+  return null;
+}
+
+export const stripeWebhook = STRIPE_WEBHOOK_SECRET
+  ? onRequest({ region: REGION, secrets: [...SECRETS, STRIPE_WEBHOOK_SECRET], timeoutSeconds: 60 }, async (req, res) => {
+      if (req.method !== 'POST') {
+        res.status(405).send('Método não permitido');
+        return;
+      }
+      const raw = req.rawBody ? req.rawBody.toString('utf8') : '';
+      if (!verifyStripeSignature(raw, req.get('stripe-signature'), STRIPE_WEBHOOK_SECRET!.value())) {
+        res.status(400).send('Assinatura inválida');
+        return;
+      }
+      try {
+        const ev = JSON.parse(raw);
+        const o = ev?.data?.object || {};
+        const price = o.items?.data?.[0]?.price?.id || o.lines?.data?.[0]?.price?.id || '';
+        const mapped = stripeEventToOp(ev, () => null);
+        if (mapped && !mapped.planId && price) Object.assign(mapped, (await planForPrice(price)) || {});
+        if (mapped) await executeOp(env(), { op: 'billing.stripeEvent', input: mapped, actor: SYSTEM_ACTOR, internal: true });
+        res.status(200).send('ok');
+      } catch (e) {
+        logger.error('stripe_webhook_falhou', { erro: (e as Error).name });
+        res.status(500).send('erro');
+      }
     })
   : undefined;

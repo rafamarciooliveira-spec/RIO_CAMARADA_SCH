@@ -10,6 +10,7 @@ import { Loading, Notice } from '../ui/index.tsx';
 
 const MasterApp = lazy(() => import('../modules/master/MasterApp.tsx'));
 const ChooseAccessPage = lazy(() => import('../modules/auth/ChooseAccessPage.tsx'));
+const FederationApp = lazy(() => import('../modules/federation/FederationApp.tsx'));
 
 export default function RealApp() {
   const client = useMemo(() => createFirebaseClient(), []);
@@ -59,6 +60,7 @@ export default function RealApp() {
         <Routes>
           <Route path="entrar" element={<ChooseAccessPage />} />
           <Route path="master/*" element={<MasterApp />} />
+          <Route path="federacao/:slug" element={<FederationApp />} />
           <Route path="*" element={<PortalApp />} />
         </Routes>
       </Suspense>

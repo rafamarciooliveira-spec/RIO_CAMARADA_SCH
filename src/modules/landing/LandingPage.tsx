@@ -453,7 +453,7 @@ const FAQ = [
   { q: 'O que acontece com a carteirinha baixada se o sócio sair?', a: 'O arquivo não se apaga sozinho, mas o QR dele deixa de validar depois de 24 horas, ou na hora em que a carteirinha for suspensa. A portaria sempre confere pelo QR.' },
   { q: 'Cada sociedade vê só os próprios dados?', a: 'Sim. O isolamento é feito no banco e no servidor, não só na tela, e é testado automaticamente para cada tipo de dado.' },
   { q: 'Dá para usar com o nome, a logo e as cores da nossa sociedade?', a: 'Sim. Logo, cores, fontes, nomes usados (sócio, associado ou membro; mensalidade ou anuidade) e os módulos ligados são escolhidos por cada sociedade.' },
-  { q: 'Quanto custa?', a: 'Os valores ainda estão sendo definidos. Solicite uma demonstração e conversamos sobre o tamanho da sua sociedade.' },
+  { q: 'Quanto custa?', a: 'A cobrança é por sócio ativo, por mês, e dependentes não contam: R$ 1,90 no Essencial (mínimo de R$ 69) e R$ 2,90 no Completo (mínimo de R$ 99). Uma sociedade com 150 sócios no Completo paga R$ 435 por mês. No plano anual há 15% de desconto.' },
   { q: 'E a LGPD?', a: 'A sociedade é a controladora dos dados e a plataforma é a operadora. Os termos e a política de privacidade estão em revisão jurídica e serão publicados antes da contratação.' },
 ];
 
@@ -623,19 +623,42 @@ export default function LandingPage() {
         <section id="planos" className="max-w-6xl mx-auto px-5 py-24" aria-labelledby="planos-t">
           <Reveal>
             <h2 id="planos-t" className="font-display text-4xl sm:text-5xl">Planos do tamanho da sua sociedade.</h2>
-            <p className="mt-3 text-white/60">Valores em definição. Os planos abaixo mostram o que entra em cada faixa.</p>
+            <p className="mt-3 text-white/60">Você paga por sócio ativo, por mês. Dependentes não contam. No plano anual, 15% de desconto.</p>
           </Reveal>
           <div className="mt-10 grid md:grid-cols-3 gap-4">
             {[
-              { n: 'Essencial', d: 'Para começar a organizar.', f: ['Sócios e carteirinha digital', 'Avisos e agenda', 'Portaria com QR'] },
-              { n: 'Completo', d: 'Para a diretoria inteira.', f: ['Tudo do Essencial', 'Financeiro e cobranças', 'Eventos, atas e votações', 'Módulos culturais'], hl: true },
-              { n: 'Federação', d: 'Para várias sociedades juntas.', f: ['Tudo do Completo', 'Várias sociedades na mesma conta', 'Apoio na migração dos dados'] },
+              {
+                n: 'Essencial',
+                d: 'Para organizar o quadro de sócios.',
+                price: 'R$ 1,90',
+                min: 'Mínimo de R$ 69 por mês. Até 300 sócios.',
+                f: ['Cadastro pelo link, com dependentes e aprovação', 'Carteirinha digital com QR que se confere', 'Portaria com leitura do QR', 'Avisos, agenda e notícias da região', 'Organograma e passagem de cargo', 'Notificação no celular'],
+              },
+              {
+                n: 'Completo',
+                d: 'Para a diretoria inteira.',
+                price: 'R$ 2,90',
+                min: 'Mínimo de R$ 99 por mês. Sem limite de sócios.',
+                f: ['Tudo do Essencial', 'Mensalidades, Pix, recibos e prestação de contas', 'Eventos com orçado e realizado', 'Atas, assembleias e votação secreta', 'Competições e ranking', 'Oficinas, reservas, patrimônio e certificados'],
+                hl: true,
+              },
+              {
+                n: 'Federação',
+                d: 'Para várias sociedades juntas.',
+                price: 'R$ 2,40',
+                min: 'Valor por sócio somando todas as sociedades. Mínimo a combinar.',
+                f: ['Tudo do Completo em cada sociedade', 'Um só contrato para todas', 'Apoio para importar os cadastros'],
+              },
             ].map(p => (
               <Reveal key={p.n}>
                 <div className="h-full rounded-3xl p-7 border" style={{ borderColor: p.hl ? BRASS : '#ffffff1a', background: p.hl ? '#ffffff08' : 'transparent' }}>
                   <div className="font-display text-2xl">{p.n}</div>
                   <p className="text-white/60 text-sm mt-1">{p.d}</p>
-                  <div className="mt-5 text-sm text-white/50">Valor sob consulta</div>
+                  <div className="mt-5">
+                    <span className="font-display text-3xl">{p.price}</span>
+                    <span className="text-sm text-white/50"> por sócio ativo/mês</span>
+                  </div>
+                  <p className="mt-1 text-xs text-white/50">{p.min}</p>
                   <ul className="mt-5 space-y-2 text-sm">
                     {p.f.map(x => (
                       <li key={x} className="flex gap-2"><Check className="w-4 h-4 mt-0.5" style={{ color: BRASS }} />{x}</li>

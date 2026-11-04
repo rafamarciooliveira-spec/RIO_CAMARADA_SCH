@@ -94,9 +94,38 @@ for (const email of masters) {
   console.log(`Administrador geral: ${email.replace(/(.{3}).*(@.*)/, '$1***$2')}`);
 }
 
-await store.set(P.plan('essencial'), { id: 'essencial', name: 'Essencial', maxMembers: 300, modules: ['sociedade', 'papeis', 'socios', 'pii', 'carteirinha', 'portaria', 'avisos', 'agenda', 'auditoria', 'noticias', 'organograma'], priceCents: 0, active: true });
-await store.set(P.plan('completo'), { id: 'completo', name: 'Completo', maxMembers: 5000, modules: MODULE_IDS, priceCents: 0, active: true });
-console.log('Planos: essencial e completo.');
+// Preços por sócio titular ativo, por mês (dependentes não contam). Os ids do Stripe entram depois pelo painel.
+const keepStripe = async (id: string) => {
+  const cur = await store.get<{ stripePriceMonthly?: string; stripePriceAnnual?: string }>(P.plan(id));
+  return { ...(cur?.stripePriceMonthly ? { stripePriceMonthly: cur.stripePriceMonthly } : {}), ...(cur?.stripePriceAnnual ? { stripePriceAnnual: cur.stripePriceAnnual } : {}) };
+};
+await store.set(P.plan('essencial'), {
+  id: 'essencial',
+  name: 'Essencial',
+  description: 'Para organizar o quadro de sócios.',
+  maxMembers: 300,
+  modules: ['sociedade', 'papeis', 'socios', 'pii', 'carteirinha', 'portaria', 'avisos', 'agenda', 'auditoria', 'noticias', 'organograma'],
+  priceCents: 0,
+  pricePerMemberCents: 190,
+  minMonthlyCents: 6900,
+  highlights: ['Cadastro pelo link, com dependentes e aprovação', 'Carteirinha digital com QR que se confere', 'Portaria com leitura do QR', 'Avisos, agenda e notícias da região', 'Organograma e passagem de cargo', 'Notificação no celular'],
+  ...(await keepStripe('essencial')),
+  active: true,
+});
+await store.set(P.plan('completo'), {
+  id: 'completo',
+  name: 'Completo',
+  description: 'Para a diretoria inteira.',
+  maxMembers: 100000,
+  modules: MODULE_IDS,
+  priceCents: 0,
+  pricePerMemberCents: 290,
+  minMonthlyCents: 9900,
+  highlights: ['Tudo do Essencial', 'Mensalidades, Pix, recibos e prestação de contas', 'Eventos com orçado e realizado', 'Atas, assembleias e votação secreta', 'Competições e ranking', 'Oficinas, reservas, patrimônio e certificados'],
+  ...(await keepStripe('completo')),
+  active: true,
+});
+console.log('Planos: Essencial (R$ 1,90 por sócio, mínimo R$ 69) e Completo (R$ 2,90 por sócio, mínimo R$ 99).');
 
 if (tenantFile) {
   const seed = JSON.parse(readFileSync(tenantFile, 'utf8')) as TenantSeed;

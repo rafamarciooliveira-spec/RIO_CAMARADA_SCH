@@ -79,8 +79,30 @@ export async function buildDemoData(env: Env, opts: { files?: Map<string, string
   const portaria = demoActor('demo-portaria', 'Portaria (fictícia)');
   const socio = demoActor('demo-socio', 'Ana Paula Kessler');
 
-  await env.store.set(P.plan('essencial'), { id: 'essencial', name: 'Essencial', maxMembers: 300, modules: ['sociedade', 'papeis', 'socios', 'pii', 'carteirinha', 'portaria', 'avisos', 'agenda', 'auditoria'], priceCents: 0, active: true });
-  await env.store.set(P.plan('completo'), { id: 'completo', name: 'Completo', maxMembers: 5000, modules: MODULE_IDS, priceCents: 0, active: true });
+  await env.store.set(P.plan('essencial'), {
+    id: 'essencial',
+    name: 'Essencial',
+    description: 'Para organizar o quadro de sócios.',
+    maxMembers: 300,
+    modules: ['sociedade', 'papeis', 'socios', 'pii', 'carteirinha', 'portaria', 'avisos', 'agenda', 'auditoria', 'noticias', 'organograma'],
+    priceCents: 0,
+    pricePerMemberCents: 190,
+    minMonthlyCents: 6900,
+    highlights: ['Cadastro pelo link, com dependentes e aprovação', 'Carteirinha digital com QR que se confere', 'Portaria com leitura do QR', 'Avisos, agenda e notícias da região', 'Organograma e passagem de cargo', 'Notificação no celular'],
+    active: true,
+  });
+  await env.store.set(P.plan('completo'), {
+    id: 'completo',
+    name: 'Completo',
+    description: 'Para a diretoria inteira.',
+    maxMembers: 100000,
+    modules: MODULE_IDS,
+    priceCents: 0,
+    pricePerMemberCents: 290,
+    minMonthlyCents: 9900,
+    highlights: ['Tudo do Essencial', 'Mensalidades, Pix, recibos e prestação de contas', 'Eventos com orçado e realizado', 'Atas, assembleias e votação secreta', 'Competições e ranking', 'Oficinas, reservas, patrimônio e certificados'],
+    active: true,
+  });
 
   const baseCtx = {
     ...env,

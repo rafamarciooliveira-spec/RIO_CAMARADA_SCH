@@ -13,6 +13,8 @@ import { privacyOps } from './privacy.ts';
 import { newsOps } from './news.ts';
 import { competitionOps } from './competitions.ts';
 import { orgchartOps } from './orgchart.ts';
+import { federationOps } from './federation.ts';
+import { billingOps } from './billing.ts';
 
 let done = false;
 export function registerAllOps(): void {
@@ -32,6 +34,8 @@ export function registerAllOps(): void {
     ...newsOps,
     ...competitionOps,
     ...orgchartOps,
+    ...federationOps,
+    ...billingOps,
     jobRunnerOp,
   ] as OpDef[]);
 }

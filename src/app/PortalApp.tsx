@@ -5,6 +5,7 @@
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { LogOut, Menu, Bell, X, ChevronsUpDown, ShieldAlert } from 'lucide-react';
+import { ThemeToggle } from '../ui/ThemeToggle.tsx';
 import { TenantProvider, useTenant } from './TenantContext.tsx';
 import { useData, useList, useOp, useSession } from './DataContext.tsx';
 import { PAGES, type PageDef } from '../modules/registry.tsx';
@@ -38,19 +39,32 @@ function TenantSwitcher() {
   const user = useDoc<UserDoc>(session.user ? P.user(session.user.uid) : null);
   const others = Object.entries(user.data?.tenants || {}).filter(([id]) => id !== t.tenantId);
   const [open, setOpen] = useState(false);
-  if (!others.length) return null;
+  // Administrador geral sempre vê o caminho de volta ao painel, mesmo com uma sociedade só
+  const isMaster = !!session.user?.master && !basePath;
+  // Fora da demonstração sempre aparece: a pessoa pode ser também da diretoria de uma federação
+  if (!others.length && !isMaster && basePath) return null;
   return (
     <div className="relative">
       <button onClick={() => setOpen(o => !o)} className="flex items-center gap-1 text-xs text-muted hover:text-fg cursor-pointer" aria-haspopup="menu" aria-expanded={open}>
-        Trocar sociedade <ChevronsUpDown className="w-3 h-3" />
+        Trocar de acesso <ChevronsUpDown className="w-3 h-3" />
       </button>
       {open && (
         <div role="menu" className="absolute z-40 mt-2 w-64 bg-surface border border-line rounded-xl shadow-xl p-1">
+          {isMaster && (
+            <Link role="menuitem" to="/master" onClick={() => setOpen(false)} className="block px-3 py-2 rounded-lg text-sm hover:bg-surface-2 font-medium">
+              Painel da plataforma
+            </Link>
+          )}
           {others.map(([id, v]) => (
             <Link role="menuitem" key={id} to={`${basePath}/${v.slug}/inicio`} onClick={() => setOpen(false)} className="block px-3 py-2 rounded-lg text-sm hover:bg-surface-2">
               {v.name}
             </Link>
           ))}
+          {!basePath && (
+            <Link role="menuitem" to="/entrar" onClick={() => setOpen(false)} className="block px-3 py-2 rounded-lg text-sm hover:bg-surface-2 text-muted border-t border-line mt-1">
+              Todos os meus acessos
+            </Link>
+          )}
         </div>
       )}
     </div>
@@ -181,6 +195,7 @@ function Shell() {
           </div>
           <div className="flex-1" />
           {t.membership?.support && <Badge tone="warn">Acesso de suporte</Badge>}
+          <ThemeToggle />
           <NotificationsBell />
           <span className="hidden md:block text-xs text-muted truncate max-w-40">{session.user?.displayName}</span>
           {!demo && (

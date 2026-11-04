@@ -11,6 +11,7 @@ import { localDateKey } from '../dates.ts';
 import type { CardTokenDoc, MemberDoc, SlugDoc, TenantDoc, TenantSettings, VerifyResult } from '../types.ts';
 import { inc } from '../core/store.ts';
 import { tid } from './helpers.ts';
+import { networkTenantFor } from './federation.ts';
 
 export const ROTATING_TTL_SEC = 90; // QR troca a cada 60 s; 30 s de folga para a leitura
 export const DOWNLOAD_TTL_SEC = 24 * 3600;
@@ -97,15 +98,26 @@ export const verifyCard = defineOp({
 
 export const checkin = defineOp({
   name: 'portaria.checkin',
-  input: zTenant.extend({ token: z.string().min(1).max(200), eventId: zId.optional() }),
+  input: zTenant.extend({ token: z.string().min(1).max(200), eventId: zId.optional(), slug: z.string().max(60).optional() }),
   auth: 'user',
   tenant: { perm: ['portaria', 'criar'] },
   rateLimit: { per: 'uid', max: 600, windowSec: 3600 },
   async run(ctx, input) {
     const t = tid(ctx);
-    const { result, member } = await verifyCore(ctx, ctx.tenant!, input.token);
+    let { result, member } = await verifyCore(ctx, ctx.tenant!, input.token);
+    // Carteirinha de outra filial da mesma federação, quando a federação aceita em toda a rede
+    let fromTenantId: string | undefined;
+    if (!member) {
+      const other = await networkTenantFor(ctx, input.slug);
+      if (other) {
+        ({ result, member } = await verifyCore(ctx, other, input.token));
+        fromTenantId = other.id;
+      }
+    }
     await ctx.store.add(P.checkins(t), {
-      ...(member ? { memberId: member.id, displayName: member.displayName } : {}),
+      ...(member && !fromTenantId ? { memberId: member.id } : {}),
+      ...(member ? { displayName: member.displayName } : {}),
+      ...(fromTenantId ? { fromTenantId, fromTenantName: result.tenantName } : {}),
       result: result.status,
       ...(input.eventId ? { eventId: input.eventId } : {}),
       byUid: ctx.actor!.uid,

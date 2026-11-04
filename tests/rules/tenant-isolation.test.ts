@@ -23,6 +23,7 @@ const MATRIX: { path: string; data: Record<string, unknown>; kind: Kind }[] = [
   { path: 'config/counters', data: { ledgerNumber: 1 }, kind: 'none' },
   { path: 'stats/dashboard', data: { members: { total: 3 } }, kind: 'board' },
   { path: 'idempotency/d1', data: { result: 1 }, kind: 'none' },
+  { path: 'billing/current', data: { status: 'ativa', customerId: 'cus_1' }, kind: 'none' },
   { path: 'cpfIndex/d1', data: { memberId: 'm1' }, kind: 'none' },
   { path: 'cardTokens/d1', data: { memberId: 'm1' }, kind: 'none' },
   { path: 'outbox/d1', data: { status: 'simulado' }, kind: 'none' },
@@ -180,6 +181,9 @@ beforeAll(async () => {
     await put('slugs/a', { tenantId: 'A' });
     await put('plans/completo', { name: 'Completo' });
     await put('platform/config', { flags: {} });
+    await put('federations/f1', { name: 'Federação', adminEmails: ['presa@teste.local'], tenantIds: ['A', 'B'] });
+    await put('federations/f1/transfers/t1', { memberName: 'Fulano', fromTenantId: 'A', toTenantId: 'B' });
+    await put('planRequests/r1', { tenantId: 'A', toPlanId: 'completo' });
     await put('platformAudit/x1', { action: 'x' });
     await put('supportAccess/x1', { tenantId: 'A', reason: 'x' });
     await put('users/socioA', { uid: 'socioA', tenants: {} });
@@ -442,6 +446,14 @@ describe('notícias: listas', () => {
       await assertFails(setDoc(doc(db(who), 'tenants/A/news/nova'), { kind: 'interna', title: 'x', hidden: false, visibility: 'publico' }));
       await assertFails(updateDoc(doc(db(who), 'tenants/A/news/esc'), { hidden: false }));
       await assertFails(setDoc(doc(db(who), 'tenants/A/config/news'), { enabled: false }));
+    }
+  });
+});
+
+describe('federação e cobrança: só pelo servidor', () => {
+  it('ninguém lê federação, transferências ou pedidos de plano direto do banco, nem a diretoria listada', async () => {
+    for (const who of ['presA', 'socioA', 'anon'] as const) {
+      for (const p of ['federations/f1', 'federations/f1/transfers/t1', 'planRequests/r1']) await expectRead(who, p, false);
     }
   });
 });
