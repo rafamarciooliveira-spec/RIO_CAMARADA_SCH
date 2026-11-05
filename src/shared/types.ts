@@ -795,7 +795,8 @@ export interface TermDoc {
   start: DateKey;
   end: DateKey;
   current: boolean;
-  board: { memberId?: string; name: string; roleId: string; roleName: string }[];
+  /** Composição; na gestão atual cada linha aponta para um cargo do organograma (positionId) e os dois andam juntos */
+  board: { positionId?: string; memberId?: string; name: string; roleId: string; roleName: string }[];
 }
 
 export interface HonorDoc {

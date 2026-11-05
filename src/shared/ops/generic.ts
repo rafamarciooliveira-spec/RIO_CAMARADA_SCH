@@ -9,7 +9,12 @@ import { z, type ZodTypeAny } from 'zod';
 import { defineOp, fail, zCents, zColor, zDateKey, zId, zIso, zTenant, zText } from '../core/ops.ts';
 import { GENERIC_COLLECTIONS, P, type GenericCollection } from '../paths.ts';
 import { bookingCalendarEntry, bookingsClash } from '../bookings.ts';
-import type { BookingDoc } from '../types.ts';
+import type { BookingDoc, TermDoc } from '../types.ts';
+import { localDateKey } from '../dates.ts';
+import { applyTermToChart } from './orgchart.ts';
+
+/** Quem entra num cargo pela gestão começa hoje (ou no início do mandato, se ainda não começou) */
+const sinceFor = (term: TermDoc, today: string) => (today > term.start && today <= term.end ? today : term.start);
 import type { ModuleId } from '../modules.ts';
 import { tid } from './helpers.ts';
 
@@ -98,7 +103,7 @@ export const GENERIC_SCHEMAS: Record<GenericCollection, z.ZodObject<Record<strin
     start: zDateKey,
     end: zDateKey,
     current: z.boolean(),
-    board: z.array(z.object({ memberId: zId.optional(), name: s(150), roleId: zId, roleName: s(60) })).max(60),
+    board: z.array(z.object({ positionId: zId.optional(), memberId: zId.optional(), name: s(150), roleId: zId, roleName: s(60).min(1) })).max(60),
   }),
   honors: z.object({ title: s(150).min(2), memberId: zId.optional(), memberName: s(150), date: zDateKey, description: s(2000) }),
   surveys: z.object({ title: s(150).min(2), question: s(500), options: z.array(s(150)).min(2).max(10), open: z.boolean() }),
@@ -258,6 +263,12 @@ export const genericSave = defineOp({
     if (input.collection === 'terms' && data.current === true) {
       const others = await ctx.store.query(cfg.path(t), { where: [['current', '==', true]] });
       for (const o of others) if (o.id !== input.id) await ctx.store.update(o.path, { current: false });
+    }
+    if (input.collection === 'terms') {
+      // Gestão atual e organograma usam os mesmos cargos e pessoas
+      const before = input.id ? await ctx.store.get<TermDoc>(`${cfg.path(t)}/${input.id}`) : null;
+      const merged = { ...(before || {}), ...data } as TermDoc;
+      if (merged.current && data.board) data.board = await applyTermToChart(ctx, t, merged.board, sinceFor(merged, localDateKey(new Date(ctx.nowIso), ctx.tenant!.timezone)));
     }
     if (input.id) {
       const path = `${cfg.path(t)}/${input.id}`;

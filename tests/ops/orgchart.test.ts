@@ -1,7 +1,7 @@
 /** Organograma: permissão, validação da hierarquia e predefinição pelo tipo da sociedade. */
 import { describe, expect, it } from 'vitest';
 import { actor, makeMember, makeTestTenant } from '../helpers/env.ts';
-import type { MembershipDoc } from '../../src/shared/types.ts';
+import type { MembershipDoc, OrgChartDoc, TermDoc } from '../../src/shared/types.ts';
 import { P } from '../../src/shared/paths.ts';
 
 const pos = (id: string, title: string, extra: object = {}) => ({ id, title, group: 'Diretoria', order: 1, highlight: false, ...extra });
@@ -87,5 +87,50 @@ describe('campos vazios enviados como nulo', () => {
     await h.call('orgchart.save', { tenantId: h.tenantId, style: 'corte', title: 'Diretoria', showOnPublicPage: false, positions: [{ id: 'a', title: 'Vice secretária', group: 'Diretoria', order: 1, highlight: false, parentId: null, memberId: null, roleId: null, personName: null }] }, h.actors.presidente);
     const doc = await h.store.get<{ positions: { title: string }[] }>(P.orgchart(h.tenantId));
     expect(doc!.positions[0].title).toBe('Vice secretária');
+  });
+});
+
+describe('gestão atual e organograma andam juntos', () => {
+  it('cargo novo, nome trocado e pessoa da gestão vão para o organograma; a majestade fica como está; o contrário também vale', async () => {
+    const h = await makeTestTenant();
+    const a = await makeMember(h);
+    const t = h.tenantId;
+    await h.call('orgchart.save', { tenantId: t, style: 'corte', title: 'Diretoria', showOnPublicPage: false, positions: [pos('pres', 'Presidente', { roleId: 'presidente' }), pos('rei', 'Rei do tiro', { group: 'Majestades', personName: 'Fulano Rei' })] }, h.actors.presidente);
+    // Gestão gravada como antes (sem o cargo ligado): casa pelo nome, sem criar outro "Presidente"
+    const { id } = await h.call<{ id: string }>('generic.save', {
+      tenantId: t, collection: 'terms',
+      data: { name: 'Gestão 2026 a 2027', start: '2026-02-02', end: '2028-02-02', current: true, board: [
+        { memberId: a.memberId, name: 'Pessoa de Teste Silva', roleId: 'presidente', roleName: 'Presidente' },
+        { name: 'Ana Livre', roleId: 'diretor_social', roleName: 'Diretora social' },
+      ] },
+    }, h.actors.presidente);
+    let chart = (await h.store.get<OrgChartDoc>(P.orgchart(t)))!;
+    expect(chart.positions.filter(p => p.title === 'Presidente')).toHaveLength(1);
+    expect(chart.positions.find(p => p.id === 'pres')).toMatchObject({ memberId: a.memberId, personName: 'Pessoa de Teste Silva' });
+    const social = chart.positions.find(p => p.title === 'Diretora social')!;
+    expect(social.personName).toBe('Ana Livre');
+    expect(chart.positions.find(p => p.id === 'rei')!.personName).toBe('Fulano Rei');
+    // Cargo com acesso: quem assume pela gestão recebe o acesso
+    expect((await h.store.get<MembershipDoc>(P.membership(t, a.who.uid)))!.roleIds).toContain('presidente');
+    let term = (await h.store.get<TermDoc>(`${P.terms(t)}/${id}`))!;
+    expect(term.board.map(b => b.positionId)).toEqual(['pres', social.id]);
+
+    // Renomear na gestão renomeia no organograma
+    await h.call('generic.save', { tenantId: t, collection: 'terms', id, data: { board: term.board.map(b => (b.positionId === social.id ? { ...b, roleName: 'Diretor(a) social' } : b)) } }, h.actors.presidente);
+    chart = (await h.store.get<OrgChartDoc>(P.orgchart(t)))!;
+    expect(chart.positions.find(p => p.id === social.id)!.title).toBe('Diretor(a) social');
+
+    // Mudar no organograma muda a gestão atual
+    await h.call('orgchart.save', { tenantId: t, style: 'corte', title: 'Diretoria', showOnPublicPage: false, positions: chart.positions.map(p => (p.id === social.id ? { ...p, title: 'Social', personName: 'Beatriz Livre' } : p)) }, h.actors.presidente);
+    term = (await h.store.get<TermDoc>(`${P.terms(t)}/${id}`))!;
+    expect(term.board.find(b => b.positionId === social.id)).toMatchObject({ roleName: 'Social', name: 'Beatriz Livre' });
+    await h.call('orgchart.handover', { tenantId: t, positionId: 'pres', since: '2027-01-01', keepOldAccess: true }, h.actors.presidente);
+    term = (await h.store.get<TermDoc>(`${P.terms(t)}/${id}`))!;
+    expect(term.board.find(b => b.positionId === 'pres')!.name).toBe('');
+
+    // Cargo com acesso não aceita nome solto, e gestão antiga não mexe no organograma
+    await expect(h.call('generic.save', { tenantId: t, collection: 'terms', id, data: { board: [{ positionId: 'pres', name: 'Sem Cadastro', roleId: 'presidente', roleName: 'Presidente' }] } }, h.actors.presidente)).rejects.toThrow(/sócio cadastrado/);
+    await h.call('generic.save', { tenantId: t, collection: 'terms', data: { name: 'Gestão 2020', start: '2020-01-01', end: '2021-12-31', current: false, board: [{ name: 'Antigo Presidente', roleId: 'presidente', roleName: 'Presidente' }] } }, h.actors.presidente);
+    expect((await h.store.get<OrgChartDoc>(P.orgchart(t)))!.positions.find(p => p.id === 'pres')!.personName).toBe('');
   });
 });

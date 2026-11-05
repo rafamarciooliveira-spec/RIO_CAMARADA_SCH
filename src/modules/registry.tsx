@@ -94,6 +94,7 @@ export const PAGES: PageDef[] = [
   { path: 'editais', label: 'Incentivos e editais', icon: FileSignature, area: 'diretoria', module: 'editais', perm: ['editais', 'ver'], element: L(() => import('./culture/GrantsPage.tsx')) },
   { path: 'patrocinios', label: 'Patrocínios e benefícios', icon: Handshake, area: 'diretoria', module: 'patrocinios', perm: ['patrocinios', 'ver'], element: L(() => import('./culture/SponsorsPage.tsx')) },
   { path: 'gestao-documentos', label: 'Biblioteca de documentos', icon: BookOpen, area: 'diretoria', module: 'documentos', perm: ['documentos', 'editar'], element: L(() => import('./culture/LibraryAdminPage.tsx')) },
+  { path: 'gestao-organograma', label: 'Organograma', icon: Network, area: 'diretoria', module: 'organograma', perm: ['organograma', 'editar'], element: L(() => import('./orgchart/OrgChartAdminPage.tsx')) },
   { path: 'mandatos', label: 'Gestões e mandatos', icon: Crown, area: 'diretoria', module: 'mandatos', perm: ['mandatos', 'ver'], element: L(() => import('./culture/TermsPage.tsx')) },
   { path: 'engajamento', label: 'Engajamento', icon: Award, area: 'diretoria', module: 'engajamento', perm: ['engajamento', 'ver'], element: L(() => import('./culture/EngagementPage.tsx')) },
   { path: 'modelo-carteirinha', label: 'Modelo da carteirinha', icon: BadgeCheck, area: 'diretoria', perm: ['carteirinha', 'editar'], element: L(() => import('./card/CardDesignPage.tsx')) },

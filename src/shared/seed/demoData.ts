@@ -514,12 +514,6 @@ export async function buildDemoData(env: Env, opts: { files?: Map<string, string
     await gsave('library', { name: 'Regimento interno', folder: 'Institucional', visibility: 'socios', version: 1, kind: 'regimento' });
     await gsave('library', { name: 'Alvará de funcionamento do salão', folder: 'Certidões e alvarás', visibility: 'diretoria', version: 1, kind: 'alvara', expiresAt: addDaysKey(today, 12) });
     await gsave('library', { name: 'Seguro do prédio', folder: 'Certidões e alvarás', visibility: 'diretoria', version: 2, kind: 'seguro', expiresAt: addMonthsKey(today, 7) });
-    await gsave('terms', { name: 'Gestão 2025 a 2026', start: '2025-01-01', end: '2026-12-31', current: true, board: [
-      { name: 'Marta Schneider', roleId: 'presidente', roleName: 'Presidente' },
-      { name: 'Paulo Becker', roleId: 'vice', roleName: 'Vice-presidente' },
-      { name: 'Roberto Lenz', roleId: 'tesoureiro', roleName: 'Tesoureiro' },
-      { name: 'Clara Vieira', roleId: 'secretario', roleName: 'Secretária' },
-    ] });
     await gsave('terms', { name: 'Gestão 2023 a 2024', start: '2023-01-01', end: '2024-12-31', current: false, board: [{ name: 'Henrique Weber', roleId: 'presidente', roleName: 'Presidente' }] });
     await gsave('honors', { title: 'Sócio de honra: 60 anos de casa', memberName: 'Nelson Hoffmann (fictício)', date: addDaysKey(today, -35), description: 'Homenagem na festa de aniversário da sociedade.' });
     const s = await gsave('surveys', { title: 'Horário dos ensaios', question: 'Qual o melhor horário para os ensaios de sábado?', options: ['Manhã', 'Tarde', 'Noite'], open: true });
@@ -556,6 +550,8 @@ export async function buildDemoData(env: Env, opts: { files?: Map<string, string
     };
     const positions = r.positions.map(p => ({ ...p, personName: names[p.title]?.name, ...(names[p.title]?.memberId ? { memberId: names[p.title]!.memberId } : {}), ...(p.title !== 'Presidente' && p.group === 'Diretoria' ? { parentId: r.positions.find(x => x.title === 'Presidente')?.id } : {}) }));
     await call('orgchart.save', { tenantId: t, style: 'corte', title: 'Diretoria e Majestades 2026', positions, showOnPublicPage: true }, diretoria);
+    // A gestão atual usa os mesmos cargos e pessoas do organograma
+    await gsave('terms', { name: `Gestão ${today.slice(0, 4)} a ${Number(today.slice(0, 4)) + 1}`, start: `${today.slice(0, 4)}-01-01`, end: `${Number(today.slice(0, 4)) + 1}-12-31`, current: true, board: positions.filter(p => p.group === 'Diretoria' && p.personName).map(p => ({ positionId: p.id, ...(p.memberId ? { memberId: p.memberId } : {}), name: p.personName!, roleId: (p as { roleId?: string }).roleId || p.id, roleName: p.title })) });
   });
 
   // ---------- Prestação de contas do mês passado (publicada no quadro) ----------

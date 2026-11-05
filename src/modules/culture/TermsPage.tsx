@@ -1,27 +1,123 @@
-/** Gestões e mandatos: histórico das diretorias e aviso de transição segura de acessos a cada posse. */
+/** Gestões e mandatos: histórico das diretorias. A gestão atual usa os mesmos cargos e pessoas do organograma. */
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Crown, Plus, Trash2 } from 'lucide-react';
-import { useList } from '../../app/DataContext.tsx';
+import { Crown, Download, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useDoc, useList } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
 import { todayIn } from '../../app/formHelpers.ts';
 import { P } from '../../shared/paths.ts';
 import { addMonthsKey, formatDate } from '../../shared/dates.ts';
-import type { MemberDoc, RoleDoc, TermDoc } from '../../shared/types.ts';
+import type { MemberDoc, OrgChartDoc, OrgPosition, TermDoc } from '../../shared/types.ts';
 import { Badge, Button, Input, Notice, Section, Select } from '../../ui/index.tsx';
 import { CrudPage, type CrudConfig } from './CrudPage.tsx';
 
 type BoardRow = TermDoc['board'][number];
 const slug = (s: string) => s.normalize('NFD').replace(/[^\w\s-]/g, '').trim().toLowerCase().replace(/\s+/g, '_').slice(0, 60) || 'cargo';
+const norm = (s: string) => slug(s).replace(/_/g, '');
+const NEW = '__novo';
+
+/** Cargo da linha no organograma: o ligado, ou o de mesmo nome (gestões gravadas antes da ligação) */
+const positionOf = (b: BoardRow, positions: OrgPosition[]) => positions.find(p => p.id === b.positionId) || (!b.positionId ? positions.find(p => norm(p.title) === norm(b.roleName)) : undefined);
+
+function BoardEditor({ board, onChange, positions, members }: { board: BoardRow[]; onChange: (b: BoardRow[]) => void; positions: OrgPosition[]; members: MemberDoc[] }) {
+  const [renaming, setRenaming] = useState<number | null>(null);
+  const upd = (i: number, p: Partial<BoardRow>) => onChange(board.map((b, k) => (k === i ? { ...b, ...p } : b)));
+  const sorted = [...positions].sort((a, b) => a.order - b.order);
+  const missing = sorted.filter(p => !board.some(b => positionOf(b, positions)?.id === p.id));
+  const fromChart = (p: OrgPosition): BoardRow => ({ positionId: p.id, ...(p.memberId ? { memberId: p.memberId } : {}), name: p.personName || '', roleId: p.roleId || p.id, roleName: p.title });
+  return (
+    <Section
+      title="Composição da diretoria"
+      actions={
+        <Button size="sm" variant="secondary" icon={<Plus className="w-4 h-4" />} onClick={() => onChange([...board, { name: '', roleId: '', roleName: '' }])}>
+          Cargo
+        </Button>
+      }
+    >
+      {board.length === 0 && <p className="text-sm text-muted">Inclua presidente, vice, tesouraria, secretaria, conselho fiscal e demais cargos.</p>}
+      {board.map((b, i) => {
+        const pos = positionOf(b, positions);
+        const isNew = !pos;
+        return (
+          <div key={i} className="space-y-2 p-3 rounded-xl border border-line bg-bg">
+            <div className="flex gap-2">
+              {positions.length > 0 ? (
+                <Select
+                  aria-label={`Cargo ${i + 1}`}
+                  className="flex-1"
+                  value={pos?.id || NEW}
+                  onChange={e => {
+                    const p = positions.find(x => x.id === e.target.value);
+                    setRenaming(p ? null : i);
+                    // Ao escolher um cargo, já vem quem ocupa no organograma (se a linha ainda não tem pessoa)
+                    upd(i, p ? { ...fromChart(p), ...(b.name ? { name: b.name, memberId: b.memberId } : {}) } : { positionId: undefined, roleId: '', roleName: '' });
+                  }}
+                >
+                  {sorted.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.title}
+                    </option>
+                  ))}
+                  <option value={NEW}>+ Novo cargo</option>
+                </Select>
+              ) : null}
+              {pos && (
+                <Button variant="ghost" aria-label={`Renomear cargo ${i + 1}`} icon={<Pencil className="w-4 h-4" />} onClick={() => setRenaming(renaming === i ? null : i)} />
+              )}
+              <Button variant="ghost" aria-label={`Remover cargo ${i + 1}`} icon={<Trash2 className="w-4 h-4" />} onClick={() => onChange(board.filter((_, k) => k !== i))} />
+            </div>
+            {(isNew || renaming === i) && (
+              <Input
+                aria-label={`Nome do cargo ${i + 1}`}
+                placeholder={isNew ? 'Nome do novo cargo' : 'Novo nome do cargo'}
+                value={b.roleName}
+                maxLength={60}
+                autoFocus={renaming === i}
+                onChange={e => upd(i, { roleName: e.target.value })}
+              />
+            )}
+            {members.length ? (
+              <Select
+                aria-label={`Pessoa no cargo ${i + 1}`}
+                value={b.memberId || ''}
+                onChange={e => {
+                  const m = members.find(x => x.id === e.target.value);
+                  upd(i, { memberId: m?.id, name: m?.fullName || '' });
+                }}
+              >
+                <option value="">{b.name && !b.memberId ? b.name : 'Vago (ninguém)'}</option>
+                {members.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.fullName}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <Input aria-label={`Pessoa no cargo ${i + 1}`} placeholder="Nome (vazio = vago)" value={b.name} maxLength={150} onChange={e => upd(i, { name: e.target.value })} />
+            )}
+          </div>
+        );
+      })}
+      {missing.length > 0 && (
+        <Button size="sm" variant="ghost" icon={<Download className="w-4 h-4" />} onClick={() => onChange([...board, ...missing.map(fromChart)])}>
+          Trazer os outros cargos do organograma ({missing.length})
+        </Button>
+      )}
+    </Section>
+  );
+}
 
 export default function TermsPage() {
   const t = useTenant();
   const today = todayIn(t.tenant.timezone);
-  const roles = useList<RoleDoc>(t.can('papeis', 'ver') ? P.roles(t.tenantId) : null);
+  const orgOn = t.moduleOn('organograma');
+  const chart = useDoc<OrgChartDoc>(orgOn ? P.orgchart(t.tenantId) : null);
+  const positions = chart.data?.positions || [];
   const members = useList<MemberDoc>(t.can('socios', 'ver') ? P.members(t.tenantId) : null, { where: [['status', 'in', ['ativo', 'aprovado', 'em_atraso']]], orderBy: [['fullName', 'asc']], limit: 2000 });
   const config: CrudConfig = {
     collection: 'terms',
     title: 'Gestões e mandatos',
-    subtitle: 'Histórico das diretorias. Na posse, a transição de acessos é feita em Configurações.',
+    subtitle: orgOn ? 'Histórico das diretorias. A gestão atual usa os mesmos cargos e pessoas do organograma.' : 'Histórico das diretorias.',
     singular: 'gestão',
     icon: <Crown className="w-5 h-5" />,
     query: { orderBy: [['start', 'desc']] },
@@ -37,71 +133,34 @@ export default function TermsPage() {
       start: form.start,
       end: form.end,
       current: !!form.current,
-      board: ((form.board as BoardRow[]) || []).filter(b => b.name.trim()).map(b => ({ ...(b.memberId ? { memberId: b.memberId } : {}), name: b.name.trim(), roleId: b.roleId || slug(b.roleName), roleName: b.roleName.trim() || 'Cargo' })),
+      board: ((form.board as BoardRow[]) || [])
+        .map(b => {
+          const pos = positionOf(b, positions);
+          const roleName = (b.roleName || pos?.title || '').trim();
+          return { ...(pos ? { positionId: pos.id } : {}), ...(b.memberId ? { memberId: b.memberId } : {}), name: b.name.trim(), roleId: pos?.roleId || pos?.id || b.roleId || slug(roleName), roleName };
+        })
+        .filter(b => b.roleName && (b.name || b.positionId)),
     }),
     formExtra: (form, set, row) => {
       const board = (form.board as BoardRow[]) || [];
-      const upd = (i: number, p: Partial<BoardRow>) => set({ board: board.map((b, k) => (k === i ? { ...b, ...p } : b)) });
       const becomingCurrent = !!form.current && !row?.current;
       return (
         <div className="space-y-4">
-          {becomingCurrent && (
-            <Notice tone="warn">
-              Ao marcar esta gestão como atual, a anterior deixa de ser a atual. Os acessos ao portal NÃO mudam sozinhos: revise quem entra e quem sai da diretoria em{' '}
-              <Link to={t.to('configuracoes')} className="underline font-semibold">
-                Configurações, aba Papéis e pessoas
+          {!!form.current && orgOn && (
+            <Notice tone={becomingCurrent ? 'warn' : 'info'}>
+              {becomingCurrent && 'Ao marcar esta gestão como atual, a anterior deixa de ser a atual. '}
+              Na gestão atual, os cargos e as pessoas são os mesmos do{' '}
+              <Link to={t.to('gestao-organograma')} className="underline font-semibold">
+                Organograma
               </Link>
-              , removendo os papéis de quem deixou o cargo e convidando os novos membros.
+              : cargo novo ou nome trocado aqui aparece lá. Em cargo ligado a um acesso do portal (presidente, tesoureiro...), quem assume recebe o acesso e quem sai perde. Os demais acessos ficam em{' '}
+              <Link to={t.to('configuracoes')} className="underline font-semibold">
+                Configurações, Papéis e pessoas
+              </Link>
+              .
             </Notice>
           )}
-          <Section
-            title="Composição da diretoria"
-            actions={
-              <Button size="sm" variant="secondary" icon={<Plus className="w-4 h-4" />} onClick={() => set({ board: [...board, { name: '', roleId: '', roleName: '' }] })}>
-                Cargo
-              </Button>
-            }
-          >
-            {board.length === 0 && <p className="text-sm text-muted">Inclua presidente, vice, tesouraria, secretaria, conselho fiscal e demais cargos.</p>}
-            {board.map((b, i) => (
-              <div key={i} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2">
-                {roles.data.length ? (
-                  <Select aria-label={`Cargo ${i + 1}`} value={b.roleId} onChange={e => upd(i, { roleId: e.target.value, roleName: roles.data.find(r => r.id === e.target.value)?.name || '' })}>
-                    <option value="">Cargo...</option>
-                    {roles.data
-                      .filter(r => r.board)
-                      .map(r => (
-                        <option key={r.id} value={r.id}>
-                          {r.name}
-                        </option>
-                      ))}
-                  </Select>
-                ) : (
-                  <Input aria-label={`Cargo ${i + 1}`} placeholder="Cargo" value={b.roleName} maxLength={60} onChange={e => upd(i, { roleName: e.target.value, roleId: '' })} />
-                )}
-                {members.data.length ? (
-                  <Select
-                    aria-label={`Pessoa no cargo ${i + 1}`}
-                    value={b.memberId || ''}
-                    onChange={e => {
-                      const m = members.data.find(x => x.id === e.target.value);
-                      upd(i, { memberId: e.target.value || undefined, name: m?.fullName || b.name });
-                    }}
-                  >
-                    <option value="">{b.name || 'Pessoa...'}</option>
-                    {members.data.map(m => (
-                      <option key={m.id} value={m.id}>
-                        {m.fullName}
-                      </option>
-                    ))}
-                  </Select>
-                ) : (
-                  <Input aria-label={`Pessoa no cargo ${i + 1}`} placeholder="Nome" value={b.name} maxLength={150} onChange={e => upd(i, { name: e.target.value })} />
-                )}
-                <Button variant="ghost" aria-label={`Remover cargo ${i + 1}`} icon={<Trash2 className="w-4 h-4" />} onClick={() => set({ board: board.filter((_, k) => k !== i) })} />
-              </div>
-            ))}
-          </Section>
+          <BoardEditor board={board} onChange={b => set({ board: b })} positions={positions} members={members.data} />
         </div>
       );
     },

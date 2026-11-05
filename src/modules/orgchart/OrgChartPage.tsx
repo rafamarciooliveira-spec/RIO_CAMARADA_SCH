@@ -1,5 +1,5 @@
-/** Organograma: visualização para todos e editor para quem tem a permissão do módulo. */
-import { useEffect, useState } from 'react';
+/** Organograma na área do sócio: só para consultar. A edição fica na diretoria (OrgChartAdminPage). */
+import { useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { useDoc, useList, useOp } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
@@ -8,7 +8,7 @@ import type { MemberDoc, OrgChartDoc, OrgPosition, OrgChartStyle, RoleDoc } from
 import { societyType } from '../../shared/societyTypes.ts';
 import { Button, Card, Field, Input, Loading, PageHeader, Select, Toggle, useConfirm } from '../../ui/index.tsx';
 import { OrgChartView } from './OrgChartView.tsx';
-import { HandoverPanel, MandatesGallery } from './Handover.tsx';
+import { MandatesGallery } from './Handover.tsx';
 
 const STYLES: { id: OrgChartStyle; label: string; hint: string }[] = [
   { id: 'arvore', label: 'Árvore (hierarquia)', hint: 'Cada cargo abaixo do seu superior. Bom para clubes e times.' },
@@ -19,7 +19,7 @@ const STYLES: { id: OrgChartStyle; label: string; hint: string }[] = [
 let seq = 0;
 const newId = () => `cargo_${Date.now().toString(36)}${(seq++).toString(36)}`;
 
-function Editor({ chart, onClose }: { chart: OrgChartDoc; onClose: () => void }) {
+export function Editor({ chart, onClose }: { chart: OrgChartDoc; onClose: () => void }) {
   const t = useTenant();
   const { run, busy } = useOp();
   const confirm = useConfirm();
@@ -149,30 +149,24 @@ function Editor({ chart, onClose }: { chart: OrgChartDoc; onClose: () => void })
   );
 }
 
-export default function OrgChartPage() {
+export function useChartDoc() {
   const t = useTenant();
   const chart = useDoc<OrgChartDoc>(P.orgchart(t.tenantId));
-  const [editing, setEditing] = useState(false);
-  const canEdit = t.can('organograma', 'editar');
-  useEffect(() => setEditing(false), [t.tenantId]);
-  if (chart.loading) return <Loading />;
-  const doc: OrgChartDoc = chart.data || { style: societyType(t.tenant.societyType).orgStyle, title: 'Diretoria', positions: [], showOnPublicPage: false, updatedAt: '' };
+  const doc: OrgChartDoc = chart.data || { style: societyType(t.tenant.societyType).orgStyle, title: t.labels.board, positions: [], showOnPublicPage: false, updatedAt: '' };
+  return { loading: chart.loading, saved: !!chart.data, doc };
+}
+
+export default function OrgChartPage() {
+  const t = useTenant();
+  const { loading, doc } = useChartDoc();
+  if (loading) return <Loading />;
   return (
     <>
-      <PageHeader
-        title={doc.title || 'Organograma'}
-        subtitle={`Quem é quem na ${t.tenant.shortName || t.tenant.name}.`}
-        actions={canEdit && !editing ? <Button onClick={() => setEditing(true)}>Editar organograma</Button> : undefined}
-      />
-      {editing ? (
-        <Editor chart={doc} onClose={() => setEditing(false)} />
-      ) : (
-        <div className="space-y-5">
-          <OrgChartView chart={doc} />
-          {canEdit && chart.data && <HandoverPanel chart={doc} />}
-          <MandatesGallery />
-        </div>
-      )}
+      <PageHeader title={doc.title || 'Organograma'} subtitle={`Quem é quem na ${t.tenant.shortName || t.tenant.name}.`} />
+      <div className="space-y-5">
+        <OrgChartView chart={doc} />
+        <MandatesGallery />
+      </div>
     </>
   );
 }
