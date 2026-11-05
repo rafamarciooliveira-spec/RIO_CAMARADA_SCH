@@ -17,6 +17,7 @@ import type { HonorDoc, MandateDoc, MemberDoc, OrgChartDoc, VerifyStatus } from 
 import { Badge, Button, EmptyState, Loading, lockScroll, Modal, Notice, PageHeader, Tabs } from '../../ui/index.tsx';
 import { CardView, type CardMemberData } from './components/CardView.tsx';
 import { fallbackTemplate, stickersFor, themeFor, type CardTemplateDoc } from './cardTemplate.ts';
+import { nodeToPng, shrinkImage, waitImages } from './exportImage.ts';
 import { useStickerUrls } from './useStickerUrls.ts';
 import { useLogoSrc } from './useLogoSrc.ts';
 import { PhotoUpload } from '../member-area/PhotoUpload.tsx';
@@ -392,7 +393,7 @@ function DownloadDialog({
   const t = useTenant();
   const { run } = useOp();
   const [busy, setBusy] = useState<'' | 'png' | 'pdf'>('');
-  const [render, setRender] = useState<{ qr: string; banner: string } | null>(null);
+  const [render, setRender] = useState<{ qr: string; banner: string; photo: string | null; logo: string; stickers: string[] } | null>(null);
   const [error, setError] = useState('');
   const node = useRef<HTMLDivElement>(null);
   const tz = t.tenant.timezone;
@@ -405,13 +406,15 @@ function DownloadDialog({
       if (!r) return;
       const qr = await QRCode.toDataURL(r.verifyUrl, { width: 480, margin: 1, errorCorrectionLevel: 'M' });
       const banner = `Válida até ${formatDateTime(r.expiresAt, r.timezone || tz)} (${tzLabel(r.timezone || tz)})`;
-      setRender({ qr, banner });
+      // Fotos de câmera em tamanho original derrubam a montagem no iPhone: reduz antes
+      const [photo, logo, ...stk] = await Promise.all([shrinkImage(photoUrl, 420, 'image/jpeg'), shrinkImage(logoSrc, 360), ...stickers.map(s => shrinkImage(s, 160))]);
+      setRender({ qr, banner, photo, logo: logo || logoSrc, stickers: stk.filter(Boolean) as string[] });
       // espera o React desenhar o nó de exportação e as imagens carregarem
       await new Promise(res => setTimeout(res, 350));
       const el = node.current;
       if (!el) throw new Error('sem nó');
-      const { toPng } = await import('html-to-image');
-      const png = await toPng(el, { pixelRatio: 2, cacheBust: true, backgroundColor: '#ffffff' });
+      await waitImages(el);
+      const png = await nodeToPng(el);
       const base = `${t.labels.card.toLowerCase()}-${(member.membershipNumber || member.displayName).replace(/[^a-zA-Z0-9]+/g, '-')}`;
       if (fmt === 'png') {
         const a = document.createElement('a');
@@ -434,8 +437,9 @@ function DownloadDialog({
         pdf.save(`${base}.pdf`);
       }
       onClose();
-    } catch {
-      setError('Não foi possível gerar o arquivo. Tente de novo.');
+    } catch (e) {
+      console.error('carteirinha: falha ao gerar o arquivo', e);
+      setError('Não foi possível gerar o arquivo neste aparelho. Tente de novo; se continuar, use "Tela cheia" e tire um print, ou baixe pelo computador.');
     } finally {
       setBusy('');
       setRender(null);
@@ -468,7 +472,7 @@ function DownloadDialog({
       {error && <Notice tone="bad">{error}</Notice>}
       {render && (
         <div className="fixed -left-[9999px] top-0" aria-hidden>
-          <CardView ref={node} both stickers={stickers} template={template} member={toCardData(member, t.settings?.showMembershipNumber === true, roles, honors)} logoSrc={logoSrc} photoUrl={photoUrl} qrDataUrl={render.qr} qrCaption="Escaneie para autenticar" banner={render.banner} labelCard={t.labels.card} />
+          <CardView ref={node} both stickers={render.stickers} template={template} member={toCardData(member, t.settings?.showMembershipNumber === true, roles, honors)} logoSrc={render.logo} photoUrl={render.photo} qrDataUrl={render.qr} qrCaption="Escaneie para autenticar" banner={render.banner} labelCard={t.labels.card} />
         </div>
       )}
     </Modal>

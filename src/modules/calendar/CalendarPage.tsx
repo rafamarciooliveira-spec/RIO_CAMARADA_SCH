@@ -122,8 +122,8 @@ export default function CalendarPage() {
           </Button>
           <Button variant="secondary" size="sm" onClick={() => move(1)} aria-label="Próximo" icon={<ChevronRight className="w-4 h-4" />} />
         </div>
-        <h2 className="text-lg font-bold capitalize flex-1 min-w-40" aria-live="polite">
-          {title}
+        <h2 className="text-lg font-bold flex-1 min-w-40" aria-live="polite">
+          {title.charAt(0).toUpperCase() + title.slice(1)}
         </h2>
       </div>
       <Tabs
@@ -332,10 +332,11 @@ function ItemModal({ o, onClose, onEdit }: { o: Occurrence; onClose: () => void;
       }
     >
       <div className="flex flex-wrap gap-2">
-        <Badge>{SOURCE_LABEL[o.source]}</Badge>
+        {SOURCE_LABEL[o.source] !== o.category && <Badge>{SOURCE_LABEL[o.source]}</Badge>}
         <Badge tone="info">{o.category}</Badge>
         {o.recurring && <Badge>Repete</Badge>}
-        {o.visibility === 'diretoria' && <Badge tone="warn">Só {t.labels.board.toLowerCase()}</Badge>}
+        {o.visibility === 'diretoria' && <Badge tone="warn">Só a {t.labels.board.toLowerCase()} vê</Badge>}
+        {o.visibility === 'publico' && <Badge tone="ok">Aberto ao público</Badge>}
       </div>
       <p className="text-sm">{o.allDay ? new Date(o.start).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }) : `${formatDateTime(o.start, tz)} até ${formatDateTime(o.end, tz)}`}</p>
       {o.location && <p className="text-sm text-muted">Local: {o.location}</p>}

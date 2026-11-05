@@ -139,7 +139,7 @@ export const CardView = forwardRef<HTMLDivElement, Props>(function CardView(
   const stickerRow = stickers.length ? (
     <div className="flex -space-x-2" aria-label="Adesivos do cargo">
       {stickers.slice(0, 3).map(src => (
-        <img key={src} src={src} alt="" className="object-contain drop-shadow-md" style={{ width: 40, height: 40 }} />
+        <img key={src} src={src} alt="" className="object-contain drop-shadow-md" style={{ width: 46, height: 46 }} />
       ))}
     </div>
   ) : null;

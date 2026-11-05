@@ -10,6 +10,7 @@ import { defineOp, fail, registerJobs, zId, zTenant, zText, type OpContext } fro
 import type { NewsHeadline } from '../core/ports.ts';
 import { P } from '../paths.ts';
 import { buildNewsQuery, domainOf, safeUrl } from '../rss.ts';
+import { titleFromUrl } from '../linkPreview.ts';
 import { societyType } from '../societyTypes.ts';
 import type { NewsConfig, NewsItemDoc, TenantDoc } from '../types.ts';
 import { tid } from './helpers.ts';
@@ -150,7 +151,7 @@ export async function refreshHeadlines(ctx: OpContext): Promise<RefreshResult> {
   // Guarda só as mais recentes; as internas nunca entram nessa conta
   const externals = await ctx.store.query<NewsItemDoc>(P.news(t), { where: [['kind', '==', 'externa']] });
   if (externals.length > MAX_EXTERNAL_NEWS) {
-    const sorted = externals.sort((a, b) => Number(b.data.pinned) - Number(a.data.pinned) || b.data.publishedAt.localeCompare(a.data.publishedAt));
+    const sorted = externals.sort((a, b) => Number(!!b.data.manual) - Number(!!a.data.manual) || Number(b.data.pinned) - Number(a.data.pinned) || b.data.publishedAt.localeCompare(a.data.publishedAt));
     for (const row of sorted.slice(MAX_EXTERNAL_NEWS)) {
       await ctx.store.delete(row.path);
       res.removed++;
@@ -243,7 +244,17 @@ const zNewsFields = z.object({
   imagePath: z.string().max(300).optional().or(z.literal('')),
   visibility: z.enum(['publico', 'socios']),
   pinned: z.boolean(),
+  /** Matéria completa em outro site (ex.: o jornal da cidade falou da sociedade) */
+  url: z.string().max(2000).optional().or(z.literal('')),
+  source: zText(120).optional(),
 });
+
+function checkLink(url: string | undefined): { url?: string; source?: string } {
+  if (!url) return {};
+  const ok = safeUrl(url);
+  if (!ok) fail('invalid-argument', 'O link precisa começar com https://');
+  return { url: ok };
+}
 
 function checkImage(ctx: OpContext, path: string | undefined): string | undefined {
   if (!path) return undefined;
@@ -268,7 +279,8 @@ export const postNews = defineOp({
   rateLimit: { per: 'uid', max: 60, windowSec: 3600 },
   async run(ctx, input) {
     const t = tid(ctx);
-    if (!input.summary && !input.body) fail('invalid-argument', 'Escreva um resumo ou o texto da notícia.');
+    const link = checkLink(input.url || undefined);
+    if (!input.summary && !input.body && !link.url) fail('invalid-argument', 'Escreva um resumo, o texto da notícia ou cole o link da matéria.');
     const imagePath = checkImage(ctx, input.imagePath || undefined);
     const id = ctx.store.newId();
     const doc: NewsItemDoc = {
@@ -278,6 +290,7 @@ export const postNews = defineOp({
       summary: input.summary,
       body: input.body,
       ...(imagePath ? { imagePath } : {}),
+      ...(link.url ? { url: link.url, source: (input.source || '').trim() || domainOf(link.url) } : {}),
       publishedAt: ctx.nowIso,
       pinned: input.pinned,
       hidden: false,
@@ -300,7 +313,8 @@ export const updateNews = defineOp({
     const t = tid(ctx);
     const cur = await getItem(ctx, input.id);
     if (cur.kind !== 'interna') fail('failed-precondition', 'Manchetes de outros veículos não podem ser editadas, só escondidas.');
-    if (!input.summary && !input.body) fail('invalid-argument', 'Escreva um resumo ou o texto da notícia.');
+    const link = checkLink(input.url || undefined);
+    if (!input.summary && !input.body && !link.url) fail('invalid-argument', 'Escreva um resumo, o texto da notícia ou cole o link da matéria.');
     const imagePath = checkImage(ctx, input.imagePath || undefined);
     if (cur.imagePath && cur.imagePath !== imagePath) await ctx.files.remove(cur.imagePath).catch(() => undefined);
     await ctx.store.set(
@@ -311,6 +325,8 @@ export const updateNews = defineOp({
         summary: input.summary,
         body: input.body,
         imagePath: imagePath || '',
+        url: link.url || '',
+        source: link.url ? (input.source || '').trim() || domainOf(link.url) : '',
         visibility: input.visibility,
         pinned: input.pinned,
         hidden: false,
@@ -367,4 +383,69 @@ export const pinNews = defineOp({
   },
 });
 
-export const newsOps = [saveNewsConfig, refreshNews, postNews, updateNews, deleteNews, hideNews, pinNews];
+// ---------- Publicar por link ----------
+/** Lê título, chamada e veículo de uma matéria para preencher a notícia (nada é gravado aqui) */
+export const linkPreview = defineOp({
+  name: 'news.linkPreview',
+  input: zTenant.extend({ url: z.string().min(8).max(2000) }),
+  auth: 'user',
+  tenant: { perm: ['noticias', 'criar'] },
+  module: 'noticias',
+  rateLimit: { per: 'uid', max: 40, windowSec: 3600 },
+  async run(ctx, input) {
+    const url = safeUrl(input.url);
+    if (!url) fail('invalid-argument', 'O link precisa começar com https://');
+    let title = '';
+    let summary = '';
+    let source = domainOf(url);
+    let fetched = false;
+    if (ctx.news?.preview) {
+      try {
+        const p = await ctx.news.preview(url);
+        title = p.title;
+        summary = p.description;
+        source = p.siteName || source;
+        fetched = true;
+      } catch {
+        // Site fora do ar ou bloqueando robôs: o título sai do endereço e a diretoria confere
+      }
+    }
+    return { url, title: title || titleFromUrl(url), summary, source, fetched };
+  },
+});
+
+/** Manchete de outro veículo colada pela diretoria (aparece em "Na região"); o mesmo link não entra duas vezes */
+export const addNewsLink = defineOp({
+  name: 'news.addLink',
+  input: zTenant.extend({ url: z.string().min(8).max(2000), title: zText(300).min(3, 'título com pelo menos 3 caracteres'), source: zText(120).optional(), visibility: z.enum(['publico', 'socios']), pinned: z.boolean() }),
+  auth: 'user',
+  tenant: { perm: ['noticias', 'criar'] },
+  module: 'noticias',
+  rateLimit: { per: 'uid', max: 60, windowSec: 3600 },
+  async run(ctx, input) {
+    const t = tid(ctx);
+    const url = safeUrl(input.url);
+    if (!url) fail('invalid-argument', 'O link precisa começar com https://');
+    const id = await externalNewsId(ctx, url);
+    const path = `${P.news(t)}/${id}`;
+    const cur = await ctx.store.get<NewsItemDoc>(path);
+    const doc: NewsItemDoc = {
+      id,
+      kind: 'externa',
+      title: input.title.trim(),
+      url,
+      source: (input.source || '').trim() || domainOf(url),
+      publishedAt: cur?.publishedAt || ctx.nowIso,
+      pinned: input.pinned,
+      hidden: false,
+      visibility: input.visibility,
+      manual: true,
+      createdAt: cur?.createdAt || ctx.nowIso,
+    };
+    await ctx.store.set(path, doc as unknown as Record<string, unknown>);
+    await ctx.audit('news.link_added', id, { source: doc.source || '' });
+    return { id, existed: !!cur };
+  },
+});
+
+export const newsOps = [saveNewsConfig, refreshNews, postNews, updateNews, deleteNews, hideNews, pinNews, linkPreview, addNewsLink];

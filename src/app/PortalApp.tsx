@@ -4,7 +4,7 @@
  */
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { LogOut, Menu, Bell, X, ChevronsUpDown, ShieldAlert } from 'lucide-react';
+import { LogOut, Menu, Bell, X, ChevronsUpDown, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 import { ThemeToggle } from '../ui/ThemeToggle.tsx';
 import { TenantProvider, useTenant } from './TenantContext.tsx';
 import { useData, useList, useOp, useSession } from './DataContext.tsx';
@@ -188,6 +188,12 @@ function Shell() {
           ))}
         </div>
       )}
+      {t.realBoard && !t.viewAsMember && (
+        <button type="button" onClick={() => t.setViewAsMember(true)} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm border border-dashed border-line hover:bg-surface-2 cursor-pointer">
+          <Eye className="w-4 h-4 shrink-0" aria-hidden />
+          Ver como {t.labels.member.toLowerCase()}
+        </button>
+      )}
     </nav>
   );
 
@@ -236,6 +242,15 @@ function Shell() {
           </div>
         )}
         <main className="flex-1 min-w-0 p-4 sm:p-6">
+          {t.viewAsMember && (
+            <div role="status" className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-info/40 bg-info/10 px-3 py-2 text-sm">
+              <Eye className="w-4 h-4 text-info shrink-0" aria-hidden />
+              <span className="flex-1 min-w-48">Você está vendo o portal como um {t.labels.member.toLowerCase()} sem cargo: menu, agenda e telas com os mesmos acessos.</span>
+              <Button size="sm" variant="secondary" icon={<EyeOff className="w-4 h-4" />} onClick={() => t.setViewAsMember(false)}>
+                Voltar para a {t.labels.board.toLowerCase()}
+              </Button>
+            </div>
+          )}
           <SelfMemberBanner />
           <Suspense fallback={<Loading />}>
             <Routes>

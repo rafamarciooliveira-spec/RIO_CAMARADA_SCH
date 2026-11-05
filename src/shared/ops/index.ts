@@ -19,6 +19,7 @@ import { surveyOps } from './surveys.ts';
 import { dependentOps } from './dependents.ts';
 import { handbookOps } from './handbook.ts';
 import { accountabilityOps } from './accountability.ts';
+import { rosterOps } from './rosters.ts';
 
 let done = false;
 export function registerAllOps(): void {
@@ -44,6 +45,7 @@ export function registerAllOps(): void {
     ...dependentOps,
     ...handbookOps,
     ...accountabilityOps,
+    ...rosterOps,
     jobRunnerOp,
   ] as OpDef[]);
 }

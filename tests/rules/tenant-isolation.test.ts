@@ -57,6 +57,8 @@ const MATRIX: { path: string; data: Record<string, unknown>; kind: Kind }[] = [
   { path: 'accountability/dir', data: { audience: 'diretoria', status: 'publicado', signerUids: [] }, kind: { perm: 'financeiro' } },
   { path: 'accountability/ret', data: { audience: 'socios', status: 'retirado', signerUids: [] }, kind: { perm: 'financeiro' } },
   { path: 'statementLines/s1', data: { amountCents: 100 }, kind: { perm: 'financeiro' } },
+  { path: 'rosters/aberta', data: { title: 'Escala', status: 'aberta', slots: [] }, kind: 'member' },
+  { path: 'rosters/rascunho', data: { title: 'Escala', status: 'rascunho', slots: [] }, kind: { perm: 'eventos' } },
   { path: 'charges/c9', data: { memberUid: 'ninguem', amountCents: 3000 }, kind: { perm: 'financeiro' } },
   { path: 'events/pub', data: { name: 'Baile', publicListing: true }, kind: 'public' },
   { path: 'events/priv', data: { name: 'Interno', publicListing: false }, kind: 'member' },

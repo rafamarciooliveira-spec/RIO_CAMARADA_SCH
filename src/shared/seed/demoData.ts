@@ -476,9 +476,23 @@ export async function buildDemoData(env: Env, opts: { files?: Map<string, string
   await safe('reservas', async () => {
     const salao = await gsave('spaces', { name: 'Salão nobre', capacity: 250, priceMemberCents: 60_000, priceNonMemberCents: 150_000, rules: 'Som até 23h. Limpeza por conta de quem reserva.' });
     await gsave('spaces', { name: 'Sala de ensaio', capacity: 40, priceMemberCents: 0, priceNonMemberCents: 20_000, rules: 'Uso prioritário dos grupos da sociedade.' });
-    const b1 = await gsave('bookings', { spaceId: salao.id, spaceName: 'Salão nobre', start: iso(addDaysKey(today, 30), '18:00'), end: iso(addDaysKey(today, 30), '23:00'), requesterName: 'Família Becker (fictícia)', isMember: true, priceCents: 60_000, status: 'solicitada', contractText: 'Contrato de locação do salão (modelo).' });
-    await gsave('bookings', { spaceId: salao.id, spaceName: 'Salão nobre', start: iso(addDaysKey(today, 45), '18:00'), end: iso(addDaysKey(today, 45), '23:59'), requesterName: 'Empresa Exemplo Ltda. (fictícia)', isMember: false, priceCents: 150_000, status: 'solicitada', contractText: 'Contrato de locação do salão (modelo).' });
+    const b1 = await gsave('bookings', { spaceId: salao.id, spaceName: 'Salão nobre', eventName: 'Casamento', organizer: 'terceiro', access: 'fechado', prepDaysBefore: 2, prepDaysAfter: 2, start: iso(addDaysKey(today, 30), '18:00'), end: iso(addDaysKey(today, 30), '23:00'), requesterName: 'Família Becker (fictícia)', isMember: true, priceCents: 60_000, status: 'solicitada', contractText: 'Contrato de locação do salão (modelo).' });
+    await gsave('bookings', { spaceId: salao.id, spaceName: 'Salão nobre', eventName: 'Confraternização de fim de ano', organizer: 'terceiro', access: 'fechado', prepDaysBefore: 1, prepDaysAfter: 1, start: iso(addDaysKey(today, 45), '18:00'), end: iso(addDaysKey(today, 45), '23:59'), requesterName: 'Empresa Exemplo Ltda. (fictícia)', isMember: false, priceCents: 150_000, status: 'solicitada', contractText: 'Contrato de locação do salão (modelo).' });
+    // Festa da sociedade em vários dias: o período inteiro fica marcado e entra na agenda dos sócios
+    const festa = await gsave('bookings', { spaceId: salao.id, spaceName: 'Salão nobre', eventName: 'Festa anual da sociedade', organizer: 'sociedade', access: 'aberto', prepDaysBefore: 2, prepDaysAfter: 2, start: iso(addDaysKey(today, 10), '17:00'), end: iso(addDaysKey(today, 14), '23:59'), requesterName: 'Diretoria social', isMember: false, priceCents: 0, status: 'solicitada', contractText: '' });
     await call('bookings.decide', { tenantId: t, bookingId: b1.id, decision: 'confirmar' }, diretoria);
+    await call('bookings.decide', { tenantId: t, bookingId: festa.id, decision: 'confirmar' }, diretoria);
+  });
+  await safe('escala de trabalho', async () => {
+    const slots = [];
+    for (let d = 10; d <= 14; d++) {
+      const date = addDaysKey(today, d);
+      for (const [role, needed] of [['Bilheteria', 1], ['Bar', 2], ['Cozinha', 2]] as const) slots.push({ id: `s${d}${role.slice(0, 3)}`, date, start: '17:30', end: '00:00', role, needed });
+    }
+    const r = await call<{ id: string }>('rosters.save', { tenantId: t, title: 'Escala da festa anual', description: 'Chegar 15 minutos antes. Camiseta da sociedade.', status: 'aberta', editors: [], slots, announce: false }, diretoria);
+    await call('rosters.assign', { tenantId: t, id: r.id, slotId: `s10Bil`, action: 'adicionar', name: 'Roberto Lenz (fictício)' }, diretoria);
+    await call('rosters.assign', { tenantId: t, id: r.id, slotId: `s10Bar`, action: 'adicionar', name: 'Carla Weber (fictícia)' }, diretoria);
+    await call('rosters.signup', { tenantId: t, id: r.id, slotId: `s11Coz` }, socio);
   });
   await safe('patrimônio', async () => {
     await gsave('assets', { code: 'TRJ-001', name: 'Traje típico feminino (conjunto)', kind: 'traje', location: 'Armário 2', condition: 'bom', valueCents: 120_000, maintenance: [], historical: false });

@@ -45,6 +45,7 @@ export function RoleThemes({ value, set, logoSrc }: { value: CardTemplateDoc; se
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
+          {r.value && <Holders rule={r} positions={chart.data?.positions || []} />}
           <Sticker rule={r} onChange={p => upd(r.id, { stickerPath: p })} />
           <Toggle checked={r.applyColors !== false} onChange={v => upd(r.id, { applyColors: v })} label="Mudar também as cores da carteirinha" />
           {r.applyColors !== false && <div className="grid sm:grid-cols-2 gap-2">
@@ -81,6 +82,16 @@ export function RoleThemes({ value, set, logoSrc }: { value: CardTemplateDoc; se
 }
 
 /** Adesivo da regra: imagem pequena (PNG com fundo transparente fica melhor) */
+/** Quem ganha a regra hoje: sem ninguém no cargo, o adesivo não aparece em carteirinha nenhuma */
+function Holders({ rule, positions }: { rule: RoleTheme; positions: OrgChartDoc['positions'] }) {
+  const norm = (x: string) => x.trim().toLowerCase();
+  const hit = positions.filter(p => p.memberId && norm(rule.match === 'grupo' ? p.group : p.title) === norm(rule.value));
+  if (!hit.length)
+    return <p className="text-xs text-warn">Ninguém ocupa {rule.match === 'grupo' ? `o grupo ${rule.value}` : rule.value} no organograma ainda. Indique a pessoa no Organograma para a carteirinha dela mudar.</p>;
+  const names = [...new Set(hit.map(p => p.personName || p.title))];
+  return <p className="text-xs text-muted">Aparece na carteirinha de: {names.join(', ')}.</p>;
+}
+
 function Sticker({ rule, onChange }: { rule: RoleTheme; onChange: (path: string | undefined) => void }) {
   const t = useTenant();
   const { client } = useData();

@@ -8,6 +8,7 @@ import { defineOp, fail, registerJobs, zDateKey, zId, zTenant, zText, type OpCon
 import { deleteField } from '../core/store.ts';
 import { P } from '../paths.ts';
 import { addDaysKey, formatDate } from '../dates.ts';
+import { bookingCalendarEntry, bookingsClash } from '../bookings.ts';
 import type { AssetDoc, BookingDoc, LibraryDocDoc, MemberDoc, WorkshopDoc } from '../types.ts';
 import { boardUids, notify, tid } from './helpers.ts';
 import { todayKey } from './finance.ts';
@@ -158,25 +159,10 @@ export const bookingsDecide = defineOp({
     if (b!.status === 'confirmada') fail('failed-precondition', 'Esta reserva já está confirmada.');
     if (b!.status === 'cancelada') fail('failed-precondition', 'Reserva cancelada não se confirma. Crie uma nova.');
     const same = await ctx.store.query<BookingDoc>(P.bookings(t), { where: [['spaceId', '==', b!.spaceId]] });
-    const clash = same.find(o => o.id !== input.bookingId && o.data.status === 'confirmada' && o.data.start < b!.end && o.data.end > b!.start);
-    if (clash) fail('already-exists', 'Já existe reserva confirmada neste espaço nesse horário.');
+    const clash = same.find(o => o.id !== input.bookingId && o.data.status === 'confirmada' && bookingsClash(o.data, b!));
+    if (clash) fail('already-exists', 'Já existe reserva confirmada neste espaço nesse período, contando os dias de preparação.');
     await ctx.store.update(path, { status: 'confirmada', decidedBy: ctx.actor!.uid, decidedAt: ctx.nowIso });
-    await ctx.store.set(calPath, {
-      id: `bkg_${input.bookingId}`,
-      title: `Reserva: ${b!.spaceName}`,
-      description: `Solicitante: ${b!.requesterName}`,
-      location: b!.spaceName,
-      start: b!.start,
-      end: b!.end,
-      allDay: false,
-      category: 'Reserva',
-      color: '#16a34a',
-      recurrence: { freq: 'nenhuma' },
-      visibility: 'diretoria',
-      source: 'reserva',
-      sourceId: input.bookingId,
-      createdAt: ctx.nowIso,
-    });
+    await ctx.store.set(calPath, { ...bookingCalendarEntry(input.bookingId, b!, ctx.nowIso) });
     await ctx.audit('bookings.confirmed', input.bookingId);
     return { status: 'confirmada' };
   },

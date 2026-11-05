@@ -3,7 +3,7 @@
  * só título, fonte, data e link). Quem tem notícias/editar atualiza, configura, esconde e bloqueia fontes.
  */
 import { useMemo, useState } from 'react';
-import { EyeOff, Eye, ExternalLink, ImagePlus, Newspaper, Pencil, Pin, PinOff, Plus, RefreshCw, Settings2, ShieldBan, Trash2, X } from 'lucide-react';
+import { EyeOff, Eye, ExternalLink, ImagePlus, Link2, Newspaper, Pencil, Pin, PinOff, Plus, RefreshCw, Settings2, ShieldBan, Trash2, X } from 'lucide-react';
 import { useData, useDoc, useFileUrl, useList, useOp } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
 import { P } from '../../shared/paths.ts';
@@ -42,6 +42,7 @@ export default function NewsPage() {
   const [limits, setLimits] = useState<Record<Tab, number>>({ interna: PAGE, externa: PAGE });
   const [editing, setEditing] = useState<Item | 'novo' | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
   const { run, busy } = useOp();
   const toast = useToast();
 
@@ -106,6 +107,13 @@ export default function NewsPage() {
           As manchetes vêm de outros veículos e o conteúdo pertence a cada um deles. Aqui aparecem só o título, a fonte e a data; ao tocar, a notícia abre no site original.
         </Notice>
       )}
+      {tab === 'externa' && canCreate && (
+        <div>
+          <Button size="sm" variant="secondary" icon={<Link2 className="w-4 h-4" aria-hidden />} onClick={() => setLinkOpen(true)}>
+            Colar link de uma matéria
+          </Button>
+        </div>
+      )}
       {tab === 'externa' && canEdit && !cfg.enabled && <Notice tone="warn">As manchetes da região estão desligadas. Ligue em Configurar.</Notice>}
 
       {list.loading && !list.data.length ? (
@@ -153,6 +161,7 @@ export default function NewsPage() {
 
       {editing && <NewsEditor item={editing === 'novo' ? null : editing} onClose={() => setEditing(null)} />}
       {configOpen && <ConfigModal stored={cfgDoc.data} onClose={() => setConfigOpen(false)} />}
+      {linkOpen && <LinkModal onClose={() => setLinkOpen(false)} />}
     </div>
   );
 }
@@ -237,6 +246,13 @@ function InternalCard({ n, canEdit, onEdit }: { n: Item; canEdit: boolean; onEdi
         {n.summary && <p className="text-sm mt-2">{n.summary}</p>}
         {hasBody && open && <p className="text-sm mt-3 whitespace-pre-line">{n.body}</p>}
         <div className="flex flex-wrap gap-2 mt-3">
+          {n.url && (
+            <a href={n.url} target="_blank" rel="noopener noreferrer">
+              <Button size="sm" variant={hasBody ? 'ghost' : 'secondary'} icon={<ExternalLink className="w-3.5 h-3.5" aria-hidden />}>
+                Ler a matéria{n.source ? ` em ${n.source}` : ''}
+              </Button>
+            </a>
+          )}
           {hasBody && (
             <Button size="sm" variant="secondary" aria-expanded={open} onClick={() => setOpen(o => !o)}>
               {open ? 'Mostrar menos' : 'Ler notícia'}
@@ -276,6 +292,8 @@ function NewsEditor({ item, onClose }: { item: Item | null; onClose: () => void 
   const [imagePath, setImagePath] = useState(item?.imagePath || '');
   const [visibility, setVisibility] = useState<'publico' | 'socios'>(item?.visibility || 'socios');
   const [pinned, setPinned] = useState(item?.pinned || false);
+  const [url, setUrl] = useState(item?.url || '');
+  const [source, setSource] = useState(item?.source || '');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [requestId] = useState(() => `noticia_${randomId()}`.slice(0, 60));
@@ -300,11 +318,22 @@ function NewsEditor({ item, onClose }: { item: Item | null; onClose: () => void 
     }
   };
 
+  const fetchLink = async () => {
+    setError('');
+    const r = await run<{ url: string; title: string; summary: string; source: string; fetched: boolean }>('news.linkPreview', { tenantId: t.tenantId, url: url.trim() });
+    if (!r) return;
+    setUrl(r.url);
+    if (r.title && !title.trim()) setTitle(r.title.slice(0, 150));
+    if (r.summary && !summary.trim()) setSummary(r.summary.slice(0, 400));
+    setSource(r.source);
+    if (!r.fetched) setError('O site não respondeu: o título veio do próprio link. Confira e ajuste antes de publicar.');
+  };
+
   const save = async () => {
     setError('');
     if (title.trim().length < 3) return setError('Escreva um título com pelo menos 3 letras.');
-    if (!summary.trim() && !body.trim()) return setError('Escreva um resumo ou o texto da notícia.');
-    const data = { tenantId: t.tenantId, title: title.trim(), summary: summary.trim(), body: body.trim(), imagePath, visibility, pinned };
+    if (!summary.trim() && !body.trim() && !url.trim()) return setError('Escreva um resumo, o texto da notícia ou cole o link da matéria.');
+    const data = { tenantId: t.tenantId, title: title.trim(), summary: summary.trim(), body: body.trim(), imagePath, visibility, pinned, url: url.trim(), source: source.trim() };
     const r = item
       ? await run('news.update', { ...data, id: item.id }, { success: 'Notícia atualizada.' })
       : await run('news.post', { ...data, requestId }, { success: 'Notícia publicada.' });
@@ -325,6 +354,17 @@ function NewsEditor({ item, onClose }: { item: Item | null; onClose: () => void 
       }
     >
       <div className="space-y-4">
+        <Field label="Link da matéria (opcional)" hint="Saiu no jornal ou num site? Cole o link: o título e a chamada vêm sozinhos e o sócio abre a matéria completa no site.">
+          {id => (
+            <div className="flex gap-2">
+              <Input id={id} type="url" inputMode="url" placeholder="https://..." value={url} maxLength={2000} onChange={e => setUrl(e.target.value)} />
+              <Button type="button" variant="secondary" disabled={busy || url.trim().length < 8} onClick={fetchLink}>
+                Buscar
+              </Button>
+            </div>
+          )}
+        </Field>
+        {url.trim() && <Field label="Veículo">{id => <Input id={id} value={source} maxLength={120} placeholder="Ex.: Repórter Gabriel Júnior" onChange={e => setSource(e.target.value)} />}</Field>}
         <Field label="1. Título" required>{id => <Input id={id} value={title} maxLength={150} onChange={e => setTitle(e.target.value)} />}</Field>
         <Field label="2. Resumo" hint="Uma ou duas frases. Aparece no cartão da notícia.">
           {id => <Textarea id={id} rows={2} maxLength={400} value={summary} onChange={e => setSummary(e.target.value)} />}
@@ -356,6 +396,74 @@ function NewsEditor({ item, onClose }: { item: Item | null; onClose: () => void 
         </Field>
         <Toggle checked={pinned} onChange={setPinned} label="6. Fixar no topo da lista" />
         {error && <Notice tone="bad">{error}</Notice>}
+      </div>
+    </Modal>
+  );
+}
+
+// ---------- Manchete por link (Na região) ----------
+function LinkModal({ onClose }: { onClose: () => void }) {
+  const t = useTenant();
+  const { run, busy } = useOp();
+  const [url, setUrl] = useState('');
+  const [title, setTitle] = useState('');
+  const [source, setSource] = useState('');
+  const [visibility, setVisibility] = useState<'publico' | 'socios'>('socios');
+  const [pinned, setPinned] = useState(false);
+  const [note, setNote] = useState('');
+  const fetchLink = async () => {
+    setNote('');
+    const r = await run<{ url: string; title: string; source: string; fetched: boolean }>('news.linkPreview', { tenantId: t.tenantId, url: url.trim() });
+    if (!r) return;
+    setUrl(r.url);
+    setTitle(r.title);
+    setSource(r.source);
+    if (!r.fetched) setNote('O site não respondeu: o título veio do próprio link. Confira antes de publicar.');
+  };
+  const save = async () => {
+    const r = await run<{ existed: boolean }>('news.addLink', { tenantId: t.tenantId, url: url.trim(), title: title.trim(), source: source.trim(), visibility, pinned }, { success: 'Manchete publicada.' });
+    if (r) onClose();
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Colar link de uma matéria"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button loading={busy} disabled={title.trim().length < 3 || url.trim().length < 8} onClick={save}>
+            Publicar
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="1. Link" required>
+          {id => (
+            <div className="flex gap-2">
+              <Input id={id} type="url" inputMode="url" placeholder="https://..." value={url} maxLength={2000} onChange={e => setUrl(e.target.value)} />
+              <Button type="button" variant="secondary" disabled={busy || url.trim().length < 8} onClick={fetchLink}>
+                Buscar
+              </Button>
+            </div>
+          )}
+        </Field>
+        <Field label="2. Título" required>{id => <Input id={id} value={title} maxLength={300} onChange={e => setTitle(e.target.value)} />}</Field>
+        <Field label="3. Veículo">{id => <Input id={id} value={source} maxLength={120} onChange={e => setSource(e.target.value)} />}</Field>
+        <Field label="4. Quem pode ver">
+          {id => (
+            <Select id={id} value={visibility} onChange={e => setVisibility(e.target.value as 'publico' | 'socios')}>
+              <option value="socios">Só sócios</option>
+              <option value="publico">Todos, também na página pública</option>
+            </Select>
+          )}
+        </Field>
+        <Toggle checked={pinned} onChange={setPinned} label="5. Fixar no topo da lista" />
+        {note && <Notice tone="warn">{note}</Notice>}
+        <Notice>Aparece só o título, o veículo e a data; ao tocar, a matéria abre no site original.</Notice>
       </div>
     </Modal>
   );

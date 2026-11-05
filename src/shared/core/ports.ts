@@ -59,6 +59,8 @@ export interface NewsHeadline {
 }
 export interface NewsPort {
   search(query: string, limit: number): Promise<NewsHeadline[]>;
+  /** Título, chamada e veículo de uma matéria (só o que o site oferece para compartilhar) */
+  preview?(url: string): Promise<{ title: string; description: string; siteName: string }>;
 }
 
 /** Notificação no celular (Firebase Cloud Messaging no servidor) */

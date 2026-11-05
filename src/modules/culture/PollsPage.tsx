@@ -1,6 +1,7 @@
 /** Enquetes do portal (no lugar das do grupo de WhatsApp): responder, ver o resultado e, na diretoria, criar. */
 import { useEffect, useState } from 'react';
 import { BarChart3, Lock, Plus, Trash2, Users } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useDoc, useList, useOp, useSession } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
 import { P } from '../../shared/paths.ts';
@@ -77,7 +78,7 @@ function Poll({ s, canManage }: { s: SurveyDoc & { id: string }; canManage: bool
   );
 }
 
-function NewPoll({ onClose }: { onClose: () => void }) {
+export function NewPoll({ onClose }: { onClose: () => void }) {
   const t = useTenant();
   const { run, busy } = useOp();
   const [question, setQuestion] = useState('');
@@ -141,19 +142,26 @@ function NewPoll({ onClose }: { onClose: () => void }) {
 export default function PollsPage() {
   const t = useTenant();
   const list = useList<SurveyDoc>(P.surveys(t.tenantId), { orderBy: [['createdAt', 'desc']], limit: 30 });
-  const [creating, setCreating] = useState(false);
   const canManage = t.can('engajamento', 'criar');
   return (
     <div className="space-y-5">
       <PageHeader
         title="Enquetes"
         subtitle="Perguntas rápidas da sociedade: participação no desfile, data da festa, cardápio..."
-        actions={canManage && <Button icon={<Plus className="w-4 h-4" />} onClick={() => setCreating(true)}>Nova enquete</Button>}
+        actions={
+          canManage && (
+            <Link to={t.to('engajamento')}>
+              <Button variant="secondary" icon={<Plus className="w-4 h-4" />}>
+                Criar na área da {t.labels.board.toLowerCase()}
+              </Button>
+            </Link>
+          )
+        }
       />
       {list.loading ? (
         <Loading />
       ) : list.data.length === 0 ? (
-        <EmptyState icon={<BarChart3 className="w-5 h-5" />} title="Nenhuma enquete ainda" text={canManage ? 'Crie a primeira: todos recebem a notificação no celular.' : 'Quando a diretoria publicar uma enquete, ela aparece aqui.'} />
+        <EmptyState icon={<BarChart3 className="w-5 h-5" />} title="Nenhuma enquete ainda" text={`Quando a ${t.labels.board.toLowerCase()} publicar uma enquete, ela aparece aqui.`} />
       ) : (
         <div className="grid md:grid-cols-2 gap-3 items-start">
           {list.data.map(s => (
@@ -161,7 +169,6 @@ export default function PollsPage() {
           ))}
         </div>
       )}
-      {creating && <NewPoll onClose={() => setCreating(false)} />}
     </div>
   );
 }

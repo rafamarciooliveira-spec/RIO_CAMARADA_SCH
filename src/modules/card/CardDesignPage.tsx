@@ -57,6 +57,12 @@ export default function CardDesignPage() {
           : orgChart.data?.positions.find(p => p.title === previewAs) || { title: previewAs, group: '' },
     [previewAs, ruleMatch, orgChart.data]
   );
+  // Ao abrir um modelo com adesivo, a prévia já mostra quem ganha o adesivo
+  const draftId = draft?.id;
+  useEffect(() => {
+    setPreviewAs(draft?.roleThemes?.find(r => r.value && r.stickerPath)?.value || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftId]);
   const previewStickers = useStickerUrls(useMemo(() => (draft && previewPos ? stickersFor(draft, [previewPos]) : []), [draft, previewPos]));
   const [side, setSide] = useState<'frente' | 'verso'>('frente');
   const canEdit = t.can('carteirinha', 'editar');
@@ -201,6 +207,11 @@ export default function CardDesignPage() {
               </div>
             )}
             {dirty && <p className="text-xs text-warn mt-2">Há mudanças não salvas.</p>}
+            {saved && draft.id !== activeId && (
+              <div className="mt-3"><Notice tone="warn">
+                Este modelo não está em uso: os sócios continuam vendo o modelo marcado como Ativo. Salve e toque em "Usar este modelo" para as carteirinhas mudarem.
+              </Notice></div>
+            )}
           </Card>
           <div className="flex flex-col items-center gap-3 lg:sticky lg:top-20">
             <div className="text-xs text-muted">Prévia com dados fictícios. Toque para virar.</div>
@@ -217,7 +228,7 @@ export default function CardDesignPage() {
             <CardView
               template={previewPos ? themeFor(draft, [previewPos]) : draft}
               stickers={previewStickers}
-              member={{ ...SAMPLE, roles: previewPos ? [previewPos.title] : SAMPLE.roles, honors: draft.showHonors ? SAMPLE_HONORS : undefined }}
+              member={{ ...SAMPLE, roles: previewPos ? [previewPos.title] : [], honors: draft.showHonors ? SAMPLE_HONORS : undefined }}
               logoSrc={logoSrc}
               qrDataUrl={null}
               qrCaption="O QR real aparece na carteirinha do sócio"

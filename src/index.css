@@ -100,3 +100,14 @@ body {
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--sd-line); border-radius: 9999px; }
 .custom-scrollbar { scrollbar-width: thin; scrollbar-color: var(--sd-line) transparent; }
+
+/* iPhone: campos de data e hora não passam da largura do formulário */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  display: block;
+}

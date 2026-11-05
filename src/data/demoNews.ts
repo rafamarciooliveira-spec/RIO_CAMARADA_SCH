@@ -3,6 +3,8 @@
  * com fonte "Jornal Exemplo (fictício)" e links em exemplo.invalid (domínio que nunca existe).
  */
 import type { NewsHeadline, NewsPort } from '../shared/core/ports.ts';
+import { titleFromUrl } from '../shared/linkPreview.ts';
+import { domainOf } from '../shared/rss.ts';
 
 const TEMPLATES = [
   'Temporada de {k} começa com recorde de inscritos{r}',
@@ -51,6 +53,10 @@ export function createDemoNews(now: () => Date = () => new Date()): NewsPort {
         });
       }
       return out;
+    },
+    // Sem rede na demonstração: o título sai do próprio endereço
+    async preview(url) {
+      return { title: titleFromUrl(url) || 'Matéria (exemplo fictício)', description: '', siteName: domainOf(url) };
     },
   };
 }

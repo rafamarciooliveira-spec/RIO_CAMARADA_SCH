@@ -54,6 +54,8 @@ export interface CrudConfig {
   /** Ajusta os dados antes de enviar */
   toData?: (form: Record<string, unknown>, row: Doc | null) => Record<string, unknown>;
   headerActions?: React.ReactNode;
+  /** Troca o cadastro padrão por um fluxo próprio (ex.: enquete que avisa todos) */
+  onCreate?: () => void;
   toolbar?: React.ReactNode;
 }
 
@@ -133,7 +135,7 @@ export function CrudPage({ config, embedded }: { config: CrudConfig; embedded?: 
         <SearchBox value={search} onChange={setSearch} placeholder="Buscar" />
         {config.toolbar}
         {canCreate && (
-          <Button size="sm" className="sm:ml-auto" icon={<Plus className="w-4 h-4" />} onClick={() => setOpen('novo')}>
+          <Button size="sm" className="sm:ml-auto" icon={<Plus className="w-4 h-4" />} onClick={() => (config.onCreate ? config.onCreate() : setOpen('novo'))}>
             Adicionar {config.singular}
           </Button>
         )}

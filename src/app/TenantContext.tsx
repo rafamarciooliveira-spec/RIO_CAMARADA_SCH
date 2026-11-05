@@ -2,7 +2,7 @@
  * Contexto da sociedade aberta em /{slug}: documento público, vínculo do usuário (papéis),
  * cadastro de sócio, configurações e rótulos. Aplica a identidade visual (cores, fonte, tema).
  */
-import React, { createContext, useContext, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { P } from '../shared/paths.ts';
 import { can as canPerm, isBoard, type Action, type ModuleId, type Perms } from '../shared/modules.ts';
@@ -21,6 +21,11 @@ export interface TenantCtx {
   member: WithId<MemberDoc> | null;
   perms: Perms;
   board: boolean;
+  /** A pessoa é da diretoria de verdade (mesmo vendo o portal como sócio) */
+  realBoard: boolean;
+  /** "Ver como sócio": a tela mostra só o que um sócio sem cargo vê */
+  viewAsMember: boolean;
+  setViewAsMember(v: boolean): void;
   labels: Labels;
   can(module: ModuleId, action?: Action): boolean;
   moduleOn(module: ModuleId): boolean;
@@ -88,6 +93,16 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const active = membership.data && membership.data.active && (!membership.data.expiresAtMs || membership.data.expiresAtMs > Date.now()) ? membership.data : null;
   const member = useDoc<MemberDoc>(tenantId && active?.memberId ? P.member(tenantId, active.memberId) : null);
   const settings = useDoc<TenantSettings>(tenantId && session.user ? P.settings(tenantId) : null);
+  // Só muda a tela (o servidor continua checando as permissões de verdade); vale até fechar a aba
+  const asKey = `verein:ver-como-socio:${tenantId}`;
+  const [asMember, setAsMember] = useState(false);
+  useEffect(() => {
+    try {
+      setAsMember(!!tenantId && sessionStorage.getItem(asKey) === '1');
+    } catch {
+      setAsMember(false);
+    }
+  }, [asKey, tenantId]);
 
   useEffect(() => {
     applyBranding(tenant.data);
@@ -96,7 +111,10 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<TenantCtx | null>(() => {
     if (!tenant.data) return null;
-    const perms = active?.perms || {};
+    const realPerms = active?.perms || {};
+    const realBoard = isBoard(realPerms);
+    const viewAsMember = realBoard && asMember;
+    const perms = viewAsMember ? {} : realPerms;
     const t = tenant.data;
     return {
       slug: t.slug,
@@ -107,12 +125,23 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       member: member.data,
       perms,
       board: isBoard(perms),
+      realBoard,
+      viewAsMember,
+      setViewAsMember: (v: boolean) => {
+        try {
+          if (v) sessionStorage.setItem(asKey, '1');
+          else sessionStorage.removeItem(asKey);
+        } catch {
+          /* sem armazenamento: vale só nesta tela */
+        }
+        setAsMember(v);
+      },
       labels: { ...DEFAULT_LABELS, ...(t.labels || {}) },
       can: (m, a = 'ver') => t.modules?.[m] !== false && canPerm(perms, m, a),
       moduleOn: m => t.modules?.[m] !== false,
       to: (sub = '') => `${basePath}/${t.slug}${sub ? `/${sub.replace(/^\//, '')}` : ''}`,
     };
-  }, [tenant.data, tenantId, settings.data, active, member.data, basePath]);
+  }, [tenant.data, tenantId, settings.data, active, member.data, basePath, asMember, asKey]);
 
   // Espera o vínculo e o cadastro: sem isso as rotas da diretoria são montadas sem permissão
   // e a pessoa é redirecionada para o início antes de as permissões chegarem

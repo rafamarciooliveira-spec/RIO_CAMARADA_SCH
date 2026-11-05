@@ -698,6 +698,9 @@ export interface SpaceDoc {
   priceMemberCents: number;
   priceNonMemberCents: number;
   rules: string;
+  /** Dias livres antes e depois de cada reserva (montagem e desmontagem); a reserva pode mudar */
+  prepDaysBefore?: number;
+  prepDaysAfter?: number;
 }
 
 export interface BookingDoc {
@@ -712,6 +715,14 @@ export interface BookingDoc {
   priceCents: number;
   status: 'solicitada' | 'confirmada' | 'cancelada';
   contractText: string;
+  /** Nome do evento (Casamento, Schützenfest...) */
+  eventName?: string;
+  /** Quem promove: a própria sociedade ou um terceiro (aluguel) */
+  organizer?: 'sociedade' | 'terceiro';
+  /** Aberto ao público ou fechado (só convidados) */
+  access?: 'aberto' | 'fechado';
+  prepDaysBefore?: number;
+  prepDaysAfter?: number;
   createdAt: ISODateTime;
 }
 
@@ -867,8 +878,9 @@ export interface NewsItemDoc {
   title: string;
   summary?: string; // interna: texto curto; externa: vazio (não reproduzimos conteúdo de terceiros)
   body?: string; // só interna
-  url?: string; // só externa
-  source?: string; // nome do veículo (externa)
+  url?: string; // externa; na interna, a matéria completa em outro site (opcional)
+  source?: string; // nome do veículo
+  manual?: boolean; // externa colada pela diretoria por link (não sai na faxina automática)
   imagePath?: string; // interna: imagem no Storage público da sociedade
   publishedAt: ISODateTime;
   pinned: boolean;
@@ -1031,4 +1043,50 @@ export interface HandbookDoc {
   versions: { version: number; at: ISODateTime; note?: string }[];
   updatedAt: ISODateTime;
   updatedBy: string;
+}
+
+// ---------- Escalas de trabalho (voluntários) ----------
+
+/** Pessoa numa vaga da escala: o próprio sócio se inscreve ou quem organiza põe o nome */
+export interface RosterPerson {
+  key: string;
+  uid?: string;
+  memberId?: string;
+  name: string;
+  confirmed: boolean;
+  addedBy: 'proprio' | 'organizacao';
+  at: ISODateTime;
+}
+
+/** Uma função num turno: "1 pessoa para Arma, 11/11 das 18:30 às 00:00" */
+export interface RosterSlot {
+  id: string;
+  date: DateKey;
+  label?: string; // Tarde, Noite...
+  start: string; // HH:MM
+  end: string; // HH:MM (menor que o início = passa da meia-noite)
+  role: string; // Arma, Serviços, Reserva, Souvenir...
+  needed: number;
+  people: RosterPerson[];
+}
+
+/**
+ * tenants/{t}/rosters/{id}: escala de trabalho de um evento. Só o servidor grava.
+ * Depois de criada, só quem criou e as pessoas que essa pessoa indicou mudam datas, turnos e vagas.
+ */
+export interface RosterDoc {
+  id: string;
+  title: string;
+  description?: string;
+  eventId?: string;
+  eventName?: string;
+  status: 'rascunho' | 'aberta' | 'encerrada';
+  createdBy: string;
+  createdByName: string;
+  editorUids: string[];
+  editors: { uid: string; name: string }[];
+  slots: RosterSlot[];
+  noticeId?: string;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
 }

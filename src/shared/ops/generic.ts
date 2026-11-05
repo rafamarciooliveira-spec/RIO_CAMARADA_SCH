@@ -7,7 +7,9 @@
  */
 import { z, type ZodTypeAny } from 'zod';
 import { defineOp, fail, zCents, zColor, zDateKey, zId, zIso, zTenant, zText } from '../core/ops.ts';
-import { GENERIC_COLLECTIONS, type GenericCollection } from '../paths.ts';
+import { GENERIC_COLLECTIONS, P, type GenericCollection } from '../paths.ts';
+import { bookingCalendarEntry, bookingsClash } from '../bookings.ts';
+import type { BookingDoc } from '../types.ts';
 import type { ModuleId } from '../modules.ts';
 import { tid } from './helpers.ts';
 
@@ -30,6 +32,8 @@ export const GENERIC_SCHEMAS: Record<GenericCollection, z.ZodObject<Record<strin
     priceMemberCents: zCents,
     priceNonMemberCents: zCents,
     rules: s(3000),
+    prepDaysBefore: z.number().int().min(0).max(15).optional(),
+    prepDaysAfter: z.number().int().min(0).max(15).optional(),
   }),
   bookings: z.object({
     spaceId: zId,
@@ -42,6 +46,11 @@ export const GENERIC_SCHEMAS: Record<GenericCollection, z.ZodObject<Record<strin
     priceCents: zCents,
     status: z.enum(['solicitada', 'confirmada', 'cancelada']),
     contractText: s(8000),
+    eventName: s(150).optional(),
+    organizer: z.enum(['sociedade', 'terceiro']).optional(),
+    access: z.enum(['aberto', 'fechado']).optional(),
+    prepDaysBefore: z.number().int().min(0).max(15).optional(),
+    prepDaysAfter: z.number().int().min(0).max(15).optional(),
   }),
   assets: z.object({
     code: s(40),
@@ -226,12 +235,25 @@ export const genericSave = defineOp({
       fail('invalid-argument', `Campo ${i.path.join('.')}: ${i.message}`);
     }
     const data = parsed.data as Record<string, unknown>;
-    if (input.collection === 'bookings' && data.start && data.end) {
-      if (String(data.end) <= String(data.start)) fail('invalid-argument', 'O fim precisa ser depois do início.');
-      // Bloqueio de conflito de horário no mesmo espaço
-      const same = await ctx.store.query<{ start: string; end: string; status: string }>(cfg.path(t), { where: [['spaceId', '==', data.spaceId]] });
-      const clash = same.find(b => b.id !== input.id && b.data.status !== 'cancelada' && b.data.start < String(data.end) && b.data.end > String(data.start));
-      if (clash) fail('already-exists', 'Já existe reserva neste espaço nesse horário.');
+    let bookingBefore: BookingDoc | null = null;
+    if (input.collection === 'bookings') {
+      if (input.id) {
+        bookingBefore = await ctx.store.get<BookingDoc>(`${cfg.path(t)}/${input.id}`);
+        if (bookingBefore?.status === 'cancelada') fail('failed-precondition', 'Reserva cancelada não se edita. Crie uma nova.');
+        // A situação só muda pela confirmação ou cancelamento (bookings.decide)
+        delete data.status;
+      } else {
+        // Toda reserva nasce solicitada; confirmar é com quem aprova
+        data.status = 'solicitada';
+      }
+      const merged = { ...(bookingBefore || {}), ...data } as BookingDoc;
+      if (merged.start && merged.end) {
+        if (String(merged.end) <= String(merged.start)) fail('invalid-argument', 'O fim precisa ser depois do início.');
+        // Bloqueio de conflito no mesmo espaço, contando os dias de preparação (montagem e desmontagem)
+        const same = await ctx.store.query<BookingDoc>(cfg.path(t), { where: [['spaceId', '==', merged.spaceId]] });
+        const clash = same.find(b => b.id !== input.id && b.data.status !== 'cancelada' && bookingsClash(b.data, merged));
+        if (clash) fail('already-exists', `Já existe reserva neste espaço nesse período (${clash.data.eventName || clash.data.requesterName}), contando os dias de preparação.`);
+      }
     }
     if (input.collection === 'terms' && data.current === true) {
       const others = await ctx.store.query(cfg.path(t), { where: [['current', '==', true]] });
@@ -246,6 +268,10 @@ export const genericSave = defineOp({
       }
       if (!(await ctx.store.get(path))) fail('not-found', 'Registro não encontrado.');
       await ctx.store.update(path, { ...data, updatedAt: ctx.nowIso });
+      // Reserva confirmada editada: a agenda acompanha
+      if (bookingBefore?.status === 'confirmada') {
+        await ctx.store.set(`${P.calendar(t)}/bkg_${input.id}`, { ...bookingCalendarEntry(input.id, { ...bookingBefore, ...data } as BookingDoc, ctx.nowIso) });
+      }
       await ctx.audit(`${input.collection}.updated`, input.id);
       return { id: input.id };
     }

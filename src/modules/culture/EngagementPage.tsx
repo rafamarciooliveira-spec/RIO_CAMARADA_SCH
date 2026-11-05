@@ -7,9 +7,10 @@ import { todayIn } from '../../app/formHelpers.ts';
 import { P } from '../../shared/paths.ts';
 import { formatDate } from '../../shared/dates.ts';
 import type { MemberDoc, SurveyDoc } from '../../shared/types.ts';
-import { Badge, Card, EmptyState, Field, Input, Loading, PageHeader, Section, Select, Tabs, Textarea } from '../../ui/index.tsx';
+import { Badge, Card, EmptyState, Field, Input, Loading, Notice, PageHeader, Section, Select, Tabs, Textarea } from '../../ui/index.tsx';
 import { CrudPage, type CrudConfig } from './CrudPage.tsx';
 import { SurveyBars } from './MemberSurveys.tsx';
+import { NewPoll } from './PollsPage.tsx';
 
 const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
@@ -87,15 +88,19 @@ function Seniority() {
   const [min, setMin] = useState(0);
   if (members.loading) return <Loading />;
   const year = Number(today.slice(0, 4));
-  const rows = members.data
-    .filter(m => m.joinedAt)
+  // Vale o ano informado ("Sócio desde"); sem ele, a data do cadastro no sistema
+  const all = members.data
+    .filter(m => m.memberSinceYear || m.joinedAt)
     .map(m => {
-      const years = year - Number(m.joinedAt!.slice(0, 4)) - (today.slice(5) < m.joinedAt!.slice(5) ? 1 : 0);
-      const milestoneThisYear = [5, 10, 15, 20, 25, 30, 40, 50].includes(year - Number(m.joinedAt!.slice(0, 4)));
-      return { ...m, years, milestoneThisYear };
-    })
-    .filter(m => m.years >= min)
-    .sort((a, b) => (a.joinedAt! < b.joinedAt! ? -1 : 1));
+      const fromYear = !!m.memberSinceYear;
+      const startYear = m.memberSinceYear || Number(m.joinedAt!.slice(0, 4));
+      const years = fromYear ? year - startYear : year - startYear - (today.slice(5) < m.joinedAt!.slice(5) ? 1 : 0);
+      const milestoneThisYear = [5, 10, 15, 20, 25, 30, 40, 50, 60, 70].includes(year - startYear);
+      const sortKey = fromYear ? `${startYear}-00-00` : m.joinedAt!;
+      return { ...m, fromYear, startYear, years: Math.max(0, years), milestoneThisYear, sortKey };
+    });
+  const withoutYear = all.filter(m => !m.fromYear).length;
+  const rows = all.filter(m => m.years >= min).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : a.fullName.localeCompare(b.fullName)));
   const milestones = rows.filter(r => r.milestoneThisYear);
   return (
     <div className="space-y-4">
@@ -105,11 +110,16 @@ function Seniority() {
             {milestones.map(m => (
               <Card key={m.id} className="flex items-center justify-between gap-2 p-3 sm:p-3">
                 <span className="text-sm">{m.fullName}</span>
-                <Badge tone="brand">{year - Number(m.joinedAt!.slice(0, 4))} anos</Badge>
+                <Badge tone="brand">{year - m.startYear} anos</Badge>
               </Card>
             ))}
           </div>
         </Section>
+      )}
+      {withoutYear > 0 && (
+        <Notice tone="warn">
+          {withoutYear === 1 ? '1 pessoa está' : `${withoutYear} pessoas estão`} sem o ano de entrada informado: o tempo conta a partir do cadastro no sistema. Informe em {t.labels.members} &gt; ficha &gt; "Sócio desde (ano)".
+        </Notice>
       )}
       <Field label="Mostrar com pelo menos (anos)">{id => <Input id={id} type="number" min={0} value={min} onChange={e => setMin(Math.max(0, Number(e.target.value) || 0))} className="sm:w-32" />}</Field>
       {rows.length === 0 ? (
@@ -120,7 +130,7 @@ function Seniority() {
             <li key={m.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
               <span>{m.fullName}</span>
               <span className="text-muted">
-                desde {formatDate(m.joinedAt)} · {m.years} ano(s)
+                {m.fromYear ? `desde ${m.startYear}` : `cadastro em ${formatDate(m.joinedAt)}`} · {m.years === 1 ? '1 ano' : `${m.years} anos`}
               </span>
             </li>
           ))}
@@ -162,7 +172,9 @@ function Honors() {
 }
 
 function Surveys() {
+  const [creating, setCreating] = useState(false);
   const config: CrudConfig = {
+    onCreate: () => setCreating(true),
     collection: 'surveys',
     title: 'Enquetes',
     singular: 'enquete',
@@ -199,6 +211,11 @@ function Surveys() {
     ],
     emptyText: 'Pergunte aos sócios sobre cardápio, horários, temas de eventos.',
   };
-  return <CrudPage config={config} embedded />;
+  return (
+    <>
+      <CrudPage config={config} embedded />
+      {creating && <NewPoll onClose={() => setCreating(false)} />}
+    </>
+  );
 }
 
