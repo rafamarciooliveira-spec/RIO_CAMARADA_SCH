@@ -10,8 +10,9 @@ import AccountsTab from './tabs/AccountsTab.tsx';
 import ReconcileTab from './tabs/ReconcileTab.tsx';
 import ReportsTab from './tabs/ReportsTab.tsx';
 import PeriodsTab from './tabs/PeriodsTab.tsx';
+import AccountabilityTab from './tabs/AccountabilityTab.tsx';
 
-type Tab = 'visao' | 'lancamentos' | 'cobrancas' | 'contas' | 'conciliacao' | 'relatorios' | 'fechamento';
+type Tab = 'visao' | 'lancamentos' | 'cobrancas' | 'contas' | 'conciliacao' | 'relatorios' | 'prestacao' | 'fechamento';
 
 export default function FinancePage() {
   const t = useTenant();
@@ -24,6 +25,7 @@ export default function FinancePage() {
     { id: 'contas', label: 'Contas e plano' },
     { id: 'conciliacao', label: 'Conciliação' },
     { id: 'relatorios', label: 'Relatórios' },
+    { id: 'prestacao', label: 'Prestação de contas' },
     { id: 'fechamento', label: 'Fechamento' },
   ];
   return (
@@ -38,6 +40,7 @@ export default function FinancePage() {
       {tab === 'contas' && <AccountsTab />}
       {tab === 'conciliacao' && <ReconcileTab />}
       {tab === 'relatorios' && <ReportsTab />}
+      {tab === 'prestacao' && <AccountabilityTab />}
       {tab === 'fechamento' && <PeriodsTab />}
     </div>
   );

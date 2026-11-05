@@ -432,7 +432,7 @@ function FlagsPage() {
 }
 
 function AuditPage() {
-  const rows = useList<{ action: string; actorUid: string; targetId?: string; at: string }>(P.platformAudit(), { orderBy: [['at', 'desc']], limit: 200 });
+  const rows = useList<{ action: string; actorUid: string; actorName?: string; targetId?: string; at: string }>(P.platformAudit(), { orderBy: [['at', 'desc']], limit: 200 });
   return (
     <>
       <PageHeader title="Trilha de auditoria da plataforma" />
@@ -441,7 +441,7 @@ function AuditPage() {
           { key: 'a', label: 'Quando', render: r => formatDateTime(r.at) },
           { key: 'b', label: 'Ação', render: r => <code className="text-xs">{r.action}</code> },
           { key: 'c', label: 'Alvo', render: r => r.targetId || '', hideOnMobile: true },
-          { key: 'd', label: 'Quem', render: r => <code className="text-xs">{r.actorUid.slice(0, 8)}</code>, hideOnMobile: true },
+          { key: 'd', label: 'Quem', render: r => r.actorName || (r.actorUid === 'sistema' ? 'Rotina automática' : 'Administração da plataforma'), hideOnMobile: true },
         ]} />
       )}
     </>

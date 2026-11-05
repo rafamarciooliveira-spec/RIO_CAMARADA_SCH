@@ -133,6 +133,8 @@ export interface TenantDoc {
   loginMethods: { google: boolean; emailLink: boolean };
   timezone: string;
   societyType?: string; // id de SOCIETY_TYPES (tiro_esportivo, bolao, futebol, folclore...)
+  /** Dados de documento oficial (cabeçalho da prestação de contas, recibos e declarações) */
+  legal?: { legalName?: string; cnpj?: string; address?: string; cityState?: string; cep?: string };
   federationId?: string; // filial de uma federação
   region?: TenantRegion;
   createdAt: ISODateTime;
@@ -312,6 +314,7 @@ export interface MemberHistoryDoc {
   to: MemberStatus;
   reason?: string;
   byUid: string;
+  byName?: string; // gravado desde 11/2026
   at: ISODateTime;
 }
 
@@ -367,8 +370,39 @@ export interface NoticeDoc {
   /** agendado = publishAt no futuro; a rotina diária publica e notifica */
   status?: 'agendado' | 'publicado';
   attachments?: { path: string; name: string }[];
+  link?: { label: string; to: string }; // caminho dentro do portal (ex.: prestacao-de-contas/abc)
   deliveredAt?: ISODateTime;
   updatedAt?: ISODateTime;
+}
+
+/**
+ * tenants/{t}/accountability/{id}: prestação de contas publicada. Os números são calculados
+ * pelo servidor no momento da publicação e ficam congelados (o que foi mostrado aos sócios não muda).
+ */
+export interface AccountabilityDoc {
+  id: string;
+  title: string;
+  kind: 'periodo' | 'evento';
+  from: DateKey;
+  to: DateKey;
+  periodLabel: string;
+  costCenterId?: string;
+  costCenterName?: string;
+  grouping: 'lancamento' | 'historico' | 'plano';
+  report: import('./finance/accountability.ts').AccReport;
+  notes?: string;
+  audience: 'socios' | 'diretoria';
+  signers: { name: string; role: string; uid?: string }[];
+  signerUids: string[]; // para as regras: quem assina lê mesmo sem acesso ao financeiro
+  signatures: { uid: string; name: string; role: string; at: ISODateTime }[];
+  status: 'publicado' | 'retirado';
+  periodClosed: boolean;
+  noticeId?: string;
+  publishedAt: ISODateTime;
+  publishedBy: string;
+  publishedByName: string;
+  withdrawnAt?: ISODateTime;
+  withdrawnReason?: string;
 }
 
 /** notices/{id}/reads/{uid}: confirmação de leitura (uma por pessoa) */
@@ -415,10 +449,22 @@ export interface CalendarEntryDoc {
 }
 
 // ---------- Financeiro ----------
+export type FinAccountType = 'caixa' | 'banco' | 'poupanca' | 'aplicacao' | 'pix' | 'outro';
+
+export const FIN_ACCOUNT_TYPE_LABEL: Record<FinAccountType, string> = {
+  caixa: 'Caixa (dinheiro)',
+  banco: 'Conta corrente',
+  poupanca: 'Poupança',
+  aplicacao: 'Aplicação ou investimento',
+  pix: 'Conta de pagamentos (Pix)',
+  outro: 'Outro local',
+};
+
 export interface FinAccountDoc {
   id: string;
   name: string;
-  type: 'caixa' | 'banco' | 'pix';
+  type: FinAccountType;
+  institution?: string; // banco ou cooperativa (Sicredi, Banco do Brasil...)
   openingBalanceCents: number;
   balanceCents: number; // mantido pelo servidor
   active: boolean;
@@ -782,6 +828,7 @@ export interface AuditDoc {
   id: string;
   action: string;
   actorUid: string;
+  actorName?: string; // gravado desde 11/2026; registros antigos são resolvidos pela tela
   targetId?: string;
   details?: Record<string, string | number | boolean>;
   at: ISODateTime;

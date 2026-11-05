@@ -71,6 +71,8 @@ export interface OpContext extends Env {
   membership?: MembershipDoc;
   /** Grava na auditoria do tenant (ou da plataforma). Nunca passe dado pessoal em details. */
   audit(action: string, targetId?: string, details?: AuditDoc['details']): Promise<void>;
+  /** Nome de quem está agindo (nome do cadastro de sócio, senão o da conta); "Rotina automática" sem pessoa */
+  actorName(): Promise<string>;
   requireActor(): Actor;
   can(module: ModuleId, action?: Action): boolean;
   require(module: ModuleId, action?: Action): void;
@@ -189,6 +191,7 @@ export async function executeOp(env: Env, args: ExecuteArgs): Promise<unknown> {
   }
 
   const now = env.now();
+  let nameCache: Promise<string> | null = null;
   const ctx: OpContext = {
     ...env,
     actor,
@@ -204,10 +207,25 @@ export async function executeOp(env: Env, args: ExecuteArgs): Promise<unknown> {
     require(module, action = 'ver') {
       if (!ctx.can(module, action)) fail('permission-denied', 'Seu papel não permite esta ação.');
     },
+    actorName() {
+      if (!nameCache) {
+        nameCache = (async () => {
+          if (!actor || actor.uid === 'sistema') return 'Rotina automática';
+          const memberId = ctx.membership?.memberId;
+          if (memberId && ctx.tenantId) {
+            const m = await env.store.get<{ fullName?: string }>(P.member(ctx.tenantId, memberId)).catch(() => null);
+            if (m?.fullName) return m.fullName;
+          }
+          return ctx.membership?.displayName || actor.displayName || actor.email.split('@')[0] || 'Sem nome';
+        })();
+      }
+      return nameCache;
+    },
     async audit(action, targetId, details) {
       const entry = {
         action,
         actorUid: actor?.uid || 'sistema',
+        actorName: await ctx.actorName(),
         ...(targetId ? { targetId } : {}),
         ...(details ? { details } : {}),
         at: ctx.nowIso,

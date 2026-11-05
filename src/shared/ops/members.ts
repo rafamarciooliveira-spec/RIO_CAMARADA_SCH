@@ -89,7 +89,7 @@ async function category(settings: TenantSettings, id: string) {
 }
 
 async function addHistory(ctx: OpContext, memberId: string, from: MemberStatus | null, to: MemberStatus, reason?: string) {
-  await ctx.store.add(P.memberHistory(tid(ctx), memberId), { from, to, ...(reason ? { reason } : {}), byUid: ctx.actor?.uid || 'sistema', at: ctx.nowIso });
+  await ctx.store.add(P.memberHistory(tid(ctx), memberId), { from, to, ...(reason ? { reason } : {}), byUid: ctx.actor?.uid || 'sistema', byName: await ctx.actorName(), at: ctx.nowIso });
 }
 
 interface CreateArgs {

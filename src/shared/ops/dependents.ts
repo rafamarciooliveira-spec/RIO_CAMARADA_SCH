@@ -84,7 +84,7 @@ export const promoteDependent = defineOp({
     if (!cat) fail('invalid-argument', 'Categoria inexistente.');
     const holder = await ctx.store.get<MemberDoc>(P.member(t, m!.dependentOf!));
     await ctx.store.update(P.member(t, input.memberId), { dependentOf: deleteField(), categoryId: cat!.id, categoryName: cat!.name, ageAlerts: [], updatedAt: ctx.nowIso });
-    await ctx.store.add(P.memberHistory(t, input.memberId), { from: m!.status, to: m!.status, reason: `Deixou de ser dependente de ${holder?.displayName || 'titular'} e passou a sócio titular`, byUid: ctx.actor!.uid, at: ctx.nowIso });
+    await ctx.store.add(P.memberHistory(t, input.memberId), { from: m!.status, to: m!.status, reason: `Deixou de ser dependente de ${holder?.displayName || 'titular'} e passou a sócio titular`, byUid: ctx.actor!.uid, byName: await ctx.actorName(), at: ctx.nowIso });
     await notify(ctx, holder?.uid, 'Dependente virou sócio titular', `${m!.displayName} agora tem o próprio cadastro de sócio.`, 'dependentes');
     await ctx.audit('members.dependent_promoted', input.memberId, { category: cat!.id });
     return { ok: true };

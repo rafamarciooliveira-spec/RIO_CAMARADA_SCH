@@ -183,7 +183,7 @@ function SingleModal({ onClose }: { onClose: () => void }) {
             <option value="">Escolha</option>
             {shown.map(m => (
               <option key={m.id} value={m.id}>
-                {m.fullName} {m.membershipNumber ? `(${m.membershipNumber})` : ''}
+                {m.fullName} {m.membershipNumber && t.settings?.showMembershipNumber === true ? `(${m.membershipNumber})` : ''}
               </option>
             ))}
           </Select>

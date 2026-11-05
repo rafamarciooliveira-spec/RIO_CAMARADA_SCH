@@ -2,11 +2,11 @@
 import { useState } from 'react';
 import { useTenant } from '../../app/TenantContext.tsx';
 import { Card, Loading, Notice, PageHeader, Select } from '../../ui/index.tsx';
-import { AddressTab, IdentityTab, LabelsTab, LoginTab, PublicPageTab } from './tabs/IdentityTabs.tsx';
+import { AddressTab, IdentityTab, LabelsTab, LegalTab, LoginTab, PublicPageTab } from './tabs/IdentityTabs.tsx';
 import { CustomFieldsTab, EmailTemplatesTab, LgpdTab, ModulesTab, RulesTab } from './tabs/RulesTabs.tsx';
 import { PeopleTab } from './tabs/PeopleTab.tsx';
 
-type TabId = 'identidade' | 'rotulos' | 'regras' | 'campos' | 'modulos' | 'emails' | 'publica' | 'login' | 'pessoas' | 'lgpd' | 'endereco';
+type TabId = 'identidade' | 'rotulos' | 'regras' | 'campos' | 'modulos' | 'emails' | 'publica' | 'login' | 'pessoas' | 'lgpd' | 'endereco' | 'documentos';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'identidade', label: 'Identidade' },
@@ -20,6 +20,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'pessoas', label: 'Papéis e pessoas' },
   { id: 'lgpd', label: 'LGPD' },
   { id: 'endereco', label: 'Endereço' },
+  { id: 'documentos', label: 'Dados para documentos' },
 ];
 
 export default function SettingsPage() {
@@ -71,6 +72,7 @@ export default function SettingsPage() {
               {tab === 'pessoas' && <PeopleTab />}
               {tab === 'lgpd' && <LgpdTab readOnly={readOnly} />}
               {tab === 'endereco' && <AddressTab readOnly={readOnly} />}
+              {tab === 'documentos' && <LegalTab readOnly={readOnly} />}
             </div>
           )}
         </Card>

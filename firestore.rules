@@ -228,6 +228,13 @@ service cloud.firestore {
       match /costCenters/{id} { allow read: if perm(t, 'financeiro', 'ver'); }
       match /ledger/{id} { allow read: if perm(t, 'financeiro', 'ver'); }
       match /periods/{id} { allow read: if perm(t, 'financeiro', 'ver'); }
+      // Prestação de contas: diretoria do financeiro e quem foi indicado para assinar leem tudo;
+      // os sócios só as publicadas para eles (a consulta precisa filtrar audience e status).
+      match /accountability/{id} {
+        allow read: if perm(t, 'financeiro', 'ver') ||
+          (isMember(t) && request.auth.uid in resource.data.signerUids) ||
+          (isMember(t) && resource.data.audience == 'socios' && resource.data.status == 'publicado');
+      }
       match /statementLines/{id} { allow read: if perm(t, 'financeiro', 'ver'); }
 
       match /charges/{id} {

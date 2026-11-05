@@ -149,6 +149,7 @@ export async function buildDemoData(env: Env, opts: { files?: Map<string, string
       socials: { instagram: 'perfil-ficticio' },
       contactEmail: 'contato@exemplo.invalid',
     },
+    legal: { legalName: 'Sociedade Harmonia de Canto e Tradição (fictícia)', cnpj: '00.000.000/0001-00', address: 'Rua Exemplo, 100, Centro', cityState: 'Cidade Exemplo - SC', cep: '00000-000' },
   }, diretoria);
   await call('tenant.updateSettings', { tenantId: t, settings: { pixKey: 'pix@exemplo.invalid', doubleApprovalAboveCents: 500000, dueDay: 10, cardRequiresPhoto: false } }, diretoria);
 
@@ -253,7 +254,9 @@ export async function buildDemoData(env: Env, opts: { files?: Map<string, string
   await safe('conta banco', async () => {
     await env.store.set(`${P.accounts(t)}/${banco}`, { name: 'Banco Exemplo (conta corrente)', type: 'banco', openingBalanceCents: 1_250_000, balanceCents: 1_250_000, active: true });
     await env.store.set(`${P.accounts(t)}/pix`, { name: 'Pix da sociedade', type: 'pix', openingBalanceCents: 0, balanceCents: 0, active: true });
-    await env.store.update(P.stats(t), { 'finance.balanceCents': 1_250_000 });
+    await env.store.set(`${P.accounts(t)}/poupanca`, { name: 'Poupança', type: 'poupanca', institution: 'Banco Exemplo', openingBalanceCents: 534_705, balanceCents: 534_705, active: true });
+    await env.store.set(`${P.accounts(t)}/aplicacao`, { name: 'Aplicação CDI', type: 'aplicacao', institution: 'Banco Exemplo', openingBalanceCents: 1_224_496, balanceCents: 1_224_496, active: true });
+    await env.store.update(P.stats(t), { 'finance.balanceCents': 1_250_000 + 534_705 + 1_224_496 });
     await env.store.set(`${P.costCenters(t)}/baile`, { name: 'Baile de Primavera', kind: 'evento', active: true });
     await env.store.set(`${P.costCenters(t)}/edital`, { name: 'Edital de cultura municipal', kind: 'edital', active: true });
   });
@@ -539,6 +542,31 @@ export async function buildDemoData(env: Env, opts: { files?: Map<string, string
     };
     const positions = r.positions.map(p => ({ ...p, personName: names[p.title]?.name, ...(names[p.title]?.memberId ? { memberId: names[p.title]!.memberId } : {}), ...(p.title !== 'Presidente' && p.group === 'Diretoria' ? { parentId: r.positions.find(x => x.title === 'Presidente')?.id } : {}) }));
     await call('orgchart.save', { tenantId: t, style: 'corte', title: 'Diretoria e Majestades 2026', positions, showOnPublicPage: true }, diretoria);
+  });
+
+  // ---------- Prestação de contas do mês passado (publicada no quadro) ----------
+  await safe('prestação de contas', async () => {
+    const last = months[2];
+    await call('ledger.transfer', { tenantId: t, fromAccountId: banco, toAccountId: 'aplicacao', amountCents: 200_000, date: `${last}-20`, description: 'Aplicação da reserva da reforma' }, tesouraria);
+    const lastDay = addDaysKey(`${months[3]}-01`, -1);
+    await call('accountability.publish', {
+      tenantId: t,
+      kind: 'periodo',
+      from: `${last}-01`,
+      to: lastDay,
+      grouping: 'historico',
+      title: 'Prestação de contas do mês passado',
+      notes: 'O saldo da aplicação está reservado para a reforma dos banheiros, aprovada em reunião. (Números fictícios.)',
+      audience: 'socios',
+      signers: [
+        { name: 'Roberto Lenz (fictício)', role: 'Tesoureiro', uid: tesouraria.uid },
+        { name: 'Marta Schneider', role: 'Presidente', uid: diretoria.uid },
+        { name: 'Conselho fiscal', role: 'Conselho fiscal' },
+      ],
+      postNotice: true,
+    }, tesouraria);
+    const pub = await env.store.query<{ id: string }>(P.accountabilities(t), { limit: 1 });
+    if (pub[0]) await call('accountability.sign', { tenantId: t, id: pub[0].id }, tesouraria);
   });
 
   // ---------- Notícias ----------

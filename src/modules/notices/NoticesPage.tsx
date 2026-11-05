@@ -1,5 +1,6 @@
 /** Avisos do sócio: fixados primeiro, marcação de não lidos e confirmação de leitura. */
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { CheckCircle2, Megaphone, Pin } from 'lucide-react';
 import { useDoc, useList, useOp, useSession } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
@@ -88,6 +89,11 @@ function NoticeItem({ n }: { n: NoticeDoc & { id: string } }) {
       {open && (
         <div className="px-4 pb-4 space-y-3">
           <p className="text-sm whitespace-pre-line">{n.body}</p>
+          {n.link && /^[a-z0-9-]+(\/[A-Za-z0-9_-]+)?$/.test(n.link.to) && (
+            <Link to={t.to(n.link.to)} className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold bg-brand text-on-brand">
+              {n.link.label}
+            </Link>
+          )}
           {(n.attachments || []).length > 0 && (
             <div className="flex flex-wrap gap-3">
               {n.attachments!.map(a => (

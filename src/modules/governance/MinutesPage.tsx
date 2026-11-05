@@ -234,7 +234,7 @@ function Attendance({ id, onBack }: { id: string; onBack: () => void }) {
           {shown.map(m => (
             <li key={m.id} className="flex items-center justify-between gap-2 px-4 py-2">
               <span className="text-sm truncate">
-                {m.fullName} {m.membershipNumber && <span className="text-xs text-muted">({m.membershipNumber})</span>}
+                {m.fullName} {m.membershipNumber && t.settings?.showMembershipNumber === true && <span className="text-xs text-muted">({m.membershipNumber})</span>}
               </span>
               <Button size="sm" variant={ids.has(m.id) ? 'primary' : 'secondary'} aria-pressed={ids.has(m.id)} disabled={!canEdit || pending.has(m.id) || a.data!.status === 'cancelada'} onClick={() => toggle(m)}>
                 {ids.has(m.id) ? 'Presente' : 'Marcar presença'}

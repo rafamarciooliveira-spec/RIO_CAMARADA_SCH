@@ -2,7 +2,7 @@
 import { useDoc, useList } from '../../../app/DataContext.tsx';
 import { useTenant } from '../../../app/TenantContext.tsx';
 import { P } from '../../../shared/paths.ts';
-import type { ChargeDoc, DashboardStats, LedgerEntryDoc } from '../../../shared/types.ts';
+import { FIN_ACCOUNT_TYPE_LABEL, type ChargeDoc, type DashboardStats, type LedgerEntryDoc } from '../../../shared/types.ts';
 import { delinquency, nature, isTransfer } from '../../../shared/finance/reports.ts';
 import { todayIn, periodLabel } from '../../../app/formHelpers.ts';
 import { Card, ErrorState, Loading, Money, Section, Stat } from '../../../ui/index.tsx';
@@ -47,7 +47,7 @@ export default function OverviewTab({ onGo }: { onGo: (tab: 'lancamentos' | 'cob
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {cat.accounts.data.map(a => (
             <Card key={a.id} className={a.active === false ? 'opacity-60' : ''}>
-              <div className="text-xs text-muted">{a.type === 'caixa' ? 'Caixa' : a.type === 'banco' ? 'Banco' : 'Pix'}{a.active === false ? ' (desativada)' : ''}</div>
+              <div className="text-xs text-muted">{FIN_ACCOUNT_TYPE_LABEL[a.type] || a.type}{a.institution ? ` · ${a.institution}` : ''}{a.active === false ? ' (desativada)' : ''}</div>
               <div className="font-semibold">{a.name}</div>
               <div className="text-xl font-bold tabular-nums mt-1">
                 <Money cents={a.balanceCents || 0} />

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useOp } from '../../../app/DataContext.tsx';
 import { useTenant } from '../../../app/TenantContext.tsx';
-import type { ChartAccountDoc, CostCenterDoc, FinAccountDoc } from '../../../shared/types.ts';
+import { FIN_ACCOUNT_TYPE_LABEL, type ChartAccountDoc, type CostCenterDoc, type FinAccountDoc, type FinAccountType } from '../../../shared/types.ts';
 import { Badge, Button, Field, Input, Loading, Modal, Money, MoneyInput, Section, Select, Table, Toggle, type Column } from '../../../ui/index.tsx';
 import { useFinanceCatalog } from '../common.tsx';
 
@@ -20,7 +20,7 @@ export default function AccountsTab() {
 
   const accCols: Column<FinAccountDoc & { id: string }>[] = [
     { key: 'n', label: 'Conta', render: a => <span className="font-medium">{a.name}</span> },
-    { key: 't', label: 'Tipo', render: a => (a.type === 'caixa' ? 'Caixa' : a.type === 'banco' ? 'Banco' : 'Pix'), hideOnMobile: true },
+    { key: 't', label: 'Tipo', render: a => `${FIN_ACCOUNT_TYPE_LABEL[a.type] || a.type}${a.institution ? ` · ${a.institution}` : ''}`, hideOnMobile: true },
     { key: 's', label: 'Saldo', className: 'text-right', render: a => <Money cents={a.balanceCents || 0} /> },
     { key: 'a', label: 'Situação', render: a => (a.active === false ? <Badge>Desativada</Badge> : <Badge tone="ok">Ativa</Badge>) },
   ];
@@ -104,12 +104,19 @@ function EditModal({ edit, onClose }: { edit: NonNullable<Editing>; onClose: () 
           <Field label="Tipo">
             {id => (
               <Select id={id} value={String(d.type)} onChange={e => set('type', e.target.value)}>
-                <option value="caixa">Caixa</option>
-                <option value="banco">Banco</option>
-                <option value="pix">Pix</option>
+                {(Object.keys(FIN_ACCOUNT_TYPE_LABEL) as FinAccountType[]).map(k => (
+                  <option key={k} value={k}>
+                    {FIN_ACCOUNT_TYPE_LABEL[k]}
+                  </option>
+                ))}
               </Select>
             )}
           </Field>
+          {d.type !== 'caixa' && (
+            <Field label="Banco ou cooperativa (opcional)" hint="Sai junto do nome na prestação de contas. Ex.: Conta corrente Sicredi.">
+              {id => <Input id={id} value={String(d.institution || '')} maxLength={60} onChange={e => set('institution', e.target.value)} />}
+            </Field>
+          )}
           {!edit.id && (
             <Field label="Saldo de abertura" hint="Saldo da conta no dia em que começa a ser usada aqui. Depois não muda.">
               {id => <MoneyInput id={id} value={Number(d.openingBalanceCents) || 0} onChange={v => set('openingBalanceCents', v)} />}

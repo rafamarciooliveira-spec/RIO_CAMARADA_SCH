@@ -1,6 +1,38 @@
 {
   "indexes": [
     {
+      "collectionGroup": "accountability",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "audience",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "publishedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "accountability",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "signerUids",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "publishedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "notifications",
       "queryScope": "COLLECTION",
       "fields": [

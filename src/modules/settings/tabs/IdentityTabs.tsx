@@ -357,3 +357,32 @@ export function AddressTab({ readOnly }: { readOnly: boolean }) {
     </fieldset>
   );
 }
+
+/** Razão social, CNPJ e endereço: cabeçalho da prestação de contas, recibos e declarações */
+export function LegalTab({ readOnly }: { readOnly: boolean }) {
+  const t = useTenant();
+  const { run, busy } = useOp();
+  const [l, setL] = useState({ legalName: '', cnpj: '', address: '', cityState: '', cep: '', ...(t.tenant.legal || {}) });
+  const set = (p: Partial<typeof l>) => setL(x => ({ ...x, ...p }));
+  const save = () =>
+    run('tenant.update', { tenantId: t.tenantId, legal: Object.fromEntries(Object.entries(l).map(([k, v]) => [k, String(v || '').trim()])) }, { success: 'Dados para documentos salvos.' });
+  return (
+    <fieldset disabled={readOnly} className="space-y-3 min-w-0">
+      <p className="text-sm text-muted">Saem no cabeçalho da prestação de contas e dos documentos da sociedade.</p>
+      <Field label="Razão social" hint="Como está no cartão do CNPJ. Ex.: Associação Recreativa de Tiro ao Alvo Rio Camarada.">
+        {id => <Input id={id} value={l.legalName} maxLength={160} onChange={e => set({ legalName: e.target.value })} />}
+      </Field>
+      <Field label="CNPJ">{id => <Input id={id} inputMode="numeric" value={l.cnpj} maxLength={20} placeholder="00.000.000/0000-00" onChange={e => set({ cnpj: e.target.value.replace(/[^0-9./-]/g, '') })} />}</Field>
+      <Field label="Endereço">{id => <Input id={id} value={l.address} maxLength={200} placeholder="Rua, número, bairro" onChange={e => set({ address: e.target.value })} />}</Field>
+      <div className="grid grid-cols-[8rem_1fr] gap-2">
+        <Field label="CEP">{id => <Input id={id} inputMode="numeric" value={l.cep} maxLength={10} onChange={e => set({ cep: e.target.value.replace(/[^0-9-]/g, '') })} />}</Field>
+        <Field label="Cidade e estado">{id => <Input id={id} value={l.cityState} maxLength={80} placeholder="Schroeder - SC" onChange={e => set({ cityState: e.target.value })} />}</Field>
+      </div>
+      {!readOnly && (
+        <Button loading={busy} onClick={save}>
+          Salvar
+        </Button>
+      )}
+    </fieldset>
+  );
+}

@@ -194,7 +194,7 @@ function HeroCard() {
           </div>
           <div className="mt-auto w-full flex items-end justify-between">
             <div className="text-left text-[10px] leading-relaxed opacity-80">
-              <div>Matrícula 0042</div>
+              <div>Sócio desde 2019</div>
               <div>Válida até 31/03/2027</div>
             </div>
             <div className="w-20 h-20 bg-white rounded-lg p-1.5">

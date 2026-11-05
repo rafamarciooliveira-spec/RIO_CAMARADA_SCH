@@ -3,12 +3,12 @@
  * rodapé com data/hora de geração e fuso. Recibo, prestação de contas, ata e relatório de evento.
  */
 import type { jsPDF as JsPDF } from 'jspdf';
-import type { ChargeDoc, EventDoc, MemberDoc, MemberPiiDoc, MinuteDoc, TenantDoc } from '../shared/types.ts';
+import { FIN_ACCOUNT_TYPE_LABEL, type AccountabilityDoc, type ChargeDoc, type EventDoc, type MemberDoc, type MemberPiiDoc, type MinuteDoc, type TenantDoc } from '../shared/types.ts';
 import { formatBRL } from '../shared/money.ts';
 import { formatDate, formatDateTime, tzLabel } from '../shared/dates.ts';
 import type { BudgetComparison, CashFlowRow, Dre, TrialBalanceRow } from '../shared/finance/reports.ts';
 
-type Tenant = Pick<TenantDoc, 'name' | 'branding' | 'timezone' | 'publicPage'>;
+type Tenant = Pick<TenantDoc, 'name' | 'branding' | 'timezone' | 'publicPage'> & Partial<Pick<TenantDoc, 'legal'>>;
 
 const W = 210;
 const M = 16;
@@ -68,10 +68,12 @@ export interface PdfWriter {
   heading(text: string): void;
   para(text: string, opts?: { size?: number; bold?: boolean; color?: [number, number, number] }): void;
   kv(pairs: [string, string][]): void;
-  table(headers: string[], rows: string[][], opts?: { widths?: number[]; alignRight?: number[]; boldLast?: boolean }): void;
+  table(headers: string[], rows: string[][], opts?: { widths?: number[]; alignRight?: number[]; boldLast?: boolean; noHeader?: boolean }): void;
   space(mm?: number): void;
   ensure(mm: number): void;
   save(filename: string): void;
+  /** O mesmo arquivo como Blob (para compartilhar pelo celular) */
+  blob(): Blob;
 }
 
 export async function createPdf(tenant: Tenant): Promise<PdfWriter> {
@@ -200,22 +202,32 @@ export async function createPdf(tenant: Tenant): Promise<PdfWriter> {
         w.y += h;
       };
       doc.setFontSize(9);
-      drawRow(headers, true, [238, 238, 232]);
+      if (!opts.noHeader) drawRow(headers, true, [238, 238, 232]);
       rows.forEach((r, i) => drawRow(r, !!opts.boldLast && i === rows.length - 1));
       w.y += 3;
     },
     save(filename) {
-      const pages = doc.getNumberOfPages();
-      for (let i = 1; i <= pages; i++) {
-        doc.setPage(i);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        doc.setTextColor(110, 110, 110);
-        doc.text(generated, M, H - 8);
-        doc.text(`Página ${i} de ${pages}`, W - M, H - 8, { align: 'right' });
-      }
+      footers();
       doc.save(filename);
     },
+    blob() {
+      footers();
+      return doc.output('blob');
+    },
+  };
+  let footed = false;
+  const footers = () => {
+    if (footed) return;
+    footed = true;
+    const pages = doc.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(110, 110, 110);
+      doc.text(generated, M, H - 8);
+      doc.text(`Página ${i} de ${pages}`, W - M, H - 8, { align: 'right' });
+    }
   };
   return w;
 }
@@ -297,6 +309,101 @@ export async function accountabilityPdf(
   w.para('______________________________          ______________________________', { color: [80, 80, 80] });
   w.para('Tesouraria                                                   Conselho fiscal', { size: 9, color: [80, 80, 80] });
   w.save(`prestacao-de-contas-${data.periodLabel.replace(/[^0-9a-zA-Z]+/g, '-')}.pdf`);
+}
+
+/**
+ * Prestação de contas no modelo usado pelas tesourarias: histórico com entradas e saídas,
+ * totais, saldo anterior, saldo atual, soma dos totais, composição do saldo e assinaturas.
+ * Devolve o arquivo (para baixar ou compartilhar).
+ */
+export async function accountabilityStatementPdf(tenant: Tenant, a: AccountabilityDoc): Promise<{ blob: Blob; filename: string }> {
+  const w = await createPdf(tenant);
+  const r = a.report;
+  const doc = w.doc;
+  const legal = tenant.legal || {};
+  const lines = [legal.legalName, legal.address, [legal.cep, legal.cityState].filter(Boolean).join('  '), legal.cnpj ? `CNPJ: ${legal.cnpj}` : ''].filter(Boolean) as string[];
+  if (lines.length) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(80, 80, 80);
+    for (const l of lines) {
+      doc.text(l, W / 2, w.y, { align: 'center' });
+      w.y += 4.2;
+    }
+    w.y += 3;
+  }
+  w.title(`Prestação de contas ${a.periodLabel}`.toUpperCase(), a.title !== `Prestação de contas ${a.periodLabel}` ? a.title : undefined);
+  if (!a.periodClosed && a.kind === 'periodo') w.para('Mês ainda aberto na tesouraria quando esta prestação foi publicada.', { size: 8, color: [150, 90, 0] });
+  if (r.pending.count) w.para(`${r.pending.count} lançamento(s) aguardando aprovação (${brl(r.pending.cents)}) ficaram de fora.`, { size: 8, color: [150, 90, 0] });
+
+  const withDate = a.grouping === 'lancamento';
+  const total = W - 2 * M;
+  const money = 30;
+  const dateW = withDate ? 20 : 0;
+  const widths = withDate ? [dateW, total - dateW - 2 * money, money, money] : [total - 2 * money, money, money];
+  const row = (label: string, i: string, o: string, date = '') => (withDate ? [date, label, i, o] : [label, i, o]);
+  const cell = (c: number) => (c ? brl(c).replace('R$', '').trim() : '');
+  const body: string[][] = r.lines.map(l => row(l.label, cell(l.inCents), cell(l.outCents), l.date ? formatDate(l.date) : ''));
+  const head = withDate ? ['Data', 'Histórico', 'Entrada', 'Saída'] : ['Histórico', 'Entrada', 'Saída'];
+  const right = withDate ? [2, 3] : [1, 2];
+  w.table(head, body, { widths, alignRight: right });
+  const summary: string[][] = [row('Totais', cell(r.totals.inCents) || '0,00', cell(r.totals.outCents) || '0,00')];
+  if (a.kind === 'periodo') {
+    summary.push(row('Saldo anterior', cell(r.openingCents) || '0,00', ''));
+    summary.push(row('Saldo atual', '', cell(r.closingCents) || '0,00'));
+    summary.push(row('Soma dos totais', cell(r.totals.inCents + r.openingCents), cell(r.totals.outCents + r.closingCents)));
+  } else {
+    summary.push(row(r.resultCents >= 0 ? 'Resultado (lucro do evento)' : 'Resultado (prejuízo do evento)', r.resultCents >= 0 ? cell(r.resultCents) : '', r.resultCents < 0 ? cell(-r.resultCents) : ''));
+  }
+  w.y -= 3;
+  w.table(head, summary, { widths, alignRight: right, boldLast: true, noHeader: true });
+
+  if (r.transfers.length) {
+    w.heading('Movimentação entre contas (não entra nos totais)');
+    w.table(['Data', 'Descrição', 'Valor'], r.transfers.map(x => [formatDate(x.date), x.label, brl(x.cents)]), { widths: [22, total - 22 - 34, 34], alignRight: [2] });
+  }
+
+  w.heading(a.kind === 'periodo' ? 'Composição do saldo (R$)' : 'Por onde o dinheiro passou');
+  if (a.kind === 'periodo') {
+    w.table(
+      ['Conta', 'Tipo', 'Saldo'],
+      [...r.accounts.map(x => [x.name, FIN_ACCOUNT_TYPE_LABEL[x.type] || '', brl(x.finalCents)]), ['Total', '', brl(r.accounts.reduce((s, x) => s + x.finalCents, 0))]],
+      { widths: [total - 50 - 36, 50, 36], alignRight: [2], boldLast: true }
+    );
+  } else {
+    w.table(['Conta', 'Entradas', 'Saídas'], r.accounts.map(x => [x.name, brl(x.inCents), brl(x.outCents)]), { widths: [total - 72, 36, 36], alignRight: [1, 2] });
+  }
+
+  const pct = (c: number, t: number) => (t ? `${Math.round((c / t) * 100)}%` : '');
+  if (r.receitas.length > 1 || r.despesas.length > 1) {
+    w.heading('Resumo por tipo');
+    w.table(
+      ['De onde veio', 'Valor', '%'],
+      r.receitas.map(x => [x.name, brl(x.cents), pct(x.cents, r.totals.inCents)]),
+      { widths: [total - 52, 34, 18], alignRight: [1, 2] }
+    );
+    w.table(
+      ['Para onde foi', 'Valor', '%'],
+      r.despesas.map(x => [x.name, brl(x.cents), pct(x.cents, r.totals.outCents)]),
+      { widths: [total - 52, 34, 18], alignRight: [1, 2] }
+    );
+  }
+  if (a.notes) {
+    w.heading('Observações');
+    w.para(a.notes);
+  }
+  if (a.signers.length) {
+    signatures(
+      w,
+      a.signers.map(s => {
+        const sig = a.signatures.find(x => x.uid && x.uid === s.uid);
+        return { name: s.name, role: sig ? `${s.role} · assinado em ${formatDate(sig.at, tenant.timezone)}` : s.role };
+      })
+    );
+    if (a.signatures.length) w.para('Assinatura eletrônica simples (Lei 14.063/2020): cada signatário conferiu e assinou pela própria conta no portal.', { size: 7, color: [100, 100, 100] });
+  }
+  const filename = `prestacao-de-contas-${a.periodLabel.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^0-9a-zA-Z]+/g, '-').toLowerCase()}.pdf`;
+  return { blob: w.blob(), filename };
 }
 
 export async function minutePdf(tenant: Tenant, m: MinuteDoc): Promise<void> {

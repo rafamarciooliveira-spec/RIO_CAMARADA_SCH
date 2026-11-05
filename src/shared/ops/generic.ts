@@ -95,7 +95,7 @@ export const GENERIC_SCHEMAS: Record<GenericCollection, z.ZodObject<Record<strin
   surveys: z.object({ title: s(150).min(2), question: s(500), options: z.array(s(150)).min(2).max(10), open: z.boolean() }),
   costCenters: z.object({ name: s(120).min(2), kind: z.enum(['geral', 'evento', 'projeto', 'edital']), refId: zId.optional(), active: z.boolean() }),
   chartAccounts: z.object({ code: s(20).min(1), name: s(120).min(2), kind: z.enum(['receita', 'despesa']) }),
-  finAccounts: z.object({ name: s(80).min(2), type: z.enum(['caixa', 'banco', 'pix']), openingBalanceCents: z.number().int(), active: z.boolean() }),
+  finAccounts: z.object({ name: s(80).min(2), type: z.enum(['caixa', 'banco', 'poupanca', 'aplicacao', 'pix', 'outro']), institution: s(60).optional(), openingBalanceCents: z.number().int(), active: z.boolean() }),
   calendar: z.object({
     title: s(150).min(2),
     description: s(2000).optional(),

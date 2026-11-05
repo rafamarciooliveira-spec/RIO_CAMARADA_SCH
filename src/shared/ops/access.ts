@@ -80,13 +80,22 @@ export const updateTenant = defineOp({
     timezone: z.string().max(60).optional(),
     societyType: z.string().max(40).optional(),
     region: z.object({ city: zText(80), state: z.string().max(2) }).optional(),
+    legal: z
+      .object({
+        legalName: zText(160).optional(),
+        cnpj: z.string().max(20).regex(/^[0-9./-]*$/, 'CNPJ só com números, ponto, barra e traço').optional(),
+        address: zText(200).optional(),
+        cityState: zText(80).optional(),
+        cep: z.string().max(10).regex(/^[0-9-]*$/, 'CEP só com números e traço').optional(),
+      })
+      .optional(),
     modules: z.record(z.string(), z.boolean()).optional(),
   }),
   auth: 'user',
   tenant: { perm: ['sociedade', 'editar'] },
   async run(ctx, input) {
     const patch: Record<string, unknown> = { updatedAt: ctx.nowIso };
-    for (const k of ['name', 'shortName', 'branding', 'labels', 'publicPage', 'loginMethods', 'timezone', 'societyType', 'region'] as const) {
+    for (const k of ['name', 'shortName', 'branding', 'labels', 'publicPage', 'loginMethods', 'timezone', 'societyType', 'region', 'legal'] as const) {
       if (input[k] !== undefined) patch[k] = input[k];
     }
     if (input.modules) {
@@ -404,7 +413,40 @@ export const unregisterPushToken = defineOp({
   },
 });
 
+/**
+ * Nomes de quem aparece nos históricos e na auditoria (contas e cadastros), para a tela nunca
+ * mostrar identificadores. Só para a diretoria; cada id vira o nome do cadastro de sócio ou o da conta.
+ */
+export const peopleNames = defineOp({
+  name: 'people.names',
+  input: zTenant.extend({ ids: z.array(z.string().min(1).max(128)).max(60) }),
+  auth: 'user',
+  tenant: { perm: null },
+  async run(ctx, input) {
+    if (!ctx.membership?.board) fail('permission-denied', 'Só a diretoria vê os nomes do histórico.');
+    const t = tid(ctx);
+    const names: Record<string, string> = {};
+    for (const id of [...new Set(input.ids)]) {
+      if (id === 'sistema') {
+        names[id] = 'Rotina automática';
+        continue;
+      }
+      const ms = await ctx.store.get<MembershipDoc>(P.membership(t, id));
+      if (ms) {
+        const m = ms.memberId ? await ctx.store.get<{ fullName?: string }>(P.member(t, ms.memberId)) : null;
+        names[id] = m?.fullName || ms.displayName || ms.email.split('@')[0] || 'Sem nome';
+        continue;
+      }
+      const m = await ctx.store.get<{ fullName?: string }>(P.member(t, id));
+      if (m?.fullName) names[id] = m.fullName;
+      else if (ctx.actor?.master && id === ctx.actor.uid) names[id] = ctx.actor.displayName || 'Administração da plataforma';
+    }
+    return { names };
+  },
+});
+
 export const accessOps = [
+  peopleNames,
   unregisterPushToken,
   updateTenant,
   updateSettings,

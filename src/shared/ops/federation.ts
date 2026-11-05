@@ -438,7 +438,7 @@ export const fedTransferDecide = defineOp({
       await approveCore(ctx, id, { categoryId: cat, ...(m.validUntil ? { validUntil: m.validUntil } : {}) });
       // Mantém a data de entrada original: o tempo de sócio não se perde na mudança de filial
       await ctx.store.update(P.member(tid(ctx), id), { joinedAt: m.joinedAt || ctx.nowIso.slice(0, 10), updatedAt: ctx.nowIso });
-      await ctx.store.add(P.memberHistory(tid(ctx), id), { from: null, to: 'ativo', reason: `Transferido de ${origin!.name}`, byUid: ctx.actor!.uid, at: ctx.nowIso });
+      await ctx.store.add(P.memberHistory(tid(ctx), id), { from: null, to: 'ativo', reason: `Transferido de ${origin!.name}`, byUid: ctx.actor!.uid, byName: await ctx.actorName(), at: ctx.nowIso });
       if (m.uid && pii?.email && !dependentOf) {
         await upsertMembership(ctx, ctx.tenant!, { uid: m.uid, email: pii.email, displayName: m.displayName }, ['socio'], id);
       }

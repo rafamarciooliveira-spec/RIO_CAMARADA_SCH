@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Eye, FileText, Mail, Pencil, RefreshCw, ShieldOff, UserCheck } from 'lucide-react';
 import { useDoc, useFileUrl, useList, useOp } from '../../../app/DataContext.tsx';
 import { useTenant } from '../../../app/TenantContext.tsx';
+import { usePeopleNames } from '../../../app/usePeopleNames.ts';
 import { P } from '../../../shared/paths.ts';
 import { formatDate, formatDateTime } from '../../../shared/dates.ts';
 import { STATUS_TRANSITIONS } from '../../../shared/memberStatus.ts';
@@ -33,6 +34,7 @@ export function MemberDetail({ memberId, onClose }: { memberId: string; onClose:
   const holder = useDoc<MemberDoc>(doc.data?.dependentOf ? P.member(t.tenantId, doc.data.dependentOf) : null);
   const photo = useFileUrl(doc.data?.photoPath);
   const [tab, setTab] = useState<'dados' | 'acoes' | 'historico'>('dados');
+  const who = usePeopleNames(t.tenantId, tab === 'historico' ? history.data.filter(h => !h.byName).map(h => h.byUid) : []);
   const [pii, setPii] = useState<Pii | null>(null);
   const [edit, setEdit] = useState(false);
   const m = doc.data;
@@ -71,7 +73,7 @@ export function MemberDetail({ memberId, onClose }: { memberId: string; onClose:
             {anonymized && <Badge tone="warn">Anonimizado</Badge>}
           </div>
           <div className="text-sm text-muted">
-            {m.categoryName} {m.membershipNumber && `· Matrícula ${m.membershipNumber}`} {m.validUntil && `· Validade ${formatDate(m.validUntil)}`}
+            {m.categoryName} {m.membershipNumber && t.settings?.showMembershipNumber === true && `· Matrícula ${m.membershipNumber}`} {m.memberSinceYear ? `· Sócio desde ${m.memberSinceYear}` : ''} {m.validUntil && `· Validade ${formatDate(m.validUntil)}`}
           </div>
           {m.statusReason && <div className="text-xs text-muted">Motivo: {m.statusReason}</div>}
         </div>
@@ -186,7 +188,7 @@ export function MemberDetail({ memberId, onClose }: { memberId: string; onClose:
                 <span className="text-xs text-muted ml-auto">{formatDateTime(h.at, t.tenant.timezone)}</span>
               </div>
               {h.reason && <div className="text-xs text-muted mt-1">{h.reason}</div>}
-              <div className="text-[11px] text-muted mt-0.5">Por: {h.byUid === 'sistema' ? 'rotina automática' : h.byUid}</div>
+              <div className="text-[11px] text-muted mt-0.5">Por: {h.byName || who(h.byUid)}</div>
             </li>
           ))}
           {!history.data.length && <p className="text-sm text-muted">Sem histórico.</p>}
