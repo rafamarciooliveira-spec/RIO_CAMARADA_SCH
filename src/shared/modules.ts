@@ -17,6 +17,7 @@ export const MODULES = [
   { id: 'agenda', label: 'Agenda', core: false },
   { id: 'financeiro', label: 'Financeiro', core: false },
   { id: 'eventos', label: 'Eventos e projetos', core: false },
+  { id: 'escalas', label: 'Escalas de trabalho', core: false },
   { id: 'tarefas', label: 'Plano de ação', core: false },
   { id: 'atas', label: 'Atas e assembleias', core: false },
   { id: 'votacoes', label: 'Votações e eleições', core: false },
@@ -68,6 +69,7 @@ export const DEFAULT_ROLES: RoleTemplate[] = [
       financeiro: ALL,
       socios: ['ver', 'exportar'],
       eventos: ['ver', 'editar'],
+      escalas: ['ver', 'editar'],
       patrocinios: ALL,
       editais: ['ver', 'editar'],
       reservas: ['ver', 'editar', 'aprovar'],
@@ -94,6 +96,7 @@ export const DEFAULT_ROLES: RoleTemplate[] = [
       organograma: ALL,
       tarefas: ALL,
       eventos: ['ver', 'editar'],
+      escalas: ALL,
       oficinas: ALL,
     },
   },
@@ -115,6 +118,7 @@ export const DEFAULT_ROLES: RoleTemplate[] = [
     perms: {
       ...every(VIEW, ['pii', 'auditoria', 'papeis', 'financeiro']),
       eventos: ALL,
+      escalas: ALL,
       tarefas: ALL,
       agenda: ALL,
       competicoes: ALL,
@@ -129,7 +133,7 @@ export const DEFAULT_ROLES: RoleTemplate[] = [
       financeiro: ['ver'],
     },
   },
-  { id: 'portaria', name: 'Portaria', board: false, perms: { portaria: ['ver', 'criar'], eventos: ['ver'] } },
+  { id: 'portaria', name: 'Portaria', board: false, perms: { portaria: ['ver', 'criar'], eventos: ['ver'], escalas: ['ver'] } },
   { id: 'socio', name: 'Sócio(a)', board: false, perms: {} },
 ];
 
@@ -145,6 +149,8 @@ export function mergePerms(list: Perms[]): Perms {
 }
 
 export function can(perms: Perms | undefined | null, module: ModuleId, action: Action = 'ver'): boolean {
+  // Papéis criados antes das escalas existirem: valem as permissões de Eventos
+  if (module === 'escalas' && perms && !perms.escalas) return !!perms.eventos?.includes(action);
   return !!perms?.[module]?.includes(action);
 }
 

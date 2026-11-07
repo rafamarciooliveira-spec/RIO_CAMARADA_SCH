@@ -10,6 +10,7 @@ import { formatDate } from '../dates.ts';
 import type { MemberDoc, NoticeDoc, RosterDoc, RosterPerson, RosterSlot } from '../types.ts';
 import { deliverNotice } from './comms.ts';
 import { tid } from './helpers.ts';
+import { can } from '../modules.ts';
 import { canManageRoster, sortSlots } from '../rosters.ts';
 
 const zTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'hora no formato HH:MM');
@@ -32,7 +33,7 @@ async function load(ctx: OpContext, id: string): Promise<RosterDoc> {
 }
 
 function requireManager(ctx: OpContext, r: RosterDoc): void {
-  if (!canManageRoster(r, ctx.actor?.uid)) fail('permission-denied', `Só ${r.createdByName || 'quem criou a escala'} e as pessoas indicadas por essa pessoa mudam esta escala.`);
+  if (!canManageRoster(r, ctx.actor?.uid, can(ctx.membership?.perms, 'escalas', 'aprovar'))) fail('permission-denied', `Só ${r.createdByName || 'quem criou a escala'}, os administradores da escala e quem a diretoria autorizou mudam esta escala.`);
 }
 
 async function announce(ctx: OpContext, r: RosterDoc): Promise<string | undefined> {
@@ -78,8 +79,8 @@ export const rostersSave = defineOp({
     announce: z.boolean().optional(),
   }),
   auth: 'user',
-  tenant: { perm: ['eventos', 'criar'] },
-  module: 'eventos',
+  tenant: { perm: ['escalas', 'criar'] },
+  module: 'escalas',
   rateLimit: { per: 'uid', max: 120, windowSec: 3600 },
   async run(ctx, input) {
     const t = tid(ctx);
@@ -134,8 +135,8 @@ export const rostersDelete = defineOp({
   name: 'rosters.delete',
   input: zTenant.extend({ id: zId }),
   auth: 'user',
-  tenant: { perm: ['eventos', 'criar'] },
-  module: 'eventos',
+  tenant: { perm: ['escalas', 'criar'] },
+  module: 'escalas',
   async run(ctx, input) {
     const r = await load(ctx, input.id);
     if (r.createdBy !== ctx.actor!.uid) fail('permission-denied', `Só ${r.createdByName || 'quem criou'} apaga esta escala.`);
@@ -153,7 +154,7 @@ export const rostersSignup = defineOp({
   input: zTenant.extend({ id: zId, slotId: z.string().min(1).max(40), leave: z.boolean().optional() }),
   auth: 'user',
   tenant: { perm: null },
-  module: 'eventos',
+  module: 'escalas',
   rateLimit: { per: 'uid', max: 120, windowSec: 3600 },
   async run(ctx, input) {
     const uid = ctx.actor!.uid;
@@ -202,7 +203,7 @@ export const rostersAssign = defineOp({
   }),
   auth: 'user',
   tenant: { perm: null },
-  module: 'eventos',
+  module: 'escalas',
   async run(ctx, input) {
     const path = P.roster(tid(ctx), input.id);
     let memberUid: string | undefined;

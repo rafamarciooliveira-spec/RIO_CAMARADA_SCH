@@ -16,7 +16,7 @@ import { formatDateTime, localDateKey, tzLabel } from '../../shared/dates.ts';
 import type { HonorDoc, MandateDoc, MemberDoc, OrgChartDoc, VerifyStatus } from '../../shared/types.ts';
 import { Badge, Button, EmptyState, Loading, lockScroll, Modal, Notice, PageHeader, Tabs } from '../../ui/index.tsx';
 import { CardView, type CardMemberData } from './components/CardView.tsx';
-import { fallbackTemplate, stickersFor, themeFor, type CardTemplateDoc } from './cardTemplate.ts';
+import { fallbackTemplate, pickTemplate, stickersFor, themeFor, type CardTemplateDoc } from './cardTemplate.ts';
 import { nodeToPng, shrinkImage, waitImages } from './exportImage.ts';
 import { useStickerUrls } from './useStickerUrls.ts';
 import { useLogoSrc } from './useLogoSrc.ts';
@@ -109,9 +109,8 @@ export default function CardPage() {
   const current = people.find(p => p.id === selectedId) || holder;
 
   const tplId = t.settings?.activeCardTemplateId || 'padrao';
-  const tplDoc = useDoc<CardTemplateDoc>(P.cardTemplate(t.tenantId, tplId));
-  const template = useMemo(() => tplDoc.data || fallbackTemplate(t.tenant.name), [tplDoc.data, t.tenant.name]);
-  const logoSrc = useLogoSrc(template.logoUrl || t.tenant.branding.logoUrl);
+  // Todos os modelos: cada pessoa usa o do seu cargo (ex.: Diretoria, Majestades) ou o geral Ativo
+  const tplList = useList<CardTemplateDoc>(P.cardTemplates(t.tenantId), { limit: 30 });
 
   useEffect(() => {
     const icon = /^https?:/.test(t.tenant.branding.logoUrl || '') ? t.tenant.branding.logoUrl : null;
@@ -134,7 +133,7 @@ export default function CardPage() {
       </>
     );
   }
-  if (tplDoc.loading) return <Loading label="Montando a carteirinha..." />;
+  if (tplList.loading && !tplList.data.length) return <Loading label="Montando a carteirinha..." />;
 
   return (
     <div className="space-y-5">
@@ -146,13 +145,18 @@ export default function CardPage() {
           tabs={people.map(p => ({ id: p.id, label: p.id === holder.id ? `${p.displayName} (titular)` : p.displayName }))}
         />
       )}
-      <MemberCard key={current!.id} member={current!} template={template} logoSrc={logoSrc} />
+      <MemberCard key={current!.id} member={current!} templates={tplList.data} activeId={tplId} />
     </div>
   );
 }
 
-function MemberCard({ member, template: baseTemplate, logoSrc }: { member: MemberDoc; template: CardTemplateDoc; logoSrc: string }) {
+function MemberCard({ member, templates, activeId }: { member: MemberDoc; templates: CardTemplateDoc[]; activeId: string }) {
   const t = useTenant();
+  const orgChart = useDoc<OrgChartDoc>(P.orgchart(t.tenantId));
+  const myPositions = useMemo(() => (orgChart.data?.positions || []).filter(p => p.memberId === member.id).sort((a, b) => a.order - b.order), [orgChart.data, member.id]);
+  const picked = useMemo(() => pickTemplate(templates, activeId, myPositions), [templates, activeId, myPositions]);
+  const baseTemplate = useMemo(() => (picked ? { ...fallbackTemplate(t.tenant.name), ...picked } : fallbackTemplate(t.tenant.name)), [picked, t.tenant.name]);
+  const logoSrc = useLogoSrc(baseTemplate.logoUrl || t.tenant.branding.logoUrl);
   const { run } = useOp();
   const online = useOnline();
   const visible = useVisible();
@@ -160,9 +164,7 @@ function MemberCard({ member, template: baseTemplate, logoSrc }: { member: Membe
   const width = useCardWidth(baseTemplate.orientation !== 'horizontal');
   const tz = t.tenant.timezone;
   const status: VerifyStatus = cardStatusFor(member, localDateKey(new Date(), tz));
-  const orgChart = useDoc<OrgChartDoc>(P.orgchart(t.tenantId));
   // Cargos da pessoa no organograma vão para a carteirinha (Presidente, Rei do tiro...)
-  const myPositions = useMemo(() => (orgChart.data?.positions || []).filter(p => p.memberId === member.id).sort((a, b) => a.order - b.order), [orgChart.data, member.id]);
   const roles = useMemo(() => myPositions.map(p => p.title), [myPositions]);
   // Cores próprias de quem ocupa um cargo ou grupo (regras do modelo)
   const template = useMemo(() => themeFor(baseTemplate, myPositions), [baseTemplate, myPositions]);

@@ -31,6 +31,11 @@ export interface CardTemplateDoc {
   signatureLabel: string;
   /** Cores próprias para quem ocupa um cargo ou um grupo do organograma (a primeira regra que bater vale) */
   roleThemes?: RoleTheme[];
+  /**
+   * Quem usa este modelo: cargos ou grupos do organograma (ex.: Diretoria; Rei e Rainha do pássaro).
+   * Vazio = modelo geral; o geral em uso é o marcado como Ativo e vale para quem não cai em outro.
+   */
+  appliesTo?: CardAudience[];
   /** Verso com o histórico de cargos e honrarias do sócio */
   showHonors?: boolean;
   isDefault: boolean;
@@ -64,6 +69,7 @@ export const TEMPLATE_FIELDS: (keyof CardTemplateDoc)[] = [
   'customFields',
   'signatureLabel',
   'roleThemes',
+  'appliesTo',
   'showHonors',
   'isDefault',
 ];
@@ -134,10 +140,16 @@ export function isStoragePath(v: string | undefined): boolean {
   return !!v && v.startsWith('tenants/');
 }
 
+export interface CardAudience {
+  match: 'grupo' | 'cargo';
+  value: string;
+}
+
 export interface RoleTheme {
   id: string;
   match: 'grupo' | 'cargo'; // grupo do organograma (ex.: Majestades) ou um cargo (ex.: Presidente)
-  value: string;
+  value: string; // o primeiro escolhido (regras antigas tinham um só)
+  values?: string[]; // vários cargos ou grupos com a mesma regra (ex.: 1ª e 2ª Princesa)
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
@@ -149,7 +161,27 @@ export interface RoleTheme {
 }
 
 const norm = (x: string) => x.trim().toLowerCase();
-const matches = (r: RoleTheme, positions: { title: string; group: string }[]) => !!r.value && positions.some(p => norm(r.match === 'grupo' ? p.group : p.title) === norm(r.value));
+/** Cargos ou grupos de uma regra (as antigas guardavam um só em value) */
+export const ruleValues = (r: Pick<RoleTheme, 'value' | 'values'>): string[] => (r.values?.length ? r.values : r.value ? [r.value] : []);
+const hits = (match: 'grupo' | 'cargo', values: string[], positions: { title: string; group: string }[]) =>
+  positions.some(p => values.some(v => norm(match === 'grupo' ? p.group : p.title) === norm(v)));
+const matches = (r: RoleTheme, positions: { title: string; group: string }[]) => hits(r.match, ruleValues(r), positions);
+
+/**
+ * Modelo de cada pessoa: o modelo cujo público inclui um cargo dela (cargo vale mais que grupo);
+ * sem nenhum, o modelo geral Ativo.
+ */
+export function pickTemplate<T extends CardTemplateDoc>(list: T[], activeId: string, positions: { title: string; group: string }[]): T | undefined {
+  let best: { tpl: T; score: number } | undefined;
+  for (const tpl of list) {
+    for (const a of tpl.appliesTo || []) {
+      if (!hits(a.match, [a.value], positions)) continue;
+      const score = a.match === 'cargo' ? 2 : 1;
+      if (!best || score > best.score) best = { tpl, score };
+    }
+  }
+  return best?.tpl || list.find(x => x.id === activeId) || list.find(x => x.id === 'padrao');
+}
 
 /** Cores da carteirinha conforme os cargos que a pessoa ocupa hoje (a primeira regra com cor que combinar vale) */
 export function themeFor(t: CardTemplateDoc, positions: { title: string; group: string }[]): CardTemplateDoc {

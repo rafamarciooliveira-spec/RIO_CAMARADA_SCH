@@ -11,11 +11,13 @@ import {
   sendSignInLinkToEmail,
   signInWithEmailLink,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
   type Auth,
   type User,
 } from 'firebase/auth';
-import { firebaseApp, USE_EMULATORS } from './firebaseClient.ts';
+import { firebaseApp, sameOriginAuth, USE_EMULATORS } from './firebaseClient.ts';
 import { rememberMe } from '../ui/RememberMe.tsx';
 import type { SessionUser } from './client.ts';
 
@@ -57,7 +59,23 @@ export async function signInGoogle(): Promise<void> {
   await applyRemember(getAuthInstance());
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
+  // App instalado no celular: a janela do Google não volta para o atalho; vai por redirecionamento
+  if (sameOriginAuth()) {
+    await signInWithRedirect(getAuthInstance(), provider);
+    return;
+  }
   await signInWithPopup(getAuthInstance(), provider);
+}
+
+/** Volta do redirecionamento do Google: devolve o erro, se houve, para a tela mostrar */
+export async function finishRedirect(): Promise<string | null> {
+  if (!sameOriginAuth()) return null;
+  try {
+    await getRedirectResult(getAuthInstance());
+    return null;
+  } catch (e) {
+    return (e as { code?: string }).code || 'erro';
+  }
 }
 
 export async function sendMagicLink(email: string, returnPath: string): Promise<void> {

@@ -21,7 +21,10 @@ const zPosition = z.object({
   parentId: zId.optional(),
   since: zDateKey.optional(),
   roleId: zId.optional(), // papel de acesso que acompanha o cargo (presidente, tesoureiro...)
+  roleFromGroup: z.boolean().optional(),
 });
+
+const zGroup = z.object({ name: zText(60).min(1), order: z.number().int().min(0).max(999), roleId: zId.optional() });
 
 export const saveOrgChart = defineOp({
   name: 'orgchart.save',
@@ -29,6 +32,8 @@ export const saveOrgChart = defineOp({
     style: z.enum(['arvore', 'cartoes', 'corte']),
     title: zText(120).min(2),
     positions: z.array(zPosition).max(120),
+    groups: z.array(zGroup).max(30).optional(),
+    tabs: z.boolean().optional(),
     showOnPublicPage: z.boolean(),
   }),
   auth: 'user',
@@ -57,12 +62,25 @@ export const saveOrgChart = defineOp({
     }
     // Nome exibido vem do cadastro quando o cargo é ligado a um sócio (só o nome reduzido)
     // Cargo com acesso só troca de ocupante pela passagem de cargo, que mexe nos papéis com segurança
-    const stored = new Map(((await ctx.store.get<OrgChartDoc>(P.orgchart(t)))?.positions || []).map(p => [p.id, p]));
+    const storedDoc = await ctx.store.get<OrgChartDoc>(P.orgchart(t));
+    const stored = new Map((storedDoc?.positions || []).map(p => [p.id, p]));
+    // Abas: só as que têm cargo ficam; o acesso da aba vale para todos os cargos dela
+    const groups = (input.groups || []).filter((g, i, all) => all.findIndex(x => x.name === g.name) === i && input.positions.some(p => p.group === g.name));
+    const groupRole = new Map(groups.map(g => [g.name, g.roleId]));
+    for (const g of groups) if (g.roleId) await permsForRoles(ctx, t, [g.roleId]);
+    for (const p of input.positions) {
+      const gr = groupRole.get(p.group);
+      if (gr) Object.assign(p, { roleId: gr, roleFromGroup: true });
+      else if (p.roleFromGroup) Object.assign(p, { roleId: undefined, roleFromGroup: undefined });
+    }
+    // Acesso trocado em cargo ocupado: quem ocupa ganha o novo e perde o antigo (depois de gravar)
+    const accessChanges: { memberId: string; title: string; from?: string; to?: string }[] = [];
     for (const p of input.positions) {
       const old = stored.get(p.id);
-      if (p.roleId) ctx.require('papeis', 'aprovar');
+      if (p.roleId || old?.roleId) ctx.require('papeis', 'aprovar');
       if (p.roleId) await permsForRoles(ctx, t, [p.roleId]);
-      if (old?.memberId && (old.roleId || '') !== (p.roleId || '')) fail('failed-precondition', `Para mudar o acesso ligado ao cargo "${p.title}", passe o cargo para vago antes.`);
+      if (old?.memberId && (old.roleId || '') !== (p.roleId || '')) accessChanges.push({ memberId: old.memberId, title: p.title, from: old.roleId, to: p.roleId });
+      // Cargo com acesso só troca de ocupante pela passagem de cargo, que mexe nos papéis com segurança
       if (p.roleId || old?.roleId) Object.assign(p, { memberId: old?.memberId, personName: old?.personName, since: old?.since });
     }
     const positions = [];
@@ -73,8 +91,25 @@ export const saveOrgChart = defineOp({
         positions.push({ ...p, personName: p.personName || m!.fullName });
       } else positions.push(p);
     }
-    const doc: OrgChartDoc = { style: input.style, title: input.title, positions, showOnPublicPage: input.showOnPublicPage, updatedAt: ctx.nowIso };
-    await ctx.store.set(P.orgchart(t), doc as unknown as Record<string, unknown>);
+    // Quem ganha acesso precisa ter entrado no portal; confere antes de gravar qualquer coisa
+    const occupants = new Map<string, MemberDoc>();
+    for (const c of accessChanges) {
+      const m = await ctx.store.get<MemberDoc>(P.member(t, c.memberId));
+      if (c.to && !m?.uid) fail('failed-precondition', `${m?.fullName || 'Quem ocupa'} (${c.title}) ainda não entrou no portal com a conta Google. Mande um convite ou deixe o acesso desta aba para depois.`);
+      if (m) occupants.set(c.memberId, m);
+    }
+    const doc: OrgChartDoc = { style: input.style, title: input.title, positions, ...(groups.length ? { groups } : {}), ...(input.tabs !== undefined ? { tabs: input.tabs } : {}), showOnPublicPage: input.showOnPublicPage, updatedAt: ctx.nowIso };
+    await ctx.store.set(P.orgchart(t), { ...doc, positions: clean(positions) } as unknown as Record<string, unknown>);
+    // Primeiro quem ganha, depois quem perde (a trava do último administrador enxerga os dois)
+    for (const c of accessChanges) {
+      const m = occupants.get(c.memberId);
+      if (c.to && m?.uid) await grantRole(ctx, t, m.uid, c.to, c.title);
+    }
+    for (const c of accessChanges) {
+      const m = occupants.get(c.memberId);
+      const keeps = positions.some(p => p.memberId === c.memberId && p.roleId === c.from);
+      if (c.from && m?.uid && !keeps) await dropRole(ctx, t, m.uid, c.from);
+    }
     await ctx.audit('orgchart.saved', undefined, { positions: positions.length });
     await syncTermFromChart(ctx, t, positions);
     return { ok: true };
@@ -92,6 +127,17 @@ export const orgChartPreset = defineOp({
     return { style: preset.orgStyle, positions: preset.positions.map((p, i) => ({ ...p, id: `cargo_${i + 1}` })) };
   },
 });
+
+/** Dá um papel a quem já tem acesso ao portal (até 5 papéis por conta) */
+async function grantRole(ctx: OpContext, t: string, uid: string, roleId: string, title: string) {
+  const ms = await ctx.store.get<MembershipDoc>(P.membership(t, uid));
+  if (!ms) fail('failed-precondition', 'Esta pessoa ainda não tem acesso ao portal desta sociedade.');
+  if (ms!.roleIds.includes(roleId)) return;
+  const roleIds = [...new Set([...ms!.roleIds, roleId])].slice(0, 5);
+  const { perms, board } = await permsForRoles(ctx, t, roleIds);
+  await ctx.store.update(P.membership(t, uid), { roleIds, perms, board, active: true, updatedAt: ctx.nowIso });
+  await notify(ctx, uid, `Novo acesso pelo cargo de ${title}`, 'Os acessos já estão liberados no portal.', 'inicio');
+}
 
 /** Tira um papel de uma conta mantendo ao menos o papel de sócio (ou nenhum, se não for sócio) */
 async function dropRole(ctx: OpContext, t: string, uid: string, roleId: string) {

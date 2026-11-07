@@ -4,7 +4,7 @@
  * A cópia mínima da carteirinha para uso offline fica no localStorage (sem CPF),
  * e é apagada ao sair da conta.
  */
-const CACHE = 'sodalis-shell-v2';
+const CACHE = 'sodalis-shell-v3';
 const SHELL = ['/', '/index.html', '/favicon.svg'];
 
 self.addEventListener('install', event => {
@@ -26,7 +26,7 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   // Só a própria origem; nada de API, funções, Firestore ou Storage
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api') || url.pathname.startsWith('/ics')) return;
+  if (url.pathname.startsWith('/api') || url.pathname.startsWith('/ics') || url.pathname.startsWith('/__/')) return;
 
   // Navegação: rede primeiro, shell em cache quando estiver sem internet
   if (req.mode === 'navigate') {

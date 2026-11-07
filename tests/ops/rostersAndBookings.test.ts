@@ -31,12 +31,14 @@ describe('escala de trabalho', () => {
     await denied(h.call('rosters.signup', { tenantId: h.tenantId, id, slotId: 'a1' }, h.actors.tesoureiro), 'failed-precondition');
     await denied(h.call('rosters.assign', { tenantId: h.tenantId, id, slotId: 'a1', action: 'adicionar', name: 'Gilson' }, h.actors.diretor_eventos), 'failed-precondition');
 
-    // Presidente não criou nem foi indicado: não muda a escala
-    await denied(h.call('rosters.assign', { tenantId: h.tenantId, id, slotId: 'a2', action: 'adicionar', name: 'Deco' }, h.actors.presidente), 'permission-denied');
-    await denied(h.call('rosters.save', { tenantId: h.tenantId, id, title: 'Outra', status: 'aberta', editors: [], slots }, h.actors.presidente), 'permission-denied');
-    // Indicado pelo criador passa a poder
-    await h.call('rosters.save', { tenantId: h.tenantId, id, title: 'Escala Schützenfest', status: 'aberta', editors: [{ uid: 'presidente', name: 'Presidente' }], slots }, h.actors.diretor_eventos);
-    await h.call('rosters.assign', { tenantId: h.tenantId, id, slotId: 'a2', action: 'adicionar', name: 'Deco' }, h.actors.presidente);
+    // Tesoureiro vê as escalas, mas não criou, não foi indicado e não administra escalas: não muda
+    await denied(h.call('rosters.assign', { tenantId: h.tenantId, id, slotId: 'a2', action: 'adicionar', name: 'Deco' }, h.actors.tesoureiro), 'permission-denied');
+    await denied(h.call('rosters.save', { tenantId: h.tenantId, id, title: 'Outra', status: 'aberta', editors: [], slots }, h.actors.tesoureiro), 'permission-denied');
+    // Indicado pelo criador passa a poder (inclusive pôr quem não é sócio, pelo nome)
+    await h.call('rosters.save', { tenantId: h.tenantId, id, title: 'Escala Schützenfest', status: 'aberta', editors: [{ uid: 'tesoureiro', name: 'Tesoureiro' }], slots }, h.actors.diretor_eventos);
+    await h.call('rosters.assign', { tenantId: h.tenantId, id, slotId: 'a2', action: 'adicionar', name: 'Deco' }, h.actors.tesoureiro);
+    // A presidência administra qualquer escala (Escalas: aprovar)
+    await h.call('rosters.assign', { tenantId: h.tenantId, id, slotId: 'a2', action: 'confirmar', key: (await h.store.get<RosterDoc>(P.roster(h.tenantId, id)))!.slots.find(s => s.id === 'a2')!.people[0].key }, h.actors.presidente);
 
     const r = (await h.store.get<RosterDoc>(P.roster(h.tenantId, id)))!;
     expect(r.slots.find(s => s.id === 'a1')!.people.map(p => p.name)).toEqual(['Pessoa de Teste Silva']);
@@ -93,5 +95,28 @@ describe('notícia por link', () => {
 
     const { id } = await h.call<{ id: string }>('news.post', { tenantId: h.tenantId, title: 'Rio Camarada completa 71 anos', summary: '', body: '', visibility: 'socios', pinned: false, url, source: 'Repórter Gabriel Júnior', requestId: 'n1' }, h.actors.secretario);
     expect((await h.store.get<NewsItemDoc>(`${P.news(h.tenantId)}/${id}`))!).toMatchObject({ kind: 'interna', url, source: 'Repórter Gabriel Júnior' });
+  });
+});
+
+describe('notícia só com o link e fontes da região', () => {
+  it('título e veículo vêm da matéria; a fonte da região dá o nome e o selo; mesma manchete não repete', async () => {
+    const h = await makeTestTenant();
+    const url = 'https://www.reportergabrieljunior.com.br/noticias/17900-baile';
+    h.env.news = {
+      search: async (q: string) => (q.startsWith('site:') ? [{ title: 'Baile da Rio Camarada', url, source: 'reportergabrieljunior.com.br', publishedAt: '' }, { title: 'Baile da  Rio Camarada', url: 'https://outro.com.br/baile', source: 'Outro', publishedAt: '' }] : []),
+      preview: async () => ({ title: 'Baile à luz de lampião', description: 'A sociedade convida.', siteName: 'reportergabrieljunior.com.br' }),
+    };
+    await h.call('news.saveConfig', { tenantId: h.tenantId, enabled: true, keywords: ['sociedade de tiro'], includeRegion: false, blockedSources: [], preferredSources: [{ name: 'Repórter Gabriel Júnior', site: 'https://reportergabrieljunior.com.br/' }] }, h.actors.secretario);
+    const { id } = await h.call<{ id: string }>('news.post', { tenantId: h.tenantId, title: '', summary: '', body: '', visibility: 'socios', pinned: false, url, requestId: 'n2' }, h.actors.secretario);
+    expect((await h.store.get<NewsItemDoc>(`${P.news(h.tenantId)}/${id}`))!).toMatchObject({ title: 'Baile à luz de lampião', summary: 'A sociedade convida.', source: 'Repórter Gabriel Júnior' });
+    await expect(h.call('news.post', { tenantId: h.tenantId, title: '', summary: 'x', body: '', visibility: 'socios', pinned: false, requestId: 'n3' }, h.actors.secretario)).rejects.toThrow(/título/);
+    // Bloquear uma fonte pelo botão (sem mandar as fontes da região) não apaga as fontes
+    await h.call('news.saveConfig', { tenantId: h.tenantId, enabled: true, keywords: ['sociedade de tiro'], includeRegion: false, blockedSources: ['Algum'] }, h.actors.secretario);
+    const r = await h.call<{ queries: string[]; added: number; duplicates: number }>('news.refresh', { tenantId: h.tenantId }, h.actors.secretario);
+    expect(r.queries[0]).toBe('site:reportergabrieljunior.com.br ("sociedade de tiro")');
+    expect(r.added).toBe(1);
+    expect(r.duplicates).toBeGreaterThanOrEqual(1);
+    const ext = await h.store.query<NewsItemDoc>(P.news(h.tenantId), { where: [['kind', '==', 'externa']] });
+    expect(ext.map(e => e.data)).toEqual([expect.objectContaining({ source: 'Repórter Gabriel Júnior', preferred: true })]);
   });
 });

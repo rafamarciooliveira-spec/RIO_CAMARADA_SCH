@@ -90,6 +90,17 @@ export function setupTenantPwa(t: PwaTenant, iconUrl?: string | null, basePath =
   setMeta('theme-color', t.branding.primaryColor);
   setMeta('apple-mobile-web-app-title', manifest.short_name);
   setMeta('apple-mobile-web-app-capable', 'yes');
+  setMeta('mobile-web-app-capable', 'yes');
+  // Ícone da tela inicial do iPhone (o Safari usa este, não o do manifest)
+  if (icon192) {
+    let touch = document.head.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]');
+    if (!touch) {
+      touch = document.createElement('link');
+      touch.rel = 'apple-touch-icon';
+      document.head.appendChild(touch);
+    }
+    touch.href = icon192;
+  }
 
   if (!basePath && !swRequested && 'serviceWorker' in navigator && location.protocol === 'https:') {
     swRequested = true;

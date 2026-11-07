@@ -7,7 +7,8 @@ import { useTenant } from '../../app/TenantContext.tsx';
 import { P } from '../../shared/paths.ts';
 import { Badge, Button, Card, cx, EmptyState, Loading, Notice, PageHeader, Select, Tabs, useConfirm } from '../../ui/index.tsx';
 import { CardView } from './components/CardView.tsx';
-import { fallbackTemplate, stickersFor, TEMPLATE_FIELDS, themeFor, type CardTemplateDoc } from './cardTemplate.ts';
+import { MultiPick } from './design/MultiPick.tsx';
+import { fallbackTemplate, ruleValues, stickersFor, TEMPLATE_FIELDS, themeFor, type CardAudience, type CardTemplateDoc } from './cardTemplate.ts';
 import { useStickerUrls } from './useStickerUrls.ts';
 import { BackPanel, ColorsPanel, FieldsPanel, IdentityPanel, LayoutPanel } from './design/panels.tsx';
 import { useLogoSrc } from './useLogoSrc.ts';
@@ -46,21 +47,32 @@ export default function CardDesignPage() {
   const [previewAs, setPreviewAs] = useState('');
   // "Ver como grupo X": usa um cargo de verdade daquele grupo do organograma (ex.: Rainha do tiro), não o nome do grupo
   const orgChart = useDoc<OrgChartDoc>(P.orgchart(t.tenantId));
-  const rule = draft?.roleThemes?.find(r => r.value === previewAs);
-  const ruleMatch = rule?.match;
-  const previewPos = useMemo(
-    () =>
-      !previewAs
-        ? null
-        : ruleMatch === 'grupo'
-          ? orgChart.data?.positions.find(p => p.group === previewAs) || { title: previewAs, group: previewAs }
-          : orgChart.data?.positions.find(p => p.title === previewAs) || { title: previewAs, group: '' },
-    [previewAs, ruleMatch, orgChart.data]
-  );
-  // Ao abrir um modelo com adesivo, a prévia já mostra quem ganha o adesivo
+  // Opções da prévia: cada cargo ou grupo do público do modelo e das regras ("cargo:Rei do tiro")
+  const previewOptions = useMemo(() => {
+    const out: { key: string; label: string }[] = [];
+    const add = (match: 'grupo' | 'cargo', v: string) => {
+      const key = `${match}:${v}`;
+      if (v && !out.some(o => o.key === key)) out.push({ key, label: match === 'grupo' ? `grupo ${v}` : v });
+    };
+    for (const a of draft?.appliesTo || []) add(a.match, a.value);
+    for (const r of draft?.roleThemes || []) for (const v of ruleValues(r)) add(r.match, v);
+    return out;
+  }, [draft?.appliesTo, draft?.roleThemes]);
+  const forEveryone = !draft?.appliesTo?.length;
+  const previewPos = useMemo(() => {
+    if (!previewAs) return null;
+    const [match, ...rest] = previewAs.split(':');
+    const v = rest.join(':');
+    return match === 'grupo'
+      ? orgChart.data?.positions.find(p => p.group === v) || { title: v, group: v }
+      : orgChart.data?.positions.find(p => p.title === v) || { title: v, group: '' };
+  }, [previewAs, orgChart.data]);
+  // Ao abrir um modelo, a prévia já mostra quem usa o modelo (ou quem ganha o adesivo)
   const draftId = draft?.id;
   useEffect(() => {
-    setPreviewAs(draft?.roleThemes?.find(r => r.value && r.stickerPath)?.value || '');
+    const a = draft?.appliesTo?.[0];
+    const r = draft?.roleThemes?.find(x => ruleValues(x).length && x.stickerPath);
+    setPreviewAs(a ? `${a.match}:${a.value}` : r ? `${r.match}:${ruleValues(r)[0]}` : '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftId]);
   const previewStickers = useStickerUrls(useMemo(() => (draft && previewPos ? stickersFor(draft, [previewPos]) : []), [draft, previewPos]));
@@ -115,7 +127,7 @@ export default function CardDesignPage() {
   };
 
   const activate = async () => {
-    if (!draft || dirty) return;
+    if (!draft || dirty || draft.appliesTo?.length) return;
     await run('tenant.updateSettings', { tenantId: t.tenantId, settings: { activeCardTemplateId: draft.id } }, { success: 'Este modelo agora é o usado por todos.' });
   };
 
@@ -162,7 +174,7 @@ export default function CardDesignPage() {
           >
             <span className="w-3 h-3 rounded-full" style={{ background: x.primaryColor }} aria-hidden />
             {x.name}
-            {x.id === activeId && <Badge tone="ok">Ativo</Badge>}
+            {x.appliesTo?.length ? <Badge tone="brand">{audienceText(x.appliesTo)}</Badge> : x.id === activeId && <Badge tone="ok">Ativo para todos</Badge>}
           </button>
         ))}
         {draft && !saved && <span className="px-3 py-2 rounded-xl border border-dashed border-accent text-sm">{draft.name} (não salvo)</span>}
@@ -185,6 +197,7 @@ export default function CardDesignPage() {
               ]}
             />
             <fieldset disabled={!canEdit} className="min-w-0">
+              {panel === 'identidade' && <AudiencePanel key={draft.id} value={draft} set={set} isActive={draft.id === activeId} />}
               {panel === 'identidade' && <IdentityPanel {...panelProps} />}
               {panel === 'cores' && <ColorsPanel {...panelProps} />}
               {panel === 'layout' && <LayoutPanel {...panelProps} />}
@@ -196,9 +209,11 @@ export default function CardDesignPage() {
                 <Button icon={<Save className="w-4 h-4" />} loading={busy} disabled={!dirty} onClick={save}>
                   Salvar modelo
                 </Button>
-                <Button variant="secondary" icon={<Check className="w-4 h-4" />} disabled={dirty || !saved || draft.id === activeId} onClick={activate}>
-                  Usar este modelo
-                </Button>
+                {forEveryone && (
+                  <Button variant="secondary" icon={<Check className="w-4 h-4" />} disabled={dirty || !saved || draft.id === activeId} onClick={activate}>
+                    Usar para todos
+                  </Button>
+                )}
                 {saved && draft.id !== 'padrao' && (
                   <Button variant="ghost" icon={<Trash2 className="w-4 h-4" />} onClick={remove}>
                     Apagar
@@ -207,20 +222,26 @@ export default function CardDesignPage() {
               </div>
             )}
             {dirty && <p className="text-xs text-warn mt-2">Há mudanças não salvas.</p>}
-            {saved && draft.id !== activeId && (
+            {saved && forEveryone && draft.id !== activeId && (
               <div className="mt-3"><Notice tone="warn">
-                Este modelo não está em uso: os sócios continuam vendo o modelo marcado como Ativo. Salve e toque em "Usar este modelo" para as carteirinhas mudarem.
+                Este modelo geral não está em uso: quem não tem modelo próprio continua vendo o marcado como Ativo para todos. Toque em "Usar para todos" para trocar.
+              </Notice></div>
+            )}
+            {!forEveryone && (
+              <div className="mt-3"><Notice>
+                Este modelo vale sozinho para quem ocupa {audienceText(draft.appliesTo || [])} no organograma{dirty ? ', depois de salvar' : ''}. Os demais continuam no modelo geral.
               </Notice></div>
             )}
           </Card>
           <div className="flex flex-col items-center gap-3 lg:sticky lg:top-20">
             <div className="text-xs text-muted">Prévia com dados fictícios. Toque para virar.</div>
-            {!!draft.roleThemes?.filter(r => r.value).length && (
+            {previewOptions.length > 0 && (
               <Select aria-label="Ver a prévia como" value={previewAs} onChange={e => setPreviewAs(e.target.value)} className="max-w-xs">
-                <option value="">Ver como: sócio sem cargo</option>
-                {draft.roleThemes.filter(r => r.value).map(r => (
-                  <option key={r.id} value={r.value}>
-                    Ver como: {r.match === 'grupo' ? `grupo ${r.value}` : r.value}
+                {/* Modelo de um público (ex.: Diretoria) não é usado por quem não tem cargo: sem essa opção */}
+                {forEveryone && <option value="">Ver como: sócio sem cargo</option>}
+                {previewOptions.map(o => (
+                  <option key={o.key} value={o.key}>
+                    Ver como: {o.label}
                   </option>
                 ))}
               </Select>
@@ -240,6 +261,58 @@ export default function CardDesignPage() {
             <Notice>O CPF nunca aparece na carteirinha.</Notice>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+const audienceText = (list: CardAudience[]) => {
+  const names = list.map(a => a.value);
+  return names.length > 3 ? `${names.slice(0, 3).join(', ')} e mais ${names.length - 3}` : names.join(', ');
+};
+
+/** Quem usa o modelo: todos (geral) ou só quem ocupa certos cargos ou grupos do organograma */
+function AudiencePanel({ value, set, isActive }: { value: CardTemplateDoc; set: (p: Partial<CardTemplateDoc>) => void; isActive: boolean }) {
+  const t = useTenant();
+  const chart = useDoc<OrgChartDoc>(P.orgchart(t.tenantId));
+  const groups = [...new Set((chart.data?.positions || []).map(p => p.group).filter(Boolean))];
+  const titles = [...new Set((chart.data?.positions || []).map(p => p.title).filter(Boolean))];
+  const list = value.appliesTo || [];
+  const pick = (match: 'grupo' | 'cargo') => list.filter(a => a.match === match).map(a => a.value);
+  const setPick = (match: 'grupo' | 'cargo', vals: string[]) => set({ appliesTo: [...list.filter(a => a.match !== match), ...vals.map(v => ({ match, value: v }))] });
+  const [mode, setMode] = useState<'todos' | 'cargos'>(list.length ? 'cargos' : 'todos');
+  return (
+    <div className="space-y-3 mb-5 pb-5 border-b border-line">
+      <div className="text-sm font-semibold">Quem usa este modelo</div>
+      {isActive && !list.length ? (
+        <p className="text-sm text-muted">Todos os sócios: é o modelo geral em uso. Para um modelo só da Diretoria ou das Majestades, toque em Novo modelo ou Duplicar e escolha aqui quem usa.</p>
+      ) : (
+      <Select
+        aria-label="Quem usa este modelo"
+        value={mode}
+        onChange={e => {
+          const m = e.target.value as 'todos' | 'cargos';
+          setMode(m);
+          if (m === 'todos') set({ appliesTo: [] });
+        }}
+      >
+        <option value="todos">Todos os sócios (modelo geral)</option>
+        <option value="cargos">Só quem ocupa certos cargos ou abas do organograma</option>
+      </Select>
+      )}
+      {mode === 'cargos' && (
+        <>
+          <p className="text-xs text-muted">Ex.: um modelo para a Diretoria, outro para as Majestades do pássaro. Quem ocupa um cargo escolhido aqui usa este modelo; se cair em dois modelos, vale o que escolheu o cargo (mais específico que a aba).</p>
+          <div className="space-y-1">
+            <div className="text-xs font-semibold text-muted">Abas inteiras</div>
+            <MultiPick label="Abas que usam o modelo" options={groups} values={pick('grupo')} onChange={v => setPick('grupo', v)} />
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs font-semibold text-muted">Cargos</div>
+            <MultiPick label="Cargos que usam o modelo" options={titles} values={pick('cargo')} onChange={v => setPick('cargo', v)} />
+          </div>
+          {!list.length && <p className="text-xs text-warn">Escolha ao menos uma aba ou um cargo.</p>}
+        </>
       )}
     </div>
   );

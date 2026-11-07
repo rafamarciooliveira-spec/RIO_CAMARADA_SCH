@@ -24,7 +24,8 @@ export type OpErrorCode =
   | 'failed-precondition'
   | 'already-exists'
   | 'resource-exhausted'
-  | 'unavailable';
+  | 'unavailable'
+  | 'unimplemented';
 
 export class OpError extends Error {
   constructor(public code: OpErrorCode, message: string) {
@@ -157,7 +158,7 @@ export const SYSTEM_ACTOR: Actor = {
 
 export async function executeOp(env: Env, args: ExecuteArgs): Promise<unknown> {
   const def = registry.get(args.op);
-  if (!def) fail('not-found', 'Operação desconhecida.');
+  if (!def) fail('unimplemented', 'Operação desconhecida.');
   const d = def as OpDef;
   if (d.internal && !args.internal) fail('permission-denied', 'Operação interna.');
 

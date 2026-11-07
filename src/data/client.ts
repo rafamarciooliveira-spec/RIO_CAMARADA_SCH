@@ -57,10 +57,21 @@ export class ClientError extends Error {
 /** Erros que indicam que o servidor (Cloud Functions) ainda não foi publicado */
 export function isBackendMissing(e: unknown): boolean {
   const code = (e as { code?: string })?.code || '';
-  return code === 'functions/not-found' || code === 'functions/unavailable' || code === 'backend-missing';
+  const msg = (e as Error)?.message || '';
+  // not-found com mensagem própria (ex.: "Registro não encontrado.") é erro da ação, não falta de servidor
+  if (code === 'functions/not-found') return /^(not[ _-]?found|NOT_FOUND)$/i.test(msg.replace(/^FirebaseError:\s*/, '').trim());
+  return code === 'functions/unavailable' || code === 'backend-missing';
+}
+
+/** A tela é mais nova que o servidor: a ação existe aqui, mas o servidor publicado ainda não a conhece */
+export function isServerOutdated(e: unknown): boolean {
+  const code = (e as { code?: string })?.code || '';
+  const msg = (e as Error)?.message || '';
+  return code === 'functions/unimplemented' || (code === 'functions/not-found' && /Operação desconhecida/.test(msg));
 }
 
 export function errorMessage(e: unknown): string {
+  if (isServerOutdated(e)) return 'Esta ação é nova e o servidor da plataforma ainda não recebeu a atualização. Avise o suporte para publicar o servidor; depois é só tentar de novo.';
   if (isBackendMissing(e)) return 'O servidor da plataforma ainda não foi publicado. Esta ação fica disponível depois da configuração (veja docs/firebase-setup.md).';
   const code = (e as { code?: string })?.code || '';
   if (code.includes('permission-denied')) return (e as Error).message?.replace(/^.*?:\s*/, '') || 'Seu papel não permite esta ação.';

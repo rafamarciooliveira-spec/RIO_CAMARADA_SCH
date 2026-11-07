@@ -410,9 +410,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastCtx.Provider value={value}>
       {children}
-      <div aria-live="polite" className="fixed bottom-4 inset-x-4 sm:inset-x-auto sm:right-4 z-[60] flex flex-col gap-2 sm:w-96">
+      {/* No celular os avisos ficam no alto: embaixo cobriam o botão Salvar das janelas. Tocar fecha. */}
+      <div aria-live="polite" className="fixed top-[max(0.75rem,env(safe-area-inset-top))] sm:top-auto sm:bottom-4 inset-x-3 sm:inset-x-auto sm:right-4 z-[60] flex flex-col gap-2 sm:w-96 pointer-events-none">
         {items.map(t => (
-          <div key={t.id} className={cx('p-3 rounded-xl border shadow-xl text-sm flex gap-2 bg-surface', t.tone === 'erro' ? 'border-bad/50' : t.tone === 'sucesso' ? 'border-ok/50' : 'border-line')}>
+          <div key={t.id} role="status" onClick={() => setItems(i => i.filter(x => x.id !== t.id))} className={cx('pointer-events-auto cursor-pointer p-3 rounded-xl border shadow-xl text-sm flex gap-2 bg-surface', t.tone === 'erro' ? 'border-bad/50' : t.tone === 'sucesso' ? 'border-ok/50' : 'border-line')}>
             {t.tone === 'erro' ? <XCircle className="w-4 h-4 text-bad shrink-0 mt-0.5" /> : t.tone === 'sucesso' ? <CheckCircle2 className="w-4 h-4 text-ok shrink-0 mt-0.5" /> : <Info className="w-4 h-4 text-info shrink-0 mt-0.5" />}
             <span>{t.text}</span>
           </div>

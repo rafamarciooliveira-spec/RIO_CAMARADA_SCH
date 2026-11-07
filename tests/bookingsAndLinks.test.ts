@@ -84,3 +84,18 @@ describe('texto da escala para o WhatsApp', () => {
     expect(txt).toContain('(falta 1)');
   });
 });
+
+describe('modelo da carteirinha por público', () => {
+  it('cargo vence aba, aba vence o geral, e a regra aceita vários cargos', async () => {
+    const { pickTemplate, stickersFor } = await import('../src/modules/card/cardTemplate.ts');
+    const base = { associationName: '', associationSubtitle: '', logoUrl: '', primaryColor: '', secondaryColor: '', accentColor: '', textColor: '', orientation: 'vertical', backgroundPattern: 'clean', showQrCode: true, showPhoto: true, showCpf: false, showBirthDate: false, showCategory: true, showSecurityStamp: true, customFields: [], signatureLabel: '', isDefault: false } as unknown as Omit<import('../src/modules/card/cardTemplate.ts').CardTemplateDoc, 'id' | 'name'>;
+    const geral = { ...base, id: 'padrao', name: 'Geral' };
+    const diretoria = { ...base, id: 'dir', name: 'Diretoria', appliesTo: [{ match: 'grupo' as const, value: 'Diretoria' }] };
+    const passaro = { ...base, id: 'pas', name: 'Pássaro', appliesTo: [{ match: 'cargo' as const, value: 'Rei do pássaro' }, { match: 'cargo' as const, value: 'Rainha do pássaro' }], roleThemes: [{ id: 'r', match: 'cargo' as const, value: '1ª Princesa', values: ['1ª Princesa', '2ª Princesa'], primaryColor: '', secondaryColor: '', accentColor: '', textColor: '', applyColors: false, stickerPath: 'tenants/x/public/stickers/prata.png' }] };
+    const list = [geral, diretoria, passaro];
+    expect(pickTemplate(list, 'padrao', [])!.id).toBe('padrao');
+    expect(pickTemplate(list, 'padrao', [{ title: 'Tesoureiro', group: 'Diretoria' }])!.id).toBe('dir');
+    expect(pickTemplate(list, 'padrao', [{ title: 'Tesoureiro', group: 'Diretoria' }, { title: 'Rainha do pássaro', group: 'Pássaro' }])!.id).toBe('pas');
+    expect(stickersFor(passaro, [{ title: '2ª Princesa', group: 'Beleza' }])).toEqual(['tenants/x/public/stickers/prata.png']);
+  });
+});

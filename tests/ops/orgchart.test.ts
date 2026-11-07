@@ -134,3 +134,26 @@ describe('gestão atual e organograma andam juntos', () => {
     expect((await h.store.get<OrgChartDoc>(P.orgchart(t)))!.positions.find(p => p.id === 'pres')!.personName).toBe('');
   });
 });
+
+describe('abas do organograma com nível de acesso', () => {
+  it('o acesso da aba vale para todos os cargos dela, inclusive quem já ocupa; tirar o acesso da aba devolve', async () => {
+    const h = await makeTestTenant();
+    const a = await makeMember(h);
+    const t = h.tenantId;
+    await h.call('orgchart.save', { tenantId: t, style: 'cartoes', title: 'Diretoria', showOnPublicPage: false, positions: [pos('dir', 'Diretor social', { group: 'Diretoria', memberId: a.memberId }), pos('rei', 'Rei do tiro', { group: 'Majestades do tiro' })] }, h.actors.presidente);
+    expect((await h.store.get<MembershipDoc>(P.membership(t, a.who.uid)))!.roleIds).not.toContain('secretario');
+    const chart = (await h.store.get<OrgChartDoc>(P.orgchart(t)))!;
+    await h.call('orgchart.save', { tenantId: t, style: 'cartoes', title: 'Diretoria', showOnPublicPage: false, tabs: true, groups: [{ name: 'Majestades do tiro', order: 1 }, { name: 'Diretoria', order: 2, roleId: 'secretario' }], positions: chart.positions }, h.actors.presidente);
+    const after = (await h.store.get<OrgChartDoc>(P.orgchart(t)))!;
+    expect(after.groups!.map(g => g.name)).toEqual(['Majestades do tiro', 'Diretoria']);
+    expect(after.positions.find(p => p.id === 'dir')).toMatchObject({ roleId: 'secretario', roleFromGroup: true, memberId: a.memberId });
+    expect(after.positions.find(p => p.id === 'rei')!.roleId).toBeUndefined();
+    expect((await h.store.get<MembershipDoc>(P.membership(t, a.who.uid)))!.roleIds).toContain('secretario');
+    // Tirou o acesso da aba: o cargo volta a não ter acesso e a pessoa perde o papel
+    await h.call('orgchart.save', { tenantId: t, style: 'cartoes', title: 'Diretoria', showOnPublicPage: false, groups: [{ name: 'Diretoria', order: 1 }], positions: after.positions }, h.actors.presidente);
+    expect((await h.store.get<OrgChartDoc>(P.orgchart(t)))!.positions.find(p => p.id === 'dir')!.roleId).toBeUndefined();
+    expect((await h.store.get<MembershipDoc>(P.membership(t, a.who.uid)))!.roleIds).not.toContain('secretario');
+    // Quem só edita o organograma (sem gerenciar papéis) não dá acesso por aba
+    await expect(h.call('orgchart.save', { tenantId: t, style: 'cartoes', title: 'Diretoria', showOnPublicPage: false, groups: [{ name: 'Diretoria', order: 1, roleId: 'tesoureiro' }], positions: after.positions }, h.actors.secretario)).rejects.toMatchObject({ code: 'permission-denied' });
+  });
+});

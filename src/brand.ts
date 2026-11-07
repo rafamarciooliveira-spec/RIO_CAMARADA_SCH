@@ -16,4 +16,11 @@ export const BRAND = {
    */
   hostTenants: { 'riocamarada.vercel.app': 'riocamarada' } as Record<string, string>,
   year: 2026,
+  /**
+   * Endereços com o login do Google pela própria origem (vercel.json repassa /__/auth para o Firebase).
+   * Usado no atalho da tela inicial do iPhone, onde a janela do Google não devolve o login.
+   * Cada endereço daqui precisa estar nos URIs de redirecionamento do cliente OAuth no Google Cloud:
+   * https://<endereço>/__/auth/handler
+   */
+  authProxyHosts: ['vereinapp.vercel.app', 'riocamarada.vercel.app'],
 };

@@ -236,10 +236,10 @@ service cloud.firestore {
           (isMember(t) && resource.data.audience == 'socios' && resource.data.status == 'publicado');
       }
       match /statementLines/{id} { allow read: if perm(t, 'financeiro', 'ver'); }
-      // Escalas de trabalho: a diretoria de eventos vê todas; o sócio, as abertas e encerradas
+      // Escalas de trabalho: quem tem Eventos ou Escalas vê todas; o sócio, as abertas e encerradas
       // (a consulta precisa filtrar status). Só o servidor grava.
       match /rosters/{id} {
-        allow read: if perm(t, 'eventos', 'ver') ||
+        allow read: if perm(t, 'eventos', 'ver') || perm(t, 'escalas', 'ver') ||
           (isMember(t) && resource.data.status in ['aberta', 'encerrada']);
       }
 

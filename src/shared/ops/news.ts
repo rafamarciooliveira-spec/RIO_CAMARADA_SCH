@@ -32,6 +32,7 @@ export function effectiveNewsConfig(tenant: Pick<TenantDoc, 'societyType'>, stor
     keywords: stored?.keywords?.length ? stored.keywords : [...preset.newsKeywords],
     includeRegion: stored?.includeRegion ?? true,
     blockedSources: stored?.blockedSources || [],
+    preferredSources: stored?.preferredSources || [],
     updatedAt: stored?.updatedAt || '',
   };
 }
@@ -45,6 +46,43 @@ export function normalizeSource(s: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
+}
+
+/** Domínio de um site digitado pela diretoria (com ou sem https://, com ou sem www.) */
+export function siteDomain(site: string): string {
+  const raw = site.trim().toLowerCase();
+  try {
+    return new URL(/^https?:\/\//.test(raw) ? raw : `https://${raw}`).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+/** A manchete é de uma das fontes da região? Devolve o nome cadastrado */
+export function preferredSourceOf(url: string, source: string, preferred: NewsConfig['preferredSources']): string | null {
+  const d = domainOf(url).replace(/^www\./, '');
+  for (const p of preferred) {
+    const pd = siteDomain(p.site);
+    if ((pd && (d === pd || d.endsWith(`.${pd}`))) || normalizeSource(p.name) === normalizeSource(source)) return p.name;
+  }
+  return null;
+}
+
+/** Busca própria para cada fonte da região: as palavras-chave da sociedade dentro do site do veículo */
+export function preferredQueries(cfg: Pick<NewsConfig, 'keywords' | 'preferredSources'>, max = 3): string[] {
+  const words = cfg.keywords
+    .slice(0, 3)
+    .map(k => k.replace(/["“”]/g, '').replace(/\s+/g, ' ').trim())
+    .filter(k => k.length >= 2)
+    .map(k => (k.includes(' ') ? `"${k}"` : k));
+  const out: string[] = [];
+  for (const p of cfg.preferredSources) {
+    const d = siteDomain(p.site);
+    if (!d) continue;
+    out.push(words.length ? `site:${d} (${words.join(' OR ')})` : `site:${d}`);
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 export function isBlockedSource(source: string, url: string, blocked: string[]): boolean {
@@ -96,11 +134,15 @@ export async function refreshHeadlines(ctx: OpContext): Promise<RefreshResult> {
   const empty: RefreshResult = { ok: false, queries: [], added: 0, duplicates: 0, blocked: 0, failedQueries: 0, removed: 0 };
   if (!ctx.news) return { ...empty, warning: 'A busca de manchetes não está disponível neste ambiente.' };
   if (!cfg.enabled) return { ...empty, warning: 'As manchetes da região estão desligadas nas configurações de notícias.' };
-  const queries = buildNewsQuery(cfg.keywords, ctx.tenant!.region, cfg.includeRegion);
+  // Fontes da região primeiro (sem filtro de estado: o próprio site já é da região)
+  const queries = [...preferredQueries(cfg), ...buildNewsQuery(cfg.keywords, ctx.tenant!.region, cfg.includeRegion)];
   if (!queries.length) return { ...empty, warning: 'Cadastre ao menos uma palavra-chave.' };
 
   const res: RefreshResult = { ...empty, ok: true, queries };
   const seen = new Set<string>();
+  // A mesma matéria republicada por vários sites (mesmo título) entra uma vez só
+  const titleKey = (x: string) => normalizeSource(x).replace(/[^a-z0-9 ]/g, '').slice(0, 120);
+  const titles = new Set((await ctx.store.query<NewsItemDoc>(P.news(t), { where: [['kind', '==', 'externa']] })).map(r => titleKey(r.data.title)));
   const nowMs = ctx.now().getTime();
   for (const q of queries) {
     let list: NewsHeadline[] = [];
@@ -114,7 +156,9 @@ export async function refreshHeadlines(ctx: OpContext): Promise<RefreshResult> {
       const url = safeUrl(String(h?.url || ''));
       const title = String(h?.title || '').replace(/\s+/g, ' ').trim().slice(0, 300);
       if (!url || !title) continue;
-      const source = String(h.source || '').replace(/\s+/g, ' ').trim().slice(0, 120) || domainOf(url);
+      const rawSource = String(h.source || '').replace(/\s+/g, ' ').trim().slice(0, 120) || domainOf(url);
+      const preferredName = preferredSourceOf(url, rawSource, cfg.preferredSources);
+      const source = preferredName || rawSource;
       if (isBlockedSource(source, url, cfg.blockedSources)) {
         res.blocked++;
         continue;
@@ -122,6 +166,11 @@ export async function refreshHeadlines(ctx: OpContext): Promise<RefreshResult> {
       const id = await externalNewsId(ctx, url);
       if (seen.has(id)) continue;
       seen.add(id);
+      if (titles.has(titleKey(title))) {
+        res.duplicates++;
+        continue;
+      }
+      titles.add(titleKey(title));
       const path = `${P.news(t)}/${id}`;
       if (await ctx.store.get(path)) {
         res.duplicates++;
@@ -141,6 +190,7 @@ export async function refreshHeadlines(ctx: OpContext): Promise<RefreshResult> {
         hidden: false,
         visibility: 'socios',
         query: q.slice(0, 120),
+        ...(preferredName ? { preferred: true } : {}),
         createdAt: ctx.nowIso,
       };
       await ctx.store.set(path, doc as unknown as Record<string, unknown>);
@@ -170,6 +220,8 @@ export const saveNewsConfig = defineOp({
     keywords: zKeywords,
     includeRegion: z.boolean(),
     blockedSources: z.array(zText(120).min(1)).max(50),
+    // Opcional: quem só bloqueia uma fonte (botão na manchete) não apaga as fontes da região
+    preferredSources: z.array(z.object({ name: zText(120).min(2), site: zText(200) })).max(10).optional(),
   }),
   auth: 'user',
   tenant: { perm: ['noticias', 'editar'] },
@@ -189,9 +241,14 @@ export const saveNewsConfig = defineOp({
     const keywords = dedupe(input.keywords);
     const blockedSources = dedupe(input.blockedSources);
     const prev = effectiveNewsConfig(ctx.tenant!, await ctx.store.get<StoredNewsConfig>(P.newsConfig(t)));
+    const preferredSources = input.preferredSources?.map(p => {
+      const site = p.site.trim() ? siteDomain(p.site) : '';
+      if (p.site.trim() && !site) fail('invalid-argument', `O site de "${p.name}" não parece um endereço. Ex.: reportergabrieljunior.com.br`);
+      return { name: p.name.replace(/\s+/g, ' ').trim(), site };
+    });
     await ctx.store.set(
       P.newsConfig(t),
-      { enabled: input.enabled, keywords, includeRegion: input.includeRegion, blockedSources, updatedAt: ctx.nowIso },
+      { enabled: input.enabled, keywords, includeRegion: input.includeRegion, blockedSources, ...(preferredSources ? { preferredSources } : {}), updatedAt: ctx.nowIso },
       { merge: true }
     );
     // Fonte recém bloqueada: as manchetes dela que já estão gravadas somem da lista
@@ -236,9 +293,32 @@ registerJobs([
   },
 ]);
 
+/** Título, chamada e veículo de um link (a fonte da região cadastrada dá o nome do veículo) */
+async function previewLink(ctx: OpContext, url: string): Promise<{ title: string; summary: string; source: string; fetched: boolean }> {
+  let title = '';
+  let summary = '';
+  let source = domainOf(url);
+  let fetched = false;
+  if (ctx.news?.preview) {
+    try {
+      const p = await ctx.news.preview(url);
+      title = p.title;
+      summary = p.description;
+      source = p.siteName || source;
+      fetched = true;
+    } catch {
+      // Site fora do ar ou bloqueando robôs: o título sai do endereço e a diretoria confere
+    }
+  }
+  const cfg = effectiveNewsConfig(ctx.tenant!, await ctx.store.get<StoredNewsConfig>(P.newsConfig(tid(ctx))));
+  source = preferredSourceOf(url, source, cfg.preferredSources) || source;
+  return { title: (title || titleFromUrl(url)).slice(0, 300), summary: summary.slice(0, 400), source: source.slice(0, 120), fetched };
+}
+
 // ---------- Notícias da própria sociedade ----------
 const zNewsFields = z.object({
-  title: zText(150).min(3, 'título com pelo menos 3 caracteres'),
+  // Com o link, o título pode vir vazio: o servidor busca na própria matéria
+  title: zText(150),
   summary: zText(400),
   body: zText(20000),
   imagePath: z.string().max(300).optional().or(z.literal('')),
@@ -254,6 +334,21 @@ function checkLink(url: string | undefined): { url?: string; source?: string } {
   const ok = safeUrl(url);
   if (!ok) fail('invalid-argument', 'O link precisa começar com https://');
   return { url: ok };
+}
+
+/** Completa título, resumo e veículo pelo link quando a diretoria só colou o endereço */
+async function fillFromLink(ctx: OpContext, input: { title: string; summary: string; source?: string }, url: string | undefined): Promise<{ title: string; summary: string; source: string }> {
+  let title = input.title.trim();
+  let summary = input.summary.trim();
+  let source = (input.source || '').trim();
+  if (url && (title.length < 3 || !summary || !source)) {
+    const p = await previewLink(ctx, url);
+    title = title.length >= 3 ? title : p.title;
+    summary = summary || p.summary;
+    source = source || p.source;
+  }
+  if (title.length < 3) fail('invalid-argument', 'Escreva um título com pelo menos 3 letras ou cole o link da matéria.');
+  return { title: title.slice(0, 150), summary: summary.slice(0, 400), source: source || (url ? domainOf(url) : '') };
 }
 
 function checkImage(ctx: OpContext, path: string | undefined): string | undefined {
@@ -281,16 +376,17 @@ export const postNews = defineOp({
     const t = tid(ctx);
     const link = checkLink(input.url || undefined);
     if (!input.summary && !input.body && !link.url) fail('invalid-argument', 'Escreva um resumo, o texto da notícia ou cole o link da matéria.');
+    const filled = await fillFromLink(ctx, input, link.url);
     const imagePath = checkImage(ctx, input.imagePath || undefined);
     const id = ctx.store.newId();
     const doc: NewsItemDoc = {
       id,
       kind: 'interna',
-      title: input.title,
-      summary: input.summary,
+      title: filled.title,
+      summary: filled.summary,
       body: input.body,
       ...(imagePath ? { imagePath } : {}),
-      ...(link.url ? { url: link.url, source: (input.source || '').trim() || domainOf(link.url) } : {}),
+      ...(link.url ? { url: link.url, source: filled.source } : {}),
       publishedAt: ctx.nowIso,
       pinned: input.pinned,
       hidden: false,
@@ -315,18 +411,19 @@ export const updateNews = defineOp({
     if (cur.kind !== 'interna') fail('failed-precondition', 'Manchetes de outros veículos não podem ser editadas, só escondidas.');
     const link = checkLink(input.url || undefined);
     if (!input.summary && !input.body && !link.url) fail('invalid-argument', 'Escreva um resumo, o texto da notícia ou cole o link da matéria.');
+    const filled = await fillFromLink(ctx, input, link.url);
     const imagePath = checkImage(ctx, input.imagePath || undefined);
     if (cur.imagePath && cur.imagePath !== imagePath) await ctx.files.remove(cur.imagePath).catch(() => undefined);
     await ctx.store.set(
       `${P.news(t)}/${input.id}`,
       {
         ...(cur as unknown as Record<string, unknown>),
-        title: input.title,
-        summary: input.summary,
+        title: filled.title,
+        summary: filled.summary,
         body: input.body,
         imagePath: imagePath || '',
         url: link.url || '',
-        source: link.url ? (input.source || '').trim() || domainOf(link.url) : '',
+        source: link.url ? filled.source : '',
         visibility: input.visibility,
         pinned: input.pinned,
         hidden: false,
@@ -395,29 +492,14 @@ export const linkPreview = defineOp({
   async run(ctx, input) {
     const url = safeUrl(input.url);
     if (!url) fail('invalid-argument', 'O link precisa começar com https://');
-    let title = '';
-    let summary = '';
-    let source = domainOf(url);
-    let fetched = false;
-    if (ctx.news?.preview) {
-      try {
-        const p = await ctx.news.preview(url);
-        title = p.title;
-        summary = p.description;
-        source = p.siteName || source;
-        fetched = true;
-      } catch {
-        // Site fora do ar ou bloqueando robôs: o título sai do endereço e a diretoria confere
-      }
-    }
-    return { url, title: title || titleFromUrl(url), summary, source, fetched };
+    return { url, ...(await previewLink(ctx, url!)) };
   },
 });
 
 /** Manchete de outro veículo colada pela diretoria (aparece em "Na região"); o mesmo link não entra duas vezes */
 export const addNewsLink = defineOp({
   name: 'news.addLink',
-  input: zTenant.extend({ url: z.string().min(8).max(2000), title: zText(300).min(3, 'título com pelo menos 3 caracteres'), source: zText(120).optional(), visibility: z.enum(['publico', 'socios']), pinned: z.boolean() }),
+  input: zTenant.extend({ url: z.string().min(8).max(2000), title: zText(300).optional(), source: zText(120).optional(), visibility: z.enum(['publico', 'socios']), pinned: z.boolean() }),
   auth: 'user',
   tenant: { perm: ['noticias', 'criar'] },
   module: 'noticias',
@@ -429,17 +511,27 @@ export const addNewsLink = defineOp({
     const id = await externalNewsId(ctx, url);
     const path = `${P.news(t)}/${id}`;
     const cur = await ctx.store.get<NewsItemDoc>(path);
+    let title = (input.title || '').trim();
+    let source = (input.source || '').trim();
+    if (title.length < 3 || !source) {
+      const p = await previewLink(ctx, url!);
+      title = title.length >= 3 ? title : p.title;
+      source = source || p.source;
+    }
+    if (title.length < 3) fail('invalid-argument', 'Não foi possível ler o título da matéria. Escreva o título.');
+    const cfg = effectiveNewsConfig(ctx.tenant!, await ctx.store.get<StoredNewsConfig>(P.newsConfig(t)));
     const doc: NewsItemDoc = {
       id,
       kind: 'externa',
-      title: input.title.trim(),
-      url,
-      source: (input.source || '').trim() || domainOf(url),
+      title,
+      url: url!,
+      source: source || domainOf(url!),
       publishedAt: cur?.publishedAt || ctx.nowIso,
       pinned: input.pinned,
       hidden: false,
       visibility: input.visibility,
       manual: true,
+      ...(preferredSourceOf(url!, source, cfg.preferredSources) ? { preferred: true } : {}),
       createdAt: cur?.createdAt || ctx.nowIso,
     };
     await ctx.store.set(path, doc as unknown as Record<string, unknown>);

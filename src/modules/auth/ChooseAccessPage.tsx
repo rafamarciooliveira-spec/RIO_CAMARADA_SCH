@@ -9,10 +9,10 @@ import { ArrowRight, BadgeCheck, KeyRound, LayoutDashboard, LogOut, Mail } from 
 import { useData, useDoc, useSession } from '../../app/DataContext.tsx';
 import { P } from '../../shared/paths.ts';
 import type { MembershipDoc, UserDoc } from '../../shared/types.ts';
+import { useGoogleSignIn } from './useGoogleSignIn.ts';
 import { BRAND } from '../../brand.ts';
 import { Badge, Button, Card, Field, Input, Loading, Notice } from '../../ui/index.tsx';
 import { RememberMe } from '../../ui/RememberMe.tsx';
-import { errorMessage } from '../../data/client.ts';
 
 interface Place {
   key: string;
@@ -28,6 +28,7 @@ function LoginBox() {
   const [sent, setSent] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const g = useGoogleSignIn();
   return (
     <Card className="w-full max-w-sm space-y-4 p-6">
       <div className="text-center space-y-1">
@@ -35,23 +36,9 @@ function LoginBox() {
         <p className="text-sm text-muted">Use a mesma conta em todas as sociedades de que você participa.</p>
       </div>
       {error && <Notice tone="bad">{error}</Notice>}
-      <Button
-        className="w-full"
-        variant="secondary"
-        loading={busy}
-        onClick={async () => {
-          setBusy(true);
-          setError('');
-          try {
-            await session.signInGoogle();
-          } catch (e) {
-            const code = (e as { code?: string }).code || '';
-            setError(code.includes('popup-closed') ? 'A janela do Google foi fechada antes de concluir.' : errorMessage(e));
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
+      {g.error && <Notice tone="bad">{g.error}</Notice>}
+      {g.slow && <Notice tone="warn">{g.slowText}</Notice>}
+      <Button className="w-full" variant="secondary" loading={g.busy} disabled={busy} onClick={g.start}>
         Continuar com a Conta Google
       </Button>
       <RememberMe />

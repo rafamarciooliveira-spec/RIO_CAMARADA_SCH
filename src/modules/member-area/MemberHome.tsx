@@ -1,7 +1,7 @@
 /** Início do sócio: situação, próxima cobrança, avisos novos, próximos eventos, carteirinha e pendências. */
 import { useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, BadgeCheck, CalendarDays, ChevronRight, Megaphone, Wallet } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, CalendarClock, CalendarDays, ChevronRight, Megaphone, Wallet } from 'lucide-react';
 import { useData, useList, useSession } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
 import { setupTenantPwa } from '../../app/pwa.ts';
@@ -12,6 +12,7 @@ import { formatDate, formatDateTime, localDateKey } from '../../shared/dates.ts'
 import { formatBRL } from '../../shared/money.ts';
 import { MEMBER_STATUS_LABEL, type ChargeDoc, type EventDoc, type NotificationDoc } from '../../shared/types.ts';
 import { HandbookNotice } from './HandbookPage.tsx';
+import type { RosterDoc } from '../../shared/types.ts';
 import { Badge, Button, Card, EmptyState, Notice, PageHeader, Section } from '../../ui/index.tsx';
 
 function BoardShortcuts() {
@@ -186,6 +187,8 @@ export default function MemberHome() {
         </Section>
       )}
 
+      {t.moduleOn('escalas') && <OpenRosters />}
+
       {m && t.board && <BoardShortcuts />}
 
       {m && m.isMinor === false && m.status === 'pendente' && (
@@ -199,5 +202,40 @@ export default function MemberHome() {
         </Link>
       )}
     </div>
+  );
+}
+
+/** Escalas com inscrição aberta: o sócio vê já na entrada e se candidata */
+function OpenRosters() {
+  const t = useTenant();
+  const list = useList<RosterDoc>(P.rosters(t.tenantId), { where: [['status', '==', 'aberta']], orderBy: [['updatedAt', 'desc']], limit: 3 });
+  if (!list.data.length) return null;
+  return (
+    <Section
+      title="Escalas de trabalho"
+      actions={
+        <Link to={t.to('escalas')} className="text-xs text-accent">
+          Ver todas
+        </Link>
+      }
+    >
+      <ul className="space-y-2">
+        {list.data.map(r => {
+          const free = r.slots.reduce((n, s) => n + Math.max(0, s.needed - s.people.length), 0);
+          return (
+            <li key={r.id}>
+              <Link to={t.to(`escalas/${r.id}`)} className="flex items-center gap-3 p-3 rounded-2xl bg-surface border border-line hover:border-muted">
+                <CalendarClock className="w-5 h-5 text-accent shrink-0" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium truncate">{r.title}</div>
+                  <div className="text-xs text-muted">{free > 0 ? `${free} vaga(s) aberta(s). Toque para se inscrever.` : 'Todas as vagas preenchidas.'}</div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted" aria-hidden />
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </Section>
   );
 }

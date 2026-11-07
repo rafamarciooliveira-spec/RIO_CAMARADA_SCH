@@ -6,7 +6,7 @@
  * - as telas são as mesmas do sistema; as operações também (mesmas regras de permissão).
  * Recarregar a página recomeça do zero.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { FlaskConical, RotateCcw, X } from 'lucide-react';
 import { createMemoryBackend, createMemoryClient, type MemoryBackend } from '../../data/memoryClient.ts';
@@ -36,8 +36,22 @@ function toSessionUser(a: DemoSeedResult['personas']['socio']): SessionUser {
 }
 
 function DemoBar({ persona, onPersona, onReset }: { persona: Persona; onPersona: (p: Persona) => void; onReset: () => void }) {
+  // O cabeçalho do portal gruda logo abaixo desta faixa (senão some atrás dela ao rolar)
+  const bar = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = bar.current;
+    if (!el) return;
+    const put = () => document.documentElement.style.setProperty('--app-top', `${el.offsetHeight}px`);
+    put();
+    const ro = new ResizeObserver(put);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      document.documentElement.style.removeProperty('--app-top');
+    };
+  }, []);
   return (
-    <div role="region" aria-label="Demonstração" className="sticky top-0 z-[45] bg-accent text-black">
+    <div ref={bar} role="region" aria-label="Demonstração" className="sticky top-0 z-[45] bg-accent text-black">
       <div className="max-w-7xl mx-auto px-3 py-1.5 flex flex-wrap items-center gap-2 text-xs sm:text-sm">
         <FlaskConical className="w-4 h-4 shrink-0" aria-hidden />
         <strong className="mr-1">Demonstração com dados fictícios</strong>

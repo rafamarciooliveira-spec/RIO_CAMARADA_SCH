@@ -22,12 +22,24 @@ import {
 import { connectFunctionsEmulator, getFunctions, httpsCallable, type Functions } from 'firebase/functions';
 import { connectStorageEmulator, getBlob, getDownloadURL, getStorage, ref, uploadBytes, type FirebaseStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { BRAND } from '../brand.ts';
 import type { QuerySpec } from '../shared/core/store.ts';
 import type { DataClient, PushState, WithId } from './client.ts';
 import { ClientError } from './client.ts';
 
 export const USE_EMULATORS = import.meta.env.VITE_USE_EMULATORS === 'true';
 export const FUNCTIONS_REGION = 'southamerica-east1';
+
+/** Aberto pelo atalho da tela inicial (app instalado), e não numa aba do navegador */
+export function isStandalone(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (navigator as { standalone?: boolean }).standalone === true || window.matchMedia?.('(display-mode: standalone)').matches === true;
+}
+
+/** Login do Google pela própria origem: só no app instalado e nos endereços preparados */
+export function sameOriginAuth(): boolean {
+  return isStandalone() && BRAND.authProxyHosts.includes(location.host);
+}
 
 let app: FirebaseApp;
 let db: Firestore;
@@ -36,7 +48,9 @@ let storage: FirebaseStorage;
 
 export function firebaseApp(): FirebaseApp {
   if (app) return app;
-  const cfg = USE_EMULATORS ? { ...firebaseConfig, projectId: 'demo-sodalis' } : firebaseConfig;
+  const base = USE_EMULATORS ? { ...firebaseConfig, projectId: 'demo-sodalis' } : firebaseConfig;
+  // No atalho da tela inicial o login vai por redirecionamento na própria origem (ver BRAND.authProxyHosts)
+  const cfg = !USE_EMULATORS && sameOriginAuth() ? { ...base, authDomain: location.host } : base;
   app = initializeApp(cfg);
   const dbId = USE_EMULATORS ? '(default)' : firebaseConfig.firestoreDatabaseId || '(default)';
   db = initializeFirestore(app, { ignoreUndefinedProperties: true }, dbId);

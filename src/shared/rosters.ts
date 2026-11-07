@@ -2,8 +2,9 @@
 import type { RosterDoc, RosterSlot } from './types.ts';
 
 /** Pode mudar datas, turnos e vagas: quem criou e quem essa pessoa indicou */
-export function canManageRoster(r: Pick<RosterDoc, 'createdBy' | 'editorUids'>, uid: string | undefined): boolean {
-  return !!uid && (r.createdBy === uid || (r.editorUids || []).includes(uid));
+/** Muda a escala: quem criou, os administradores que essa pessoa indicou e quem a diretoria autorizou (Escalas: aprovar) */
+export function canManageRoster(r: Pick<RosterDoc, 'createdBy' | 'editorUids'>, uid: string | undefined, boardAdmin = false): boolean {
+  return !!uid && (boardAdmin || r.createdBy === uid || (r.editorUids || []).includes(uid));
 }
 
 /** Ordem da escala: dia, hora de início e função */

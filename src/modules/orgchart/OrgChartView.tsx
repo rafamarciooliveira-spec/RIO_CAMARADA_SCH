@@ -1,7 +1,9 @@
 /** Exibição do organograma nos três estilos. Usado no portal e na página pública. */
+import { useMemo, useState } from 'react';
 import { Crown } from 'lucide-react';
 import type { OrgChartDoc, OrgPosition } from '../../shared/types.ts';
-import { cx, EmptyState } from '../../ui/index.tsx';
+import { cx, EmptyState, Tabs } from '../../ui/index.tsx';
+import { orderedGroups } from './groups.ts';
 
 function initials(name?: string) {
   return (name || '?').split(/\s+/).filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase();
@@ -37,7 +39,7 @@ function Groups({ positions }: { positions: OrgPosition[] }) {
     <div className="space-y-6">
       {[...groups.entries()].map(([g, list]) => (
         <section key={g}>
-          <h3 className="text-xs uppercase tracking-wider text-muted mb-2">{g}</h3>
+          {groups.size > 1 && <h3 className="text-xs uppercase tracking-wider text-muted mb-2">{g}</h3>}
           <div className="flex flex-wrap gap-3">{list.map(p => <Person key={p.id} p={p} />)}</div>
         </section>
       ))}
@@ -98,13 +100,23 @@ function Court({ positions }: { positions: OrgPosition[] }) {
   );
 }
 
+function Styled({ style, positions }: { style: OrgChartDoc['style']; positions: OrgPosition[] }) {
+  if (style === 'arvore') return <Tree positions={positions} />;
+  if (style === 'corte') return <Court positions={positions} />;
+  return <Groups positions={positions} />;
+}
+
 export function OrgChartView({ chart }: { chart: OrgChartDoc | null }) {
+  const groups = useMemo(() => (chart ? orderedGroups(chart) : []), [chart]);
+  const [tab, setTab] = useState('');
   if (!chart || chart.positions.length === 0) return <EmptyState title="Organograma ainda não montado" text="A diretoria pode cadastrar os cargos e quem ocupa cada um." />;
+  if (chart.tabs === false || groups.length < 2) return <Styled style={chart.style} positions={chart.positions} />;
+  // Uma aba por grupo (Diretoria, Majestades do tiro, Beleza...); dentro dela, o estilo escolhido
+  const current = groups.some(g => g.name === tab) ? tab : groups[0].name;
   return (
     <div>
-      {chart.style === 'arvore' && <Tree positions={chart.positions} />}
-      {chart.style === 'cartoes' && <Groups positions={chart.positions} />}
-      {chart.style === 'corte' && <Court positions={chart.positions} />}
+      <Tabs tabs={groups.map(g => ({ id: g.name, label: g.name }))} value={current} onChange={setTab} />
+      <Styled style={chart.style} positions={chart.positions.filter(p => p.group === current)} />
     </div>
   );
 }

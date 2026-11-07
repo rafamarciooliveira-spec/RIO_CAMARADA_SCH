@@ -69,6 +69,8 @@ export function bookingCalendarEntry(id: string, b: BookingDoc, nowIso: string):
     visibility: b.access === 'aberto' ? 'publico' : 'socios',
     source: 'reserva',
     sourceId: id,
+    prepDaysBefore: before(b),
+    prepDaysAfter: after(b),
     createdAt: nowIso,
   };
 }

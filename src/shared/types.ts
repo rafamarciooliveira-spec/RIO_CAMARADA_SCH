@@ -159,6 +159,14 @@ export interface CustomFieldDef {
 }
 
 /** tenants/{t}/config/settings: lido pela diretoria */
+export interface MemberInviteSettings {
+  enabled: boolean;
+  title: string; // ex.: Convite
+  intro: string; // ex.: A diretoria da {sociedade}, através do(a) associado(a) {socio}, tem a honra de convidar
+  closing: string; // ex.: a fazer parte da nossa sociedade.
+  showQr: boolean; // QR para a ficha de proposta
+}
+
 export interface TenantSettings {
   categories: MemberCategory[];
   customFields: CustomFieldDef[];
@@ -184,6 +192,8 @@ export interface TenantSettings {
   retentionYears: { financeiro: number; atas: number; inativos: number };
   emailTemplates: Record<string, { subject: string; body: string }>;
   activeCardTemplateId: string;
+  /** Convite que o sócio manda a amigos (textos da diretoria; {sociedade} e {socio} viram os nomes) */
+  memberInvite?: MemberInviteSettings;
   updatedAt: ISODateTime;
 }
 
@@ -445,6 +455,9 @@ export interface CalendarEntryDoc {
   visibility: CalendarVisibility;
   source: 'manual' | 'evento' | 'cobranca' | 'assembleia' | 'reserva' | 'oficina';
   sourceId?: string;
+  /** Reserva: dias de montagem e desmontagem (aparecem em amarelo na agenda) */
+  prepDaysBefore?: number;
+  prepDaysAfter?: number;
   createdAt: ISODateTime;
 }
 
@@ -869,6 +882,8 @@ export interface NewsConfig {
   keywords: string[]; // começam pelas do tipo da sociedade
   includeRegion: boolean; // acrescenta cidade/estado à busca
   blockedSources: string[]; // fontes que a diretoria não quer mostrar
+  /** Veículos da região que costumam falar das sociedades (ex.: o jornal da cidade): ganham busca própria e o selo de fonte da região */
+  preferredSources: { name: string; site: string }[];
   updatedAt: ISODateTime;
 }
 
@@ -889,6 +904,7 @@ export interface NewsItemDoc {
   visibility: 'publico' | 'socios';
   query?: string; // busca que trouxe a manchete
   createdAt: ISODateTime;
+  preferred?: boolean; // veio de uma fonte da região cadastrada pela diretoria
 }
 
 export type CompetitionFormat = 'individual' | 'times';
@@ -958,6 +974,14 @@ export interface OrgPosition {
   parentId?: string; // estilo árvore
   since?: DateKey;
   roleId?: string; // papel de acesso que vai junto com o cargo
+  roleFromGroup?: boolean; // o acesso veio da aba (grupo); muda junto quando a aba muda
+}
+
+/** Aba do organograma (Diretoria, Diretoria executiva, Majestades do tiro...): ordem e nível de acesso de quem está nela */
+export interface OrgGroup {
+  name: string;
+  order: number;
+  roleId?: string; // quem ocupa cargo nesta aba recebe este papel de acesso no portal
 }
 
 /** tenants/{t}/mandates/{id}: mandato encerrado (galeria de ex-ocupantes) */
@@ -977,6 +1001,8 @@ export interface OrgChartDoc {
   style: OrgChartStyle;
   title: string; // ex.: Diretoria e Majestades 2026
   positions: OrgPosition[];
+  groups?: OrgGroup[]; // abas em ordem; grupos sem registro aqui vão no fim
+  tabs?: boolean; // mostrar cada grupo numa aba (padrão: sim, quando há mais de um)
   showOnPublicPage: boolean;
   updatedAt: ISODateTime;
 }

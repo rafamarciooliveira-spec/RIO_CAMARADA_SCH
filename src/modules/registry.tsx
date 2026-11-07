@@ -40,6 +40,7 @@ import {
   Vote,
   Wallet,
   type LucideIcon,
+  Send,
 } from 'lucide-react';
 import type { Action, ModuleId } from '../shared/modules.ts';
 
@@ -65,7 +66,7 @@ export const PAGES: PageDef[] = [
   { path: 'avisos', label: 'Avisos', icon: Megaphone, area: 'socio', module: 'avisos', element: L(() => import('./notices/NoticesPage.tsx')) },
   { path: 'agenda', label: 'Agenda', icon: CalendarDays, area: 'socio', module: 'agenda', element: L(() => import('./calendar/CalendarPage.tsx')) },
   { path: 'eventos', label: 'Eventos', icon: Ticket, area: 'socio', module: 'eventos', element: L(() => import('./events/MemberEventsPage.tsx')) },
-  { path: 'escalas', label: 'Escalas de trabalho', icon: CalendarClock, area: 'socio', module: 'eventos', element: L(() => import('./events/MemberRostersPage.tsx')) },
+  { path: 'escalas', label: 'Escalas de trabalho', icon: CalendarClock, area: 'socio', module: 'escalas', element: L(() => import('./events/MemberRostersPage.tsx')) },
   { path: 'votacoes', label: 'Votações', icon: Vote, area: 'socio', module: 'votacoes', needsMember: true, element: L(() => import('./governance/MemberVotesPage.tsx')) },
   { path: 'enquetes', label: 'Enquetes', icon: BarChart3, area: 'socio', module: 'engajamento', element: L(() => import('./culture/PollsPage.tsx')) },
   { path: 'noticias', label: 'Notícias', icon: Newspaper, area: 'socio', module: 'noticias', element: L(() => import('./news/NewsPage.tsx')) },
@@ -74,6 +75,7 @@ export const PAGES: PageDef[] = [
   { path: 'manual', label: 'Manual do sócio', icon: BookMarked, area: 'socio', element: L(() => import('./member-area/HandbookPage.tsx')) },
   { path: 'documentos', label: 'Documentos', icon: FileText, area: 'socio', module: 'documentos', element: L(() => import('./culture/LibraryPage.tsx')) },
   { path: 'beneficios', label: 'Benefícios', icon: Gift, area: 'socio', module: 'patrocinios', element: L(() => import('./culture/BenefitsPage.tsx')) },
+  { path: 'convidar', label: 'Convidar amigos', icon: Send, area: 'socio', needsMember: true, element: L(() => import('./member-area/InvitePage.tsx')) },
   { path: 'dependentes', label: 'Dependentes', icon: Users, area: 'socio', needsMember: true, element: L(() => import('./member-area/DependentsPage.tsx')) },
   { path: 'perfil', label: 'Meu perfil e privacidade', icon: User, area: 'socio', element: L(() => import('./member-area/ProfilePage.tsx')) },
 
@@ -83,7 +85,7 @@ export const PAGES: PageDef[] = [
   { path: 'portaria', label: 'Portaria', icon: ScanLine, area: 'diretoria', perm: ['portaria', 'ver'], element: L(() => import('./portaria/PortariaPage.tsx')) },
   { path: 'financeiro', label: 'Financeiro', icon: Landmark, area: 'diretoria', module: 'financeiro', perm: ['financeiro', 'ver'], element: L(() => import('./finance/FinancePage.tsx')) },
   { path: 'gestao-eventos', label: 'Eventos e projetos', icon: Ticket, area: 'diretoria', module: 'eventos', perm: ['eventos', 'ver'], element: L(() => import('./events/EventsPage.tsx')) },
-  { path: 'gestao-escalas', label: 'Escalas de trabalho', icon: CalendarClock, area: 'diretoria', module: 'eventos', perm: ['eventos', 'ver'], element: L(() => import('./events/RostersPage.tsx')) },
+  { path: 'gestao-escalas', label: 'Escalas de trabalho', icon: CalendarClock, area: 'diretoria', module: 'escalas', perm: ['escalas', 'ver'], element: L(() => import('./events/RostersPage.tsx')) },
   { path: 'plano-de-acao', label: 'Plano de ação', icon: ClipboardList, area: 'diretoria', module: 'tarefas', perm: ['tarefas', 'ver'], element: L(() => import('./tasks/TasksPage.tsx')) },
   { path: 'atas', label: 'Atas e assembleias', icon: ScrollText, area: 'diretoria', module: 'atas', perm: ['atas', 'ver'], element: L(() => import('./governance/MinutesPage.tsx')) },
   { path: 'gestao-votacoes', label: 'Votações e eleições', icon: Vote, area: 'diretoria', module: 'votacoes', perm: ['votacoes', 'ver'], element: L(() => import('./governance/ElectionsPage.tsx')) },

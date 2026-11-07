@@ -7,7 +7,7 @@ import { useTenant } from '../../app/TenantContext.tsx';
 import { AssociationLogo } from '../../components/AssociationLogos.tsx';
 import { Button, Card, Field, Input, Notice } from '../../ui/index.tsx';
 import { RememberMe } from '../../ui/RememberMe.tsx';
-import { errorMessage } from '../../data/client.ts';
+import { useGoogleSignIn } from './useGoogleSignIn.ts';
 
 export default function LoginPage() {
   const t = useTenant();
@@ -18,24 +18,12 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [sentTo, setSentTo] = useState('');
   const [busy, setBusy] = useState(false);
+  const g = useGoogleSignIn();
   const [error, setError] = useState('');
 
   useEffect(() => setError(''), [email]);
 
   if (session.user || demo) return <Navigate to={back.startsWith('/') ? back : t.to('inicio')} replace />;
-
-  const google = async () => {
-    setBusy(true);
-    setError('');
-    try {
-      await session.signInGoogle();
-    } catch (e) {
-      const code = (e as { code?: string }).code || '';
-      setError(code.includes('popup-closed') ? 'A janela do Google foi fechada antes de concluir.' : errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const link = async (ev: React.FormEvent) => {
     ev.preventDefault();
@@ -61,8 +49,9 @@ export default function LoginPage() {
           <h1 className="text-lg font-bold">{t.tenant.name}</h1>
           <p className="text-sm text-muted">Entre para ver sua {t.labels.card.toLowerCase()} e o portal.</p>
         </div>
-        {error && <Notice tone="bad">{error}</Notice>}
-        <Button className="w-full" variant="secondary" loading={busy} onClick={google}>
+        {(error || g.error) && <Notice tone="bad">{error || g.error}</Notice>}
+        {g.slow && <Notice tone="warn">{g.slowText}</Notice>}
+        <Button className="w-full" variant="secondary" loading={g.busy} disabled={busy} onClick={g.start}>
           Continuar com a Conta Google
         </Button>
         <RememberMe />
@@ -78,7 +67,7 @@ export default function LoginPage() {
                 <Field label="Seu e-mail">
                   {id => <Input id={id} type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu.email@exemplo.com" />}
                 </Field>
-                <Button type="submit" className="w-full" loading={busy} icon={<Mail className="w-4 h-4" />}>
+                <Button type="submit" className="w-full" loading={busy} disabled={g.busy} icon={<Mail className="w-4 h-4" />}>
                   Enviar link de acesso
                 </Button>
               </form>

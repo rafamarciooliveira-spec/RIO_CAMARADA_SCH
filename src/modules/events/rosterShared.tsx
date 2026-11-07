@@ -56,7 +56,7 @@ export function RosterBoard({ r, mode }: { r: Roster; mode: 'socio' | 'gestor' }
   const session = useSession();
   const uid = session.user?.uid;
   const { run, busy } = useOp();
-  const manage = mode === 'gestor' && canManageRoster(r, uid);
+  const manage = mode === 'gestor' && canManageRoster(r, uid, t.can('escalas', 'aprovar'));
   const open = r.status === 'aberta';
   const [adding, setAdding] = useState('');
   const members = useList<MemberDoc>(manage && t.can('socios', 'ver') ? P.members(t.tenantId) : null, { where: [['status', 'in', ['ativo', 'aprovado', 'em_atraso']]], orderBy: [['fullName', 'asc']], limit: 2000 });

@@ -49,7 +49,7 @@ describe('executor: autenticação e autorização', () => {
 
   it('operação desconhecida falha', async () => {
     const h = await makeTestTenant();
-    await denied(h.call('nao.existe', {}, h.actors.presidente), 'not-found');
+    await denied(h.call('nao.existe', {}, h.actors.presidente), 'unimplemented');
   });
 
   it('com a exigência ligada, master sem segundo fator não entra no painel da plataforma', async () => {

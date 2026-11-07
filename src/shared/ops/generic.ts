@@ -190,6 +190,7 @@ export const GENERIC_SCHEMAS: Record<GenericCollection, z.ZodObject<Record<strin
           id: zId,
           match: z.enum(['grupo', 'cargo']),
           value: s(120).min(1),
+          values: z.array(s(120).min(1)).max(30).optional(),
           primaryColor: zColor,
           secondaryColor: zColor,
           accentColor: zColor,
@@ -202,6 +203,8 @@ export const GENERIC_SCHEMAS: Record<GenericCollection, z.ZodObject<Record<strin
       .max(12)
       .optional(),
     showHonors: z.boolean().optional(),
+    // Quem usa o modelo (cargos ou grupos do organograma); vazio = modelo geral
+    appliesTo: z.array(z.object({ match: z.enum(['grupo', 'cargo']), value: s(120).min(1) })).max(30).optional(),
     isDefault: z.boolean(),
   }),
 };

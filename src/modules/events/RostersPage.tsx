@@ -26,7 +26,7 @@ export default function RostersPage() {
   const t = useTenant();
   const list = useList<RosterDoc>(P.rosters(t.tenantId), { orderBy: [['updatedAt', 'desc']], limit: 50 });
   const [open, setOpen] = useState<Roster | 'nova' | null>(null);
-  const canCreate = t.can('eventos', 'criar');
+  const canCreate = t.can('escalas', 'criar');
   const columns: Column<Roster>[] = [
     { key: 't', label: 'Escala', render: r => <div><div className="font-medium">{r.title}</div><div className="text-xs text-muted">{r.eventName || `Criada por ${r.createdByName}`}</div></div> },
     { key: 'd', label: 'Dias', hideOnMobile: true, render: r => { const d = [...new Set(r.slots.map(s => s.date))].sort(); return d.length ? (d.length === 1 ? formatDate(d[0]) : `${formatDate(d[0])} a ${formatDate(d[d.length - 1])}`) : 'Sem turnos'; } },
@@ -57,7 +57,7 @@ function RosterModal({ r, onClose }: { r: Roster | null; onClose: () => void }) 
   const [tab, setTab] = useState<'quadro' | 'montar'>(r ? 'quadro' : 'montar');
   const live = useDoc<RosterDoc>(r ? P.roster(t.tenantId, r.id) : null);
   const cur = (live.data ? { ...live.data, id: r!.id } : r) as Roster | null;
-  const manage = !cur || canManageRoster(cur, session.user?.uid);
+  const manage = !cur || canManageRoster(cur, session.user?.uid, t.can('escalas', 'aprovar'));
   if (tab === 'montar' && manage) return <RosterEditor r={cur} onClose={onClose} onBoard={cur ? () => setTab('quadro') : undefined} />;
   return <RosterView r={cur!} manage={manage} onClose={onClose} onEdit={() => setTab('montar')} />;
 }

@@ -194,6 +194,7 @@ function ExternalCard({ n, canEdit, blocked, onBlock }: { n: Item; canEdit: bool
             <time dateTime={n.publishedAt} title={formatDateTime(n.publishedAt, t.tenant.timezone)}>
               {relativeTime(n.publishedAt, Date.now(), t.tenant.timezone)}
             </time>
+            {n.preferred && <Badge tone="brand">Fonte da região</Badge>}
             {n.hidden && <Badge tone="warn">Escondida dos sócios</Badge>}
           </div>
         </div>
@@ -318,9 +319,10 @@ function NewsEditor({ item, onClose }: { item: Item | null; onClose: () => void 
     }
   };
 
-  const fetchLink = async () => {
+  const fetchLink = async (u = url) => {
     setError('');
-    const r = await run<{ url: string; title: string; summary: string; source: string; fetched: boolean }>('news.linkPreview', { tenantId: t.tenantId, url: url.trim() });
+    if (!/^https?:\/\/\S+\.\S+/.test(u.trim())) return;
+    const r = await run<{ url: string; title: string; summary: string; source: string; fetched: boolean }>('news.linkPreview', { tenantId: t.tenantId, url: u.trim() });
     if (!r) return;
     setUrl(r.url);
     if (r.title && !title.trim()) setTitle(r.title.slice(0, 150));
@@ -331,7 +333,8 @@ function NewsEditor({ item, onClose }: { item: Item | null; onClose: () => void 
 
   const save = async () => {
     setError('');
-    if (title.trim().length < 3) return setError('Escreva um título com pelo menos 3 letras.');
+    // Com o link, o título pode ficar vazio: o servidor lê da própria matéria
+    if (title.trim().length < 3 && !url.trim()) return setError('Escreva um título com pelo menos 3 letras ou cole o link da matéria.');
     if (!summary.trim() && !body.trim() && !url.trim()) return setError('Escreva um resumo, o texto da notícia ou cole o link da matéria.');
     const data = { tenantId: t.tenantId, title: title.trim(), summary: summary.trim(), body: body.trim(), imagePath, visibility, pinned, url: url.trim(), source: source.trim() };
     const r = item
@@ -357,15 +360,30 @@ function NewsEditor({ item, onClose }: { item: Item | null; onClose: () => void 
         <Field label="Link da matéria (opcional)" hint="Saiu no jornal ou num site? Cole o link: o título e a chamada vêm sozinhos e o sócio abre a matéria completa no site.">
           {id => (
             <div className="flex gap-2">
-              <Input id={id} type="url" inputMode="url" placeholder="https://..." value={url} maxLength={2000} onChange={e => setUrl(e.target.value)} />
-              <Button type="button" variant="secondary" disabled={busy || url.trim().length < 8} onClick={fetchLink}>
+              <Input
+                id={id}
+                type="url"
+                inputMode="url"
+                placeholder="https://..."
+                value={url}
+                maxLength={2000}
+                onChange={e => setUrl(e.target.value)}
+                onPaste={e => {
+                  const v = e.clipboardData.getData('text').trim();
+                  if (v) window.setTimeout(() => fetchLink(v), 0);
+                }}
+                onBlur={() => url.trim() && !title.trim() && fetchLink()}
+              />
+              <Button type="button" variant="secondary" disabled={busy || url.trim().length < 8} onClick={() => fetchLink()}>
                 Buscar
               </Button>
             </div>
           )}
         </Field>
         {url.trim() && <Field label="Veículo">{id => <Input id={id} value={source} maxLength={120} placeholder="Ex.: Repórter Gabriel Júnior" onChange={e => setSource(e.target.value)} />}</Field>}
-        <Field label="1. Título" required>{id => <Input id={id} value={title} maxLength={150} onChange={e => setTitle(e.target.value)} />}</Field>
+        <Field label="1. Título" required={!url.trim()} hint={url.trim() ? 'Pode deixar em branco: o título vem da matéria.' : undefined}>
+          {id => <Input id={id} value={title} maxLength={150} onChange={e => setTitle(e.target.value)} />}
+        </Field>
         <Field label="2. Resumo" hint="Uma ou duas frases. Aparece no cartão da notícia.">
           {id => <Textarea id={id} rows={2} maxLength={400} value={summary} onChange={e => setSummary(e.target.value)} />}
         </Field>
@@ -411,9 +429,10 @@ function LinkModal({ onClose }: { onClose: () => void }) {
   const [visibility, setVisibility] = useState<'publico' | 'socios'>('socios');
   const [pinned, setPinned] = useState(false);
   const [note, setNote] = useState('');
-  const fetchLink = async () => {
+  const fetchLink = async (u = url) => {
     setNote('');
-    const r = await run<{ url: string; title: string; source: string; fetched: boolean }>('news.linkPreview', { tenantId: t.tenantId, url: url.trim() });
+    if (!/^https?:\/\/\S+\.\S+/.test(u.trim())) return;
+    const r = await run<{ url: string; title: string; source: string; fetched: boolean }>('news.linkPreview', { tenantId: t.tenantId, url: u.trim() });
     if (!r) return;
     setUrl(r.url);
     setTitle(r.title);
@@ -434,24 +453,37 @@ function LinkModal({ onClose }: { onClose: () => void }) {
           <Button variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button loading={busy} disabled={title.trim().length < 3 || url.trim().length < 8} onClick={save}>
+          <Button loading={busy} disabled={url.trim().length < 8} onClick={save}>
             Publicar
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label="1. Link" required>
+        <Field label="1. Link" required hint="Basta colar o link: o título e o veículo vêm da própria matéria.">
           {id => (
             <div className="flex gap-2">
-              <Input id={id} type="url" inputMode="url" placeholder="https://..." value={url} maxLength={2000} onChange={e => setUrl(e.target.value)} />
-              <Button type="button" variant="secondary" disabled={busy || url.trim().length < 8} onClick={fetchLink}>
+              <Input
+                id={id}
+                type="url"
+                inputMode="url"
+                placeholder="https://..."
+                value={url}
+                maxLength={2000}
+                onChange={e => setUrl(e.target.value)}
+                onPaste={e => {
+                  const v = e.clipboardData.getData('text').trim();
+                  if (v) window.setTimeout(() => fetchLink(v), 0);
+                }}
+                onBlur={() => url.trim() && !title.trim() && fetchLink()}
+              />
+              <Button type="button" variant="secondary" disabled={busy || url.trim().length < 8} onClick={() => fetchLink()}>
                 Buscar
               </Button>
             </div>
           )}
         </Field>
-        <Field label="2. Título" required>{id => <Input id={id} value={title} maxLength={300} onChange={e => setTitle(e.target.value)} />}</Field>
+        <Field label="2. Título" hint="Pode deixar em branco: vem da matéria.">{id => <Input id={id} value={title} maxLength={300} onChange={e => setTitle(e.target.value)} />}</Field>
         <Field label="3. Veículo">{id => <Input id={id} value={source} maxLength={120} onChange={e => setSource(e.target.value)} />}</Field>
         <Field label="4. Quem pode ver">
           {id => (
@@ -478,6 +510,7 @@ function ConfigModal({ stored, onClose }: { stored: StoredNewsConfig | null; onC
   const [keywords, setKeywords] = useState<string[]>(start.keywords);
   const [includeRegion, setIncludeRegion] = useState(start.includeRegion);
   const [blocked, setBlocked] = useState<string[]>(start.blockedSources);
+  const [preferred, setPreferred] = useState(start.preferredSources);
   const [typed, setTyped] = useState('');
   const [city, setCity] = useState(t.tenant.region?.city || '');
   const [uf, setUf] = useState(t.tenant.region?.state || '');
@@ -502,7 +535,9 @@ function ConfigModal({ stored, onClose }: { stored: StoredNewsConfig | null; onC
       const ok = await run('tenant.update', { tenantId: t.tenantId, region: { city: city.trim(), state: uf } });
       if (!ok) return;
     }
-    const r = await run('news.saveConfig', { tenantId: t.tenantId, enabled, keywords, includeRegion, blockedSources: blocked }, { success: 'Configuração das notícias salva.' });
+    const sources = preferred.map(p => ({ name: p.name.trim(), site: p.site.trim() })).filter(p => p.name);
+    if (sources.some(p => p.name.length < 2)) return setError('Cada fonte da região precisa de um nome.');
+    const r = await run('news.saveConfig', { tenantId: t.tenantId, enabled, keywords, includeRegion, blockedSources: blocked, preferredSources: sources }, { success: 'Configuração das notícias salva.' });
     if (r) onClose();
   };
 
@@ -591,7 +626,26 @@ function ConfigModal({ stored, onClose }: { stored: StoredNewsConfig | null; onC
         </div>
 
         <div className="space-y-2">
-          <div className="text-xs font-semibold text-muted">4. Fontes bloqueadas</div>
+          <div className="text-xs font-semibold text-muted">4. Fontes da região</div>
+          <p className="text-xs text-muted">Jornais, portais e rádios que costumam falar das sociedades. Cada uma ganha uma busca própria com as palavras-chave acima, e as manchetes delas aparecem com o selo Fonte da região.</p>
+          {preferred.map((p, i) => (
+            <div key={i} className="flex gap-2 items-start">
+              <div className="flex-1 grid gap-2 sm:grid-cols-2">
+                <Input aria-label={`Nome da fonte ${i + 1}`} placeholder="Ex.: Repórter Gabriel Júnior" value={p.name} maxLength={120} onChange={e => setPreferred(preferred.map((x, k) => (k === i ? { ...x, name: e.target.value } : x)))} />
+                <Input aria-label={`Site da fonte ${i + 1}`} placeholder="Ex.: reportergabrieljunior.com.br" inputMode="url" value={p.site} maxLength={200} onChange={e => setPreferred(preferred.map((x, k) => (k === i ? { ...x, site: e.target.value } : x)))} />
+              </div>
+              <Button variant="ghost" aria-label={`Tirar fonte ${i + 1}`} icon={<X className="w-4 h-4" aria-hidden />} onClick={() => setPreferred(preferred.filter((_, k) => k !== i))} />
+            </div>
+          ))}
+          {preferred.length < 10 && (
+            <Button size="sm" variant="secondary" icon={<Plus className="w-4 h-4" aria-hidden />} onClick={() => setPreferred([...preferred, { name: '', site: '' }])}>
+              Incluir fonte
+            </Button>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-muted">5. Fontes bloqueadas</div>
           {blocked.length ? (
             <ul className="flex flex-wrap gap-2">
               {blocked.map(b => (

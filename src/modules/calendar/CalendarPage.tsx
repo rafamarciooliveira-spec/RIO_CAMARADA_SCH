@@ -56,7 +56,18 @@ export default function CalendarPage() {
   const items = useMemo(() => {
     const out: Occurrence[] = [];
     const allowed = t.board ? ['publico', 'socios', 'diretoria'] : ['publico', 'socios'];
-    for (const e of entries.data) if (allowed.includes(e.visibility)) out.push(...expandOccurrences({ ...e, source: e.source || 'manual' }, fromIso, toIso));
+    for (const e of entries.data) {
+      if (!allowed.includes(e.visibility)) continue;
+      out.push(...expandOccurrences({ ...e, source: e.source || 'manual' }, fromIso, toIso));
+      // Reserva: dias de montagem e desmontagem do espaço, em amarelo
+      const place = e.location || 'Espaço';
+      const prep = (day: Date, what: string) =>
+        out.push(...expandOccurrences({ id: `${e.id}_prep_${day.toISOString()}`, title: `${place}: ${what}`, description: `Dia de ${what} do espaço. O espaço não está livre neste dia.`, location: e.location, start: day.toISOString(), end: day.toISOString(), allDay: true, category: 'Preparação do espaço', color: '#ca8a04', recurrence: { freq: 'nenhuma' }, visibility: e.visibility, source: 'reserva', sourceId: e.sourceId }, fromIso, toIso));
+      const first = new Date(e.start);
+      const last = new Date(Math.max(Date.parse(e.start), Date.parse(e.end) - 1));
+      for (let i = 1; i <= (e.prepDaysBefore || 0) && i <= 15; i++) prep(noon(addDays(first, -i)), 'montagem');
+      for (let i = 1; i <= (e.prepDaysAfter || 0) && i <= 15; i++) prep(noon(addDays(last, i)), 'desmontagem');
+    }
     for (const ev of events.data) {
       if (ev.status === 'cancelado' || (!t.board && ev.status === 'planejamento')) continue;
       out.push(...expandOccurrences({ id: `evento_${ev.id}`, title: ev.name, description: ev.description, location: ev.location, start: ev.start, end: ev.end, allDay: false, category: 'Eventos', color: '#2563eb', recurrence: { freq: 'nenhuma' }, visibility: 'socios', source: 'evento', sourceId: ev.id }, fromIso, toIso));
@@ -188,6 +199,20 @@ export default function CalendarPage() {
   );
 }
 
+const noon = (d: Date) => {
+  const x = new Date(d);
+  x.setHours(12, 0, 0, 0);
+  return x;
+};
+
+/** O item ocupa o dia (evento de vários dias aparece em todos; fim à meia-noite não conta o dia seguinte) */
+function covers(o: Occurrence, d: Date): boolean {
+  const s = Date.parse(o.start);
+  const e = Math.max(s, Date.parse(o.end) - 1);
+  const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  return s < dayStart + 86400000 && e >= dayStart;
+}
+
 function Chip({ o, onOpen }: { o: Occurrence; onOpen: (o: Occurrence) => void }) {
   return (
     <button type="button" onClick={() => onOpen(o)} className="w-full text-left truncate text-[11px] px-1.5 py-0.5 rounded-md cursor-pointer text-white" style={{ background: o.color }} title={o.title}>
@@ -211,7 +236,7 @@ function MonthGrid({ from, cursor, items, onOpen, onDay }: { from: Date; cursor:
       </div>
       <div className="grid grid-cols-7 divide-x divide-y divide-line border-t border-line">
         {days.map(d => {
-          const list = items.filter(o => sameDay(new Date(o.start), d));
+          const list = items.filter(o => covers(o, d));
           const out = d.getMonth() !== cursor.getMonth();
           return (
             <div key={d.toISOString()} className={cx('min-h-20 sm:min-h-28 p-1 bg-surface space-y-0.5', out && 'opacity-50')}>
@@ -248,7 +273,7 @@ function DaysView({ from, days, items, onOpen, onCreate }: { from: Date; days: n
   return (
     <div className={cx('grid gap-2', days === 7 ? 'sm:grid-cols-7' : 'grid-cols-1')}>
       {list.map(d => {
-        const dayItems = items.filter(o => sameDay(new Date(o.start), d));
+        const dayItems = items.filter(o => covers(o, d));
         return (
           <div key={d.toISOString()} className="rounded-2xl border border-line bg-surface p-2 min-h-32 space-y-1">
             <div className="flex items-center justify-between">

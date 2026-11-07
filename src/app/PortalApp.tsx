@@ -2,7 +2,7 @@
  * Portal da sociedade (/{slug}/...). Mesmo componente no real e na demonstração.
  * Rotas públicas: entrada, validação do QR, convite, proposta de sócio e página pública.
  */
-import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { LogOut, Menu, Bell, X, ChevronsUpDown, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 import { ThemeToggle } from '../ui/ThemeToggle.tsx';
@@ -105,14 +105,31 @@ function NotificationsBell() {
   const [open, setOpen] = useState(false);
   const unread = list.data.filter(n => !n.read);
   const navigate = useNavigate();
+  const location = useLocation();
+  const box = useRef<HTMLDivElement>(null);
+  // Fecha ao tocar fora, com Esc ou ao trocar de tela (não precisa tocar no sino de novo)
+  useEffect(() => setOpen(false), [location.pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
   return (
-    <div className="relative">
-      <button onClick={() => setOpen(o => !o)} aria-label={`Notificações${unread.length ? `, ${unread.length} não lidas` : ''}`} className="relative p-2 rounded-xl hover:bg-surface-2 cursor-pointer">
+    <div className="relative" ref={box}>
+      <button onClick={() => setOpen(o => !o)} aria-expanded={open} aria-label={`Notificações${unread.length ? `, ${unread.length} não lidas` : ''}`} className="relative p-2 rounded-xl hover:bg-surface-2 cursor-pointer">
         <Bell className="w-5 h-5" />
         {unread.length > 0 && <span className="absolute top-1 right-1 min-w-4 h-4 px-1 rounded-full bg-bad text-white text-[10px] font-bold flex items-center justify-center">{unread.length}</span>}
       </button>
       {open && (
-        <div className="absolute right-0 z-40 mt-2 w-80 max-w-[90vw] bg-surface border border-line rounded-xl shadow-xl">
+        <div className="fixed left-2 right-2 top-14 sm:absolute sm:left-auto sm:top-auto sm:right-0 z-40 sm:mt-2 sm:w-80 bg-surface border border-line rounded-xl shadow-xl">
           <div className="flex items-center justify-between px-3 py-2 border-b border-line">
             <span className="text-sm font-semibold">Notificações</span>
             {unread.length > 0 && (
@@ -121,7 +138,7 @@ function NotificationsBell() {
               </button>
             )}
           </div>
-          <div className="max-h-96 overflow-y-auto overscroll-contain custom-scrollbar divide-y divide-line">
+          <div className="max-h-[min(24rem,70vh)] overflow-y-auto overscroll-contain custom-scrollbar divide-y divide-line">
             {list.data.length === 0 && <p className="p-4 text-sm text-muted">Nenhuma notificação.</p>}
             {list.data.map(n => (
               <button
@@ -200,7 +217,7 @@ function Shell() {
   const routes = [...socio, ...diretoria];
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-30 bg-bg/90 backdrop-blur border-b border-line">
+      <header className="sticky top-[var(--app-top,0px)] z-30 bg-bg/90 backdrop-blur border-b border-line">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-3">
           <button className="lg:hidden p-2 -ml-2 rounded-xl hover:bg-surface-2 cursor-pointer" onClick={() => setMenuOpen(true)} aria-label="Abrir menu">
             <Menu className="w-5 h-5" />
@@ -227,7 +244,7 @@ function Shell() {
         </div>
       </header>
       <div className="flex-1 max-w-7xl w-full mx-auto flex">
-        <aside className="hidden lg:block w-64 shrink-0 p-4 border-r border-line overflow-y-auto overscroll-contain custom-scrollbar sticky top-14 h-[calc(100vh-3.5rem)]">{nav}</aside>
+        <aside className="hidden lg:block w-64 shrink-0 p-4 border-r border-line overflow-y-auto overscroll-contain custom-scrollbar sticky top-[calc(var(--app-top,0px)+3.5rem)] h-[calc(100vh-3.5rem-var(--app-top,0px))]">{nav}</aside>
         {menuOpen && (
           <div className="lg:hidden fixed inset-0 z-40 bg-black/60 overscroll-contain" onClick={() => setMenuOpen(false)}>
             <aside role="dialog" aria-modal="true" aria-label="Menu" className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-surface p-4 overflow-y-auto overscroll-contain" onClick={e => e.stopPropagation()}>
