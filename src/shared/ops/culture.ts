@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { defineOp, fail, registerJobs, zDateKey, zId, zTenant, zText, type OpContext } from '../core/ops.ts';
 import { deleteField } from '../core/store.ts';
+import { caresFor } from '../dependents.ts';
 import { P } from '../paths.ts';
 import { addDaysKey, formatDate } from '../dates.ts';
 import { bookingCalendarEntry, bookingsClash } from '../bookings.ts';
@@ -19,7 +20,7 @@ async function isOwnOrDependent(ctx: OpContext, memberId: string): Promise<boole
   if (!own) return false;
   if (own === memberId) return true;
   const m = await ctx.store.get<MemberDoc>(P.member(tid(ctx), memberId));
-  return m?.dependentOf === own;
+  return !!m && caresFor(m, own);
 }
 
 export const workshopsEnroll = defineOp({

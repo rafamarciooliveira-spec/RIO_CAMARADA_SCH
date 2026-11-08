@@ -271,6 +271,7 @@ export function BackPanel({ value, set }: PanelProps) {
   };
   return (
     <div className="space-y-4">
+      <AffiliationBlock value={value} set={set} />
       <Toggle checked={value.showQrCode} onChange={v => set({ showQrCode: v })} label="QR de validação no verso" />
       <Toggle checked={!!value.showHonors} onChange={v => set({ showHonors: v })} label="Histórico de cargos e honrarias no verso" />
       {value.showHonors && <p className="text-xs text-muted">Sai sozinho do organograma (cargos atuais), da galeria de mandatos e das honrarias de cada sócio. Ex.: "Rei do tiro: 2019 a 2020", "Presidente: desde 2024".</p>}
@@ -303,6 +304,51 @@ export function BackPanel({ value, set }: PanelProps) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Filiação no verso: a federação, liga ou associação regional a que a sociedade pertence (texto e logo) */
+function AffiliationBlock({ value, set }: { value: CardTemplateDoc; set: PanelProps['set'] }) {
+  const t = useTenant();
+  const { client } = useData();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const upload = async (f: File | undefined) => {
+    if (!f) return;
+    setBusy(true);
+    setError('');
+    try {
+      const blob = await resizeImage(f, 400, 'image/png');
+      const path = `tenants/${t.tenantId}/public/card-affiliation-${randomId()}.png`;
+      await client.upload(path, blob, 'image/png');
+      const u = await client.publicUrl(path);
+      set({ affiliationLogoUrl: u && /^https?:/.test(u) && u.length <= 600 ? u : path });
+    } catch (e) {
+      setError((e as Error).message || 'Não foi possível enviar a logo.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="space-y-2 p-3 rounded-xl border border-line">
+      <div className="text-xs font-semibold text-muted">Filiação (federação, liga ou associação da região)</div>
+      <Field label="Texto no verso" hint="Ex.: Afiliada à Associação dos Clubes e Sociedades de Tiro do Vale do Itapocu. Em branco, não aparece.">
+        {id => <Input id={id} value={value.affiliationText || ''} maxLength={200} onChange={e => set({ affiliationText: e.target.value })} />}
+      </Field>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className={cx('inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-xl font-semibold bg-surface-2 border border-line cursor-pointer', busy && 'opacity-50')}>
+          <Upload className="w-4 h-4" aria-hidden />
+          {busy ? 'Enviando...' : value.affiliationLogoUrl ? 'Trocar a logo da entidade' : 'Enviar a logo da entidade'}
+          <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={busy} onChange={e => upload(e.target.files?.[0])} />
+        </label>
+        {value.affiliationLogoUrl && (
+          <Button type="button" size="sm" variant="ghost" icon={<Trash2 className="w-4 h-4" />} onClick={() => set({ affiliationLogoUrl: '' })}>
+            Tirar a logo
+          </Button>
+        )}
+      </div>
+      {error && <Notice tone="bad">{error}</Notice>}
     </div>
   );
 }

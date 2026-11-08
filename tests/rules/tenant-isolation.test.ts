@@ -104,7 +104,7 @@ const MATRIX: { path: string; data: Record<string, unknown>; kind: Kind }[] = [
   { path: 'audit/a1', data: { action: 'x' }, kind: { perm: 'auditoria' } },
 ];
 
-type Who = 'presA' | 'presB' | 'socioA' | 'tesA' | 'anon' | 'naoVerificado' | 'suporteExpirado' | 'suporteValido';
+type Who = 'presA' | 'presB' | 'socioA' | 'socio2A' | 'tesA' | 'anon' | 'naoVerificado' | 'suporteExpirado' | 'suporteValido';
 
 function allowedFor(who: Who, kind: Kind, sameTenant: boolean): boolean {
   if (kind === 'none') return false;
@@ -114,7 +114,7 @@ function allowedFor(who: Who, kind: Kind, sameTenant: boolean): boolean {
   if (!sameTenant || who === 'suporteExpirado') return false;
   if (who === 'presA' || who === 'suporteValido') return true;
   if (kind === 'member') return true;
-  if (who === 'socioA') return false;
+  if (who === 'socioA' || who === 'socio2A') return false;
   // tesA: diretoria, só financeiro
   if (kind === 'board') return true;
   return kind.perm === 'financeiro';
@@ -167,6 +167,9 @@ beforeAll(async () => {
     await put('tenants/A/members/mA1', { fullName: 'Titular A', uid: 'socioA' });
     await put('tenants/A/members/mA2', { fullName: 'Dependente A', dependentOf: 'mA1' });
     await put('tenants/A/members/mA3', { fullName: 'Outro A', uid: 'socio2A' });
+    // Filho de mA1 que a mãe (mA3) também cuida
+    await put('tenants/A/members/mA4', { fullName: 'Filho A', dependentOf: 'mA1', guardianIds: ['mA3'] });
+    await put('tenants/A/members/mA4/private/pii', { cpfMasked: '***' });
     await put('tenants/B/members/mB1', { fullName: 'Sócio B', uid: 'socioB' });
     for (const [t, m] of [['A', 'mA1'], ['A', 'mA2'], ['A', 'mA3'], ['B', 'mB1']]) {
       await put(`tenants/${t}/members/${m}/private/pii`, { cpfMasked: '***.111.222-**', email: `${m}@teste.local` });
@@ -266,6 +269,15 @@ describe('dono do dado', () => {
       await expectRead('socioA', `tenants/A/members/${m}/history/h1`, true);
       await expectRead('socioA', `tenants/A/members/${m}/changes/c1`, true);
     }
+  });
+
+  it('o segundo responsável (pai e mãe sócios) lê o cadastro e a PII do filho; quem não é responsável, não', async () => {
+    await expectRead('socio2A', 'tenants/A/members/mA4', true);
+    await expectRead('socio2A', 'tenants/A/members/mA4/private/pii', true);
+    await expectRead('socio2A', 'tenants/A/members/mA2', false);
+    const f = db('socio2A');
+    await assertSucceeds(getDocs(query(collection(f, 'tenants/A/members'), where('guardianIds', 'array-contains', 'mA3'))));
+    await assertFails(getDocs(query(collection(f, 'tenants/A/members'), where('guardianIds', 'array-contains', 'mA1'))));
   });
 
   it('sócio não lê cadastro nem PII de outro sócio', async () => {

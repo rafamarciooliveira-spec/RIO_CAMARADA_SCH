@@ -167,6 +167,15 @@ export interface MemberInviteSettings {
   showQr: boolean; // QR para a ficha de proposta
 }
 
+export interface JoinPaymentSettings {
+  enabled: boolean;
+  feeCents: number; // taxa de associação (joia); 0 = sem taxa
+  feeLabel: string; // ex.: Taxa de associação, Joia
+  includeCategoryFee: boolean; // somar a anuidade ou mensalidade da categoria escolhida
+  requireProof: boolean; // só segue para a ficha com o comprovante anexado
+  note: string; // instruções da diretoria (ex.: a anuidade vence em março)
+}
+
 export interface TenantSettings {
   categories: MemberCategory[];
   customFields: CustomFieldDef[];
@@ -192,6 +201,8 @@ export interface TenantSettings {
   retentionYears: { financeiro: number; atas: number; inativos: number };
   emailTemplates: Record<string, { subject: string; body: string }>;
   activeCardTemplateId: string;
+  /** Adesão com pagamento: link próprio que mostra os valores, a chave Pix e pede o comprovante antes da ficha */
+  joinPayment?: JoinPaymentSettings;
   /** Convite que o sócio manda a amigos (textos da diretoria; {sociedade} e {socio} viram os nomes) */
   memberInvite?: MemberInviteSettings;
   updatedAt: ISODateTime;
@@ -268,7 +279,12 @@ export interface MemberDoc {
   birthMonthDay?: string; // "MM-DD" para aniversariantes
   isMinor: boolean;
   guardianMemberId?: string;
-  dependentOf?: string;
+  dependentOf?: string; // titular principal (a mensalidade do dependente vai na dele)
+  guardianIds?: string[]; // outros responsáveis sócios (ex.: a mãe, quando o pai é o titular): veem e cuidam do cadastro, não pagam por ele
+  duplicateOf?: string; // parece a mesma pessoa que este cadastro (dependente incluído pelos dois pais): a diretoria junta ou separa
+  duplicateBy?: 'cpf' | 'nome'; // como foi reconhecido (pelo CPF é certeza; pelo nome e nascimento, a diretoria confere)
+  distinctFrom?: string[]; // a diretoria disse que não é a mesma pessoa (não sugerir de novo)
+  joinProof?: { path: string; at: ISODateTime; amountCents: number; contentType: string }; // comprovante do Pix da adesão
   changePending?: boolean; // há pedido de alteração esperando a diretoria
   birthYear?: number; // ano de nascimento (com birthMonthDay dá a idade, sem abrir os dados pessoais)
   ageAlerts?: string[]; // avisos de idade já enviados (ex.: "paga_2027", "limite_2030")
@@ -971,7 +987,9 @@ export interface OrgPosition {
   highlight: boolean; // destaque visual (coroa, cartão maior)
   memberId?: string;
   personName?: string; // nome exibido (pode ser alguém sem cadastro)
-  parentId?: string; // estilo árvore
+  parentId?: string; // estilo árvore: superior
+  under?: string; // cartões e corte: fica logo abaixo deste cargo, na mesma coluna (o vice abaixo do titular)
+  row?: number; // linha dentro da aba (cargos da mesma linha ficam lado a lado)
   since?: DateKey;
   roleId?: string; // papel de acesso que vai junto com o cargo
   roleFromGroup?: boolean; // o acesso veio da aba (grupo); muda junto quando a aba muda

@@ -14,6 +14,7 @@ import { statusTone } from '../statusTone.ts';
 import { ChangeReview } from './ChangeReview.tsx';
 import { TransferAction } from './Transfers.tsx';
 import { HolderFamily, PromoteDependent } from './FamilyPanel.tsx';
+import { DuplicateNotice, Guardians, JoinProofView } from './Duplicates.tsx';
 
 const FIX_REASONS = [
   'Foto ilegível ou ausente',
@@ -89,6 +90,9 @@ export function MemberDetail({ memberId, onClose }: { memberId: string; onClose:
       />
       {tab === 'dados' && (
         <div className="space-y-3">
+          <DuplicateNotice m={m} onMerged={kept => kept !== m.id && onClose()} />
+          <JoinProofView m={m} />
+          {m.dependentOf && <Guardians m={m} />}
           <dl className="grid sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <div>
               <dt className="text-xs text-muted">Entrada</dt>

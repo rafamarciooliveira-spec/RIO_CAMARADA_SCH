@@ -65,9 +65,12 @@ service cloud.firestore {
       return emailOk() && data.get('uid', '__sem_uid__') == request.auth.uid;
     }
 
-    // Dono do cadastro do sócio: a própria conta ou o titular de um dependente
+    // Dono do cadastro do sócio: a própria conta, o titular de um dependente ou um segundo responsável (pai e mãe)
     function ownsMemberData(t, data) {
-      return isOwnUid(data) || (isMember(t) && data.get('dependentOf', '__sem_titular__') == myMemberId(t));
+      return isOwnUid(data) || (isMember(t) && (
+        data.get('dependentOf', '__sem_titular__') == myMemberId(t) ||
+        data.get('guardianIds', []).hasAny([myMemberId(t)])
+      ));
     }
 
     function ownsMember(t, memberId) {

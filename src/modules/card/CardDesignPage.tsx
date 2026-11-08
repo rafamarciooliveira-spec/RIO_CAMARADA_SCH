@@ -86,6 +86,8 @@ export default function CardDesignPage() {
   }, [selected, dirty, t.tenant.name]);
 
   const logoSrc = useLogoSrc(draft?.logoUrl);
+  const affRaw = useLogoSrc(draft?.affiliationLogoUrl);
+  const affiliationSrc = draft?.affiliationLogoUrl ? affRaw : '';
 
   if (list.loading) return <Loading />;
   if (list.error) return <EmptyState title="Não foi possível carregar os modelos" text={list.error} />;
@@ -251,6 +253,7 @@ export default function CardDesignPage() {
               stickers={previewStickers}
               member={{ ...SAMPLE, roles: previewPos ? [previewPos.title] : [], honors: draft.showHonors ? SAMPLE_HONORS : undefined }}
               logoSrc={logoSrc}
+              affiliationSrc={affiliationSrc}
               qrDataUrl={null}
               qrCaption="O QR real aparece na carteirinha do sócio"
               side={side}

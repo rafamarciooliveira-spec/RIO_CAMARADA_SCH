@@ -45,7 +45,7 @@ beforeAll(async () => {
     await m('tenants/A/memberships/tesA', { board: true, perms: { financeiro: ['ver', 'editar'] } });
     await m('tenants/A/memberships/suporteExpirado', { board: true, perms: ALL, expiresAtMs: Date.now() - 60_000 });
     await setDoc(doc(f, 'tenants/A/members/mA1'), { uid: 'socioA' });
-    await setDoc(doc(f, 'tenants/A/members/mA2'), { dependentOf: 'mA1' });
+    await setDoc(doc(f, 'tenants/A/members/mA2'), { dependentOf: 'mA1', guardianIds: ['mA3'] });
     await setDoc(doc(f, 'tenants/A/members/mA3'), { uid: 'socio2A' });
     const s = ctx.storage();
     for (const t of ['A', 'B']) {
@@ -74,6 +74,24 @@ describe('logos e imagens públicas', () => {
     await assertFails(up('anon', 'tenants/A/public/capa.png', PNG, 'image/png'));
     await assertFails(up('presA', 'tenants/B/public/capa.png', PNG, 'image/png'));
     await assertFails(up('naoVerificado', 'tenants/A/public/capa.png', PNG, 'image/png'));
+  });
+});
+
+describe('segundo responsável e comprovante da adesão', () => {
+  it('a mãe (segunda responsável) envia e lê a foto do filho', async () => {
+    await assertSucceeds(up('socio2A', 'tenants/A/members/mA2/photo/mae.png', PNG, 'image/png'));
+    await assertSucceeds(read('socio2A', 'tenants/A/members/mA2/photo/mae.png'));
+  });
+
+  it('comprovante: o dono envia imagem ou PDF até 10 MB; a diretoria e o financeiro leem; outro sócio não', async () => {
+    await assertSucceeds(up('socioA', 'tenants/A/members/mA1/proof/pix.pdf', PNG, 'application/pdf'));
+    await assertSucceeds(up('socioA', 'tenants/A/members/mA1/proof/pix.jpg', PNG, 'image/jpeg'));
+    await assertFails(up('socioA', 'tenants/A/members/mA1/proof/pix.html', PNG, 'text/html'));
+    await assertFails(up('socioA', 'tenants/A/members/mA1/proof/grande.pdf', bytes(10 * MB + 1), 'application/pdf'));
+    await assertFails(up('socio2A', 'tenants/A/members/mA1/proof/pix2.pdf', PNG, 'application/pdf'));
+    await assertSucceeds(read('presA', 'tenants/A/members/mA1/proof/pix.pdf'));
+    await assertSucceeds(read('tesA', 'tenants/A/members/mA1/proof/pix.pdf'));
+    await assertFails(read('socio2A', 'tenants/A/members/mA1/proof/pix.pdf'));
   });
 });
 

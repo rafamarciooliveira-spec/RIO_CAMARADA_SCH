@@ -5,7 +5,7 @@ import { useOp } from '../../../app/DataContext.tsx';
 import { useTenant } from '../../../app/TenantContext.tsx';
 import { MODULES, type ModuleId } from '../../../shared/modules.ts';
 import { EMAIL_TEMPLATES } from '../../../shared/templates.ts';
-import type { CustomFieldDef, MemberCategory, TenantSettings } from '../../../shared/types.ts';
+import type { CustomFieldDef, JoinPaymentSettings, MemberCategory, TenantSettings } from '../../../shared/types.ts';
 import { Badge, Button, Card, Field, Input, MoneyInput, Notice, Select, Textarea, Toggle, useConfirm } from '../../../ui/index.tsx';
 import { SaveBar, slugId } from './common.tsx';
 import { suggestedCompetitionKinds, suggestedModalities } from '../../../shared/societyTypes.ts';
@@ -102,7 +102,7 @@ export function RulesTab({ readOnly }: { readOnly: boolean }) {
           <Field label="Suspender após (dias em atraso)">{id => <Input id={id} type="number" min={1} max={365} value={r.suspendAfterDays} onChange={e => setRule({ suspendAfterDays: Number(e.target.value) })} />}</Field>
         </div>
         <Toggle checked={r.approvalRequired} onChange={v => setRule({ approvalRequired: v })} label="Propostas online precisam de aprovação" />
-        <Toggle checked={r.cardRequiresPhoto} onChange={v => setRule({ cardRequiresPhoto: v })} label="Foto obrigatória para liberar a carteirinha" />
+        <Toggle checked={r.cardRequiresPhoto} onChange={v => setRule({ cardRequiresPhoto: v })} label="Foto obrigatória (pedida na ficha de cadastro, para o titular e cada dependente, e exigida para liberar a carteirinha)" />
         <Field label="Carteirinha baixada ou impressa vale" hint="Na tela do portal o QR se renova sozinho; isto vale para o arquivo salvo ou o papel. Nunca passa da validade do cadastro, e a suspensão derruba o QR na hora.">
           {id => (
             <Select id={id} className="sm:max-w-md" value={r.cardDownloadValidity} onChange={e => setRule({ cardDownloadValidity: e.target.value as '24h' | 'mes' | 'ano' })}>
@@ -120,6 +120,7 @@ export function RulesTab({ readOnly }: { readOnly: boolean }) {
       {!readOnly && <SaveBar dirty={dirty} busy={busy} onSave={submit} disabled={r.suspendAfterDays <= r.gracePeriodDays} />}
       {r.suspendAfterDays <= r.gracePeriodDays && <Notice tone="warn">A suspensão precisa vir depois da carência.</Notice>}
       <DependentRulesBlock readOnly={readOnly} />
+      <JoinPaymentBlock readOnly={readOnly} />
     </fieldset>
   );
 }
@@ -407,5 +408,58 @@ export function LgpdTab({ readOnly }: { readOnly: boolean }) {
       <Notice>Na anonimização, CPF, contato, endereço e foto são apagados. Ficam só identificadores nos registros financeiros e atas, que têm guarda legal própria.</Notice>
       {!readOnly && <SaveBar dirty={dirty} busy={busy} onSave={submit} disabled={r.financeiro < 5 || r.atas < 5 || r.inativos < 1} />}
     </fieldset>
+  );
+}
+
+/** Adesão com Pix: link próprio (/adesao) com os valores, a chave Pix e o comprovante antes da ficha */
+function JoinPaymentBlock({ readOnly }: { readOnly: boolean }) {
+  const t = useTenant();
+  const { save, busy } = useSettingsSave();
+  const s = t.settings!;
+  const [r, setR] = useState<JoinPaymentSettings>(() => ({ enabled: false, feeCents: 0, feeLabel: 'Taxa de associação', includeCategoryFee: true, requireProof: true, note: '', ...s.joinPayment }));
+  const [pix, setPix] = useState(s.pixKey || '');
+  const [dirty, setDirty] = useState(false);
+  const canPix = t.can('financeiro', 'editar');
+  const set = (p: Partial<JoinPaymentSettings>) => (setR(x => ({ ...x, ...p })), setDirty(true));
+  const url = `${location.origin}${t.to('adesao')}`;
+  const submit = async () => {
+    const pixChanged = pix.trim() !== (s.pixKey || '');
+    const ok = await save({ joinPayment: { ...r, feeLabel: r.feeLabel.trim() || 'Taxa de associação', note: r.note.trim() }, ...(pixChanged && canPix ? { pixKey: pix.trim() } : {}) }, 'Adesão salva.');
+    if (ok) setDirty(false);
+  };
+  return (
+    <div className="space-y-3 pt-4 border-t border-line">
+      <div>
+        <h3 className="font-semibold text-sm">Adesão com Pix</h3>
+        <p className="text-sm text-muted">Um link próprio para quem vai se associar: mostra a taxa de associação e a anuidade, a chave Pix com o valor pronto e pede o comprovante. Depois segue para a ficha de cadastro de sempre.</p>
+      </div>
+      <Toggle checked={r.enabled} onChange={v => set({ enabled: v })} label="Usar o link de adesão com pagamento" />
+      {r.enabled && (
+        <div className="space-y-3">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="Nome da taxa" hint="Ex.: Taxa de associação, Joia">{id => <Input id={id} value={r.feeLabel} maxLength={60} onChange={e => set({ feeLabel: e.target.value })} />}</Field>
+            <Field label="Valor da taxa" hint="R$ 0,00 = sem taxa, só a anuidade">{id => <MoneyInput id={id} value={r.feeCents} onChange={v => set({ feeCents: v })} />}</Field>
+          </div>
+          <Toggle checked={r.includeCategoryFee} onChange={v => set({ includeCategoryFee: v })} label="Somar a anuidade (ou a mensalidade) da categoria escolhida" />
+          <Toggle checked={r.requireProof} onChange={v => set({ requireProof: v })} label="Só seguir para a ficha com o comprovante anexado" />
+          <Field label="Chave Pix da sociedade" hint={canPix ? 'Aparece para quem vai se associar, com o Pix copia e cola já no valor.' : 'Só quem cuida do financeiro troca a chave.'}>
+            {id => <Input id={id} value={pix} maxLength={120} disabled={!canPix} placeholder="CNPJ, e-mail, telefone ou chave aleatória" onChange={e => (setPix(e.target.value), setDirty(true))} />}
+          </Field>
+          <Field label="Recado para quem vai se associar (opcional)">{id => <Textarea id={id} rows={3} maxLength={600} value={r.note} onChange={e => set({ note: e.target.value })} placeholder="Ex.: A anuidade vale até 31 de dezembro. Dúvidas com a secretaria." />}</Field>
+          {!pix.trim() && <Notice tone="warn">Sem chave Pix, a página mostra só os valores e pede o comprovante.</Notice>}
+          <div className="p-3 rounded-xl bg-surface-2 text-xs space-y-1">
+            <div className="font-semibold">Link da adesão</div>
+            <div className="font-mono break-all select-all">{url}</div>
+            <div className="text-muted">O convite dos sócios e o link de cadastro passam a mostrar este endereço. A ficha comum (/cadastro) continua valendo para quem já pagou na secretaria.</div>
+            {!dirty && s.joinPayment?.enabled && (
+              <a href={`${t.to('adesao')}?previa=1`} target="_blank" rel="noopener noreferrer" className="inline-block pt-1 font-semibold text-accent underline">
+                Ver a página como quem vai se associar
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+      {!readOnly && <SaveBar dirty={dirty} busy={busy} onSave={submit} />}
+    </div>
   );
 }

@@ -84,10 +84,10 @@ describe('privacidade', () => {
 });
 
 describe('opções do formulário', () => {
-  it('quem ainda não é sócio recebe só categorias e campos, sem modelos de e-mail nem chave Pix', async () => {
+  it('quem ainda não é sócio recebe só categorias, campos e se a foto é obrigatória; a chave Pix só com a adesão com Pix ligada', async () => {
     const h = await makeTestTenant();
     const r = await h.call<Record<string, unknown>>('members.formOptions', { tenantId: h.tenantId }, h.actors.estranho);
-    expect(Object.keys(r).sort()).toEqual(['approvalRequired', 'categories', 'customFields']);
+    expect(Object.keys(r).sort()).toEqual(['approvalRequired', 'categories', 'customFields', 'requirePhoto']);
     expect((r.categories as unknown[]).length).toBeGreaterThan(0);
     await expect(h.call('members.formOptions', { tenantId: h.tenantId }, null)).rejects.toThrow();
   });

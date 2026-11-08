@@ -1,6 +1,9 @@
 /** Sócios: proposta, cadastro, aprovação, situação, dados pessoais, importação e exportação. */
 import { z } from 'zod';
 import { defineOp, fail, zDateKey, zId, zTenant, zText, type OpContext } from '../core/ops.ts';
+import { deleteField } from '../core/store.ts';
+import { caresFor } from '../dependents.ts';
+import { joinAmountCents } from '../joinPayment.ts';
 import { P } from '../paths.ts';
 import { cleanCPF, maskCPF, validateCPF } from '../cpf.ts';
 import { addMonthsKey, ageOn, birthMonthDay, localDateKey } from '../dates.ts';
@@ -59,13 +62,13 @@ function buildConsents(ctx: OpContext, c: z.infer<typeof zConsents>): ConsentRec
   ];
 }
 
-async function cpfFields(ctx: OpContext, cpfRaw: string | undefined, memberId: string) {
+async function cpfFields(ctx: OpContext, cpfRaw: string | undefined, memberId: string, allowDup = false) {
   if (!cpfRaw) return {};
   const cpf = cleanCPF(cpfRaw);
   if (!validateCPF(cpf)) fail('invalid-argument', 'CPF inválido.');
   const hmac = await ctx.crypto.hmacHex(`${tid(ctx)}:${cpf}`);
   const idx = await ctx.store.get<{ memberId: string }>(P.cpfIndex(tid(ctx), hmac));
-  if (idx && idx.memberId !== memberId) fail('already-exists', 'Já existe um cadastro com este CPF nesta sociedade.');
+  if (idx && idx.memberId !== memberId && !allowDup) fail('already-exists', 'Já existe um cadastro com este CPF nesta sociedade.');
   return { cpfEnc: await ctx.crypto.encrypt(cpf), cpfHmac: hmac, cpfMasked: maskCPF(cpf) };
 }
 
@@ -99,6 +102,7 @@ interface CreateArgs {
   uid?: string;
   dependentOf?: string;
   memberId?: string;
+  duplicateOf?: { id: string; by: 'cpf' | 'nome' }; // mesma pessoa já cadastrada (dependente incluído pelos dois pais)
 }
 
 export async function createMemberCore(ctx: OpContext, a: CreateArgs): Promise<string> {
@@ -111,7 +115,7 @@ export async function createMemberCore(ctx: OpContext, a: CreateArgs): Promise<s
   for (const f of a.dependentOf ? [] : settings.customFields) {
     if (f.required && !a.data.custom?.[f.id]) fail('invalid-argument', `Preencha o campo "${f.label}".`);
   }
-  const cpf = await cpfFields(ctx, a.data.cpf, memberId);
+  const cpf = await cpfFields(ctx, a.data.cpf, memberId, !!a.duplicateOf);
   const member: MemberDoc = {
     id: memberId,
     ...(a.uid ? { uid: a.uid } : {}),
@@ -125,6 +129,7 @@ export async function createMemberCore(ctx: OpContext, a: CreateArgs): Promise<s
     isMinor,
     ...(a.data.memberSinceYear ? { memberSinceYear: a.data.memberSinceYear } : {}),
     ...(a.dependentOf ? { dependentOf: a.dependentOf } : {}),
+    ...(a.duplicateOf ? { duplicateOf: a.duplicateOf.id, duplicateBy: a.duplicateOf.by } : {}),
     groups: [],
     custom: a.data.custom || {},
     createdAt: ctx.nowIso,
@@ -153,10 +158,51 @@ export async function createMemberCore(ctx: OpContext, a: CreateArgs): Promise<s
   };
   await ctx.store.set(P.member(t, memberId), member as unknown as Record<string, unknown>);
   await ctx.store.set(P.memberPii(t, memberId), pii as unknown as Record<string, unknown>);
-  await writeCpfIndex(ctx, cpf.cpfHmac, memberId);
+  // O CPF repetido continua apontando para o primeiro cadastro até a diretoria juntar os dois
+  if (!a.duplicateOf) await writeCpfIndex(ctx, cpf.cpfHmac, memberId);
   await addHistory(ctx, memberId, null, a.status);
   await bumpMemberStats(ctx, null, a.status);
   return memberId;
+}
+
+const normName = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const GONE: MemberStatus[] = ['rejeitado', 'desligado'];
+
+/**
+ * A mesma pessoa já cadastrada? Pelo CPF (certeza) ou pelo nome completo e data de nascimento
+ * (o filho que o pai e a mãe incluíram). Não olha cadastros recusados ou desligados.
+ */
+export async function findSamePerson(ctx: OpContext, d: { fullName: string; cpf?: string; birthDate?: string }): Promise<{ member: MemberDoc; by: 'cpf' | 'nome' } | null> {
+  const t = tid(ctx);
+  const cpf = d.cpf ? cleanCPF(d.cpf) : '';
+  if (cpf && validateCPF(cpf)) {
+    const idx = await ctx.store.get<{ memberId: string }>(P.cpfIndex(t, await ctx.crypto.hmacHex(`${t}:${cpf}`)));
+    const m = idx && (await ctx.store.get<MemberDoc>(P.member(t, idx.memberId)));
+    if (m && !GONE.includes(m.status)) return { member: { ...m, id: idx!.memberId }, by: 'cpf' };
+  }
+  const md = birthMonthDay(d.birthDate);
+  if (!md || !d.birthDate) return null;
+  const year = Number(d.birthDate.slice(0, 4));
+  const same = await ctx.store.query<MemberDoc>(P.members(t), { where: [['birthMonthDay', '==', md]], limit: 200 });
+  const hit = same.find(r => r.data.birthYear === year && !GONE.includes(r.data.status) && !r.data.duplicateOf && normName(r.data.fullName) === normName(d.fullName));
+  return hit ? { member: { ...hit.data, id: hit.id }, by: 'nome' } : null;
+}
+
+/** Cria o dependente; se ele já existe por outro responsável, cria marcado para a diretoria juntar */
+async function createDependent(ctx: OpContext, a: { data: z.infer<typeof zPersonal>; consents: z.infer<typeof zConsents>; holderId: string }): Promise<{ id: string; duplicateOf?: MemberDoc }> {
+  const same = await findSamePerson(ctx, a.data);
+  if (same && (same.member.id === a.holderId || same.member.dependentOf === a.holderId || (same.member.guardianIds || []).includes(a.holderId))) {
+    fail('already-exists', `${shortName(a.data.fullName)} já está no seu cadastro.`);
+  }
+  if (same && !same.member.dependentOf && same.by === 'cpf') {
+    fail('already-exists', `${shortName(a.data.fullName)} já tem cadastro próprio com este CPF. Fale com a diretoria para ligar os cadastros.`);
+  }
+  const id = await createMemberCore(ctx, { data: a.data, consents: a.consents, status: 'pendente', dependentOf: a.holderId, ...(same ? { duplicateOf: { id: same.member.id, by: same.by } } : {}) });
+  if (same) {
+    for (const uid of await boardUids(ctx)) await notify(ctx, uid, 'Dependente que parece repetido', `${shortName(a.data.fullName)} já estava cadastrado por outro responsável. Junte os dois cadastros em Sócios.`, 'socios');
+    await ctx.audit('members.duplicate_flagged', id, { of: same.member.id, by: same.by });
+  }
+  return { id, duplicateOf: same?.member };
 }
 
 /** Aprovação: matrícula sequencial, validade pela regra da sociedade e situação inicial */
@@ -166,6 +212,7 @@ export async function approveCore(ctx: OpContext, memberId: string, opts: { cate
   const m = await ctx.store.get<MemberDoc>(P.member(t, memberId));
   if (!m) fail('not-found', 'Sócio não encontrado.');
   if (!['pendente', 'rejeitado', 'desligado'].includes(m!.status)) fail('failed-precondition', 'Este cadastro não está aguardando aprovação.');
+  if (m!.duplicateOf) fail('failed-precondition', `${m!.fullName} parece já estar cadastrado por outro responsável. Junte os dois cadastros (ou diga que não é a mesma pessoa) antes de aprovar.`);
   const cat = await category(settings, opts.categoryId || m!.categoryId);
   const to: MemberStatus = cat.feeCents === 0 || cat.period === 'isento' ? 'ativo' : 'aprovado';
   let number = m!.membershipNumber;
@@ -222,12 +269,15 @@ export const applyMember = defineOp({
       const cat = settings.categories.find(c => c.id === input.data.categoryId);
       if (cat && !cat.allowsDependents) fail('failed-precondition', `A categoria ${cat.name} não permite dependentes.`);
       // O dependente herda os consentimentos do titular, que responde por ele
-      for (const d of input.dependents) depIds.push(await createMemberCore(ctx, { data: d, consents: input.consents, status: 'pendente', dependentOf: memberId }));
+      for (const d of input.dependents) depIds.push((await createDependent(ctx, { data: d, consents: input.consents, holderId: memberId })).id);
     }
     // Sem aprovação exigida, ou quem se cadastra já aprova sócios (diretoria): entra aprovado
     if (!settings.approvalRequired || ctx.can('socios', 'aprovar')) {
       await approveCore(ctx, memberId, {});
-      for (const id of depIds) await approveCore(ctx, id, {});
+      for (const id of depIds) {
+        const d = await ctx.store.get<MemberDoc>(P.member(t, id));
+        if (!d?.duplicateOf) await approveCore(ctx, id, {});
+      }
     } else {
       const who = shortName(input.data.fullName);
       for (const uid of await boardUids(ctx)) {
@@ -235,7 +285,7 @@ export const applyMember = defineOp({
       }
     }
     await ctx.audit('members.applied', memberId, { dependents: depIds.length });
-    return { memberId, dependents: depIds.length };
+    return { memberId, dependents: depIds.length, dependentIds: depIds };
   },
 });
 
@@ -276,9 +326,9 @@ export const addDependent = defineOp({
     const settings = await getSettings(ctx);
     const cat = settings.categories.find(c => c.id === holder!.categoryId);
     if (cat && !cat.allowsDependents) fail('failed-precondition', 'A categoria do titular não permite dependentes.');
-    const memberId = await createMemberCore(ctx, { data: input.data, consents: input.consents, status: 'pendente', dependentOf: input.holderId });
+    const { id: memberId, duplicateOf } = await createDependent(ctx, { data: input.data, consents: input.consents, holderId: input.holderId });
     await ctx.audit('members.dependent_added', memberId, { holder: input.holderId });
-    return { memberId };
+    return { memberId, duplicate: !!duplicateOf };
   },
 });
 
@@ -295,8 +345,10 @@ export const approveMember = defineOp({
       const deps = await ctx.store.query<MemberDoc>(P.members(tid(ctx)), { where: [['dependentOf', '==', input.memberId], ['status', '==', 'pendente']], limit: 20 });
       // O dependente vale até a validade do titular
       const holder = await ctx.store.get<MemberDoc>(P.member(tid(ctx), input.memberId));
-      for (const d of deps) await approveCore(ctx, d.id, { validUntil: holder?.validUntil });
-      dependents = deps.length;
+      // O dependente que parece repetido espera a diretoria juntar ou separar
+      const ready = deps.filter(d => !d.data.duplicateOf);
+      for (const d of ready) await approveCore(ctx, d.id, { validUntil: holder?.validUntil });
+      dependents = ready.length;
     }
     await ctx.audit('members.approved', input.memberId, { status: to, dependents });
     return { status: to, dependents };
@@ -427,7 +479,7 @@ export const updateSelf = defineOp({
     const t = tid(ctx);
     const m = await ctx.store.get<MemberDoc>(P.member(t, input.memberId));
     if (!m) fail('not-found', 'Cadastro não encontrado.');
-    const own = m!.uid === ctx.actor?.uid || (m!.dependentOf && m!.dependentOf === ctx.membership?.memberId);
+    const own = m!.uid === ctx.actor?.uid || caresFor(m!, ctx.membership?.memberId);
     if (!own) fail('permission-denied', 'Você só pode alterar o seu cadastro.');
     const editableIdentity = ['pendente', 'rejeitado'].includes(m!.status);
     if ((input.fullName || input.birthDate || input.cpf) && !editableIdentity) {
@@ -486,7 +538,7 @@ export const requestChange = defineOp({
     const t = tid(ctx);
     const m = await ctx.store.get<MemberDoc>(P.member(t, input.memberId));
     if (!m) fail('not-found', 'Cadastro não encontrado.');
-    const own = m!.uid === ctx.actor?.uid || (m!.dependentOf && m!.dependentOf === ctx.membership?.memberId);
+    const own = m!.uid === ctx.actor?.uid || caresFor(m!, ctx.membership?.memberId);
     if (!own) fail('permission-denied', 'Você só pode pedir alteração do seu cadastro ou dos seus dependentes.');
     if (['pendente', 'rejeitado'].includes(m!.status)) fail('failed-precondition', 'Este cadastro ainda está em análise: corrija direto no formulário.');
     if (m!.status === 'desligado') fail('failed-precondition', 'Este cadastro está desligado.');
@@ -580,7 +632,7 @@ export const setPhoto = defineOp({
     const t = tid(ctx);
     const m = await ctx.store.get<MemberDoc>(P.member(t, input.memberId));
     if (!m) fail('not-found', 'Cadastro não encontrado.');
-    const own = m!.uid === ctx.actor?.uid || (m!.dependentOf && m!.dependentOf === ctx.membership?.memberId);
+    const own = m!.uid === ctx.actor?.uid || caresFor(m!, ctx.membership?.memberId);
     if (!own) ctx.require('socios', 'editar');
     const prefix = `tenants/${t}/members/${input.memberId}/photo/`;
     if (!input.path.startsWith(prefix) || input.path.includes('..')) fail('invalid-argument', 'Caminho de foto inválido.');
@@ -599,7 +651,7 @@ export const getPii = defineOp({
     const t = tid(ctx);
     const m = await ctx.store.get<MemberDoc>(P.member(t, input.memberId));
     if (!m) fail('not-found', 'Cadastro não encontrado.');
-    const own = m!.uid === ctx.actor?.uid || (m!.dependentOf && m!.dependentOf === ctx.membership?.memberId);
+    const own = m!.uid === ctx.actor?.uid || caresFor(m!, ctx.membership?.memberId);
     if (!own) ctx.require('pii', 'ver');
     const pii = await ctx.store.get<MemberPiiDoc>(P.memberPii(t, input.memberId));
     if (!pii) return null;
@@ -707,6 +759,169 @@ export const exportMembers = defineOp({
   },
 });
 
+/** Quem fica quando dois cadastros são a mesma pessoa: o que tem foto, depois o já aprovado, depois o mais antigo */
+function keeperOf(a: MemberDoc, b: MemberDoc): [MemberDoc, MemberDoc] {
+  const score = (m: MemberDoc) => (m.photoPath ? 4 : 0) + (m.status !== 'pendente' ? 2 : 0);
+  if (score(a) !== score(b)) return score(a) > score(b) ? [a, b] : [b, a];
+  return (a.createdAt || '') <= (b.createdAt || '') ? [a, b] : [b, a];
+}
+
+/**
+ * Junta dois cadastros da mesma pessoa (o filho incluído pelo pai e pela mãe): fica um só, com os
+ * dois como responsáveis. A mensalidade continua só com o titular principal do cadastro que fica.
+ * O outro é apagado (com os dados pessoais e a foto) e a pessoa aparece uma vez só no aniversário e nas listas.
+ */
+export const mergeDuplicate = defineOp({
+  name: 'members.mergeDuplicate',
+  input: zTenant.extend({ aId: zId, bId: zId }),
+  auth: 'user',
+  tenant: { perm: ['socios', 'editar'] },
+  async run(ctx, input) {
+    const t = tid(ctx);
+    if (input.aId === input.bId) fail('invalid-argument', 'Escolha dois cadastros diferentes.');
+    const a = await ctx.store.get<MemberDoc>(P.member(t, input.aId));
+    const b = await ctx.store.get<MemberDoc>(P.member(t, input.bId));
+    if (!a || !b) fail('not-found', 'Cadastro não encontrado.');
+    const [keep, drop] = keeperOf({ ...a!, id: input.aId }, { ...b!, id: input.bId });
+    if (!drop.dependentOf) fail('failed-precondition', `${drop.fullName} é titular. Só é possível juntar quando um dos dois é dependente.`);
+    if (drop.uid) fail('failed-precondition', `${drop.fullName} já entra no portal com a própria conta. Fale com o suporte para juntar.`);
+    // Responsáveis: os do que fica, mais o titular e os responsáveis do que sai
+    const holders = [...new Set([...(keep.guardianIds || []), drop.dependentOf!, ...(drop.guardianIds || [])])].filter(x => x && x !== keep.dependentOf && x !== keep.id).slice(0, 4);
+    const kp = await ctx.store.get<MemberPiiDoc>(P.memberPii(t, keep.id));
+    const dp = await ctx.store.get<MemberPiiDoc>(P.memberPii(t, drop.id));
+    // CPF que só o outro tinha passa para o que fica
+    if (!kp?.cpfHmac && dp?.cpfHmac) await ctx.store.set(P.memberPii(t, keep.id), { cpfEnc: dp.cpfEnc, cpfHmac: dp.cpfHmac, cpfMasked: dp.cpfMasked }, { merge: true });
+    if (dp?.cpfHmac) {
+      const idx = await ctx.store.get<{ memberId: string }>(P.cpfIndex(t, dp.cpfHmac));
+      if (!idx || idx.memberId === drop.id) await ctx.store.set(P.cpfIndex(t, dp.cpfHmac), { memberId: keep.id });
+    }
+    await ctx.store.update(P.member(t, keep.id), { guardianIds: holders, duplicateOf: deleteField(), duplicateBy: deleteField(), updatedAt: ctx.nowIso });
+    // Quem estava marcado como repetido do que sai passa a apontar para o que fica
+    const pointing = await ctx.store.query<MemberDoc>(P.members(t), { where: [['duplicateOf', '==', drop.id]], limit: 20 });
+    for (const r of pointing) if (r.id !== keep.id) await ctx.store.update(P.member(t, r.id), { duplicateOf: keep.id, updatedAt: ctx.nowIso });
+    await ctx.store.delete(P.memberPii(t, drop.id));
+    if (drop.photoPath) await ctx.files.remove(drop.photoPath).catch(() => undefined);
+    if (drop.joinProof?.path) await ctx.files.remove(drop.joinProof.path).catch(() => undefined);
+    await ctx.store.delete(P.member(t, drop.id));
+    await bumpMemberStats(ctx, drop.status, null);
+    await addHistory(ctx, keep.id, keep.status, keep.status, 'Cadastro repetido juntado (incluído por outro responsável)');
+    for (const h of holders) {
+      const hm = await ctx.store.get<MemberDoc>(P.member(t, h));
+      if (hm?.uid) await notify(ctx, hm.uid, 'Dependente em um cadastro só', `${shortName(keep.fullName)} agora tem um cadastro só, e você continua vendo a carteirinha.`, 'dependentes');
+    }
+    await ctx.audit('members.duplicate_merged', keep.id, { removed: drop.id });
+    return { keptId: keep.id, removedId: drop.id };
+  },
+});
+
+/** Não é a mesma pessoa: tira a marca (pelo CPF não dá, é certeza) e não sugere de novo */
+export const notDuplicate = defineOp({
+  name: 'members.notDuplicate',
+  input: zTenant.extend({ aId: zId, bId: zId }),
+  auth: 'user',
+  tenant: { perm: ['socios', 'editar'] },
+  async run(ctx, input) {
+    const t = tid(ctx);
+    const a = await ctx.store.get<MemberDoc>(P.member(t, input.aId));
+    const b = await ctx.store.get<MemberDoc>(P.member(t, input.bId));
+    if (!a || !b) fail('not-found', 'Cadastro não encontrado.');
+    if ((a!.duplicateOf === input.bId && a!.duplicateBy === 'cpf') || (b!.duplicateOf === input.aId && b!.duplicateBy === 'cpf')) fail('failed-precondition', 'Os dois têm o mesmo CPF: é a mesma pessoa. Use Juntar.');
+    const pairs: [string, MemberDoc, string][] = [
+      [input.aId, a!, input.bId],
+      [input.bId, b!, input.aId],
+    ];
+    for (const [id, m, other] of pairs) {
+      await ctx.store.update(P.member(t, id), {
+        distinctFrom: [...new Set([...(m.distinctFrom || []), other])].slice(-20),
+        ...(m.duplicateOf === other ? { duplicateOf: deleteField(), duplicateBy: deleteField() } : {}),
+        updatedAt: ctx.nowIso,
+      });
+    }
+    await ctx.audit('members.duplicate_dismissed', input.aId, { other: input.bId });
+    return { ok: true };
+  },
+});
+
+export interface DupSide {
+  id: string;
+  fullName: string;
+  status: MemberStatus;
+  hasPhoto: boolean;
+  holderName: string;
+  dependent: boolean;
+  createdAt: string;
+}
+
+/**
+ * Procura cadastros repetidos que já existem (inclusive os de antes da conferência automática):
+ * mesmo nome e mesma data de nascimento, com pelo menos um dependente. Devolve pares para a diretoria decidir.
+ */
+export const findDuplicates = defineOp({
+  name: 'members.findDuplicates',
+  input: zTenant,
+  auth: 'user',
+  tenant: { perm: ['socios', 'editar'] },
+  rateLimit: { per: 'uid', max: 30, windowSec: 3600 },
+  async run(ctx) {
+    const t = tid(ctx);
+    const rows = await ctx.store.query<MemberDoc>(P.members(t), { limit: 5000 });
+    const names = new Map(rows.map(r => [r.id, r.data.fullName]));
+    const side = (id: string, m: MemberDoc): DupSide => ({ id, fullName: m.fullName, status: m.status, hasPhoto: !!m.photoPath, holderName: m.dependentOf ? names.get(m.dependentOf) || '' : '', dependent: !!m.dependentOf, createdAt: m.createdAt });
+    const groups = new Map<string, { id: string; m: MemberDoc }[]>();
+    for (const r of rows) {
+      const m = r.data;
+      if (GONE.includes(m.status) || !m.fullName || !m.birthMonthDay) continue;
+      const key = `${normName(m.fullName)}|${m.birthMonthDay}|${m.birthYear || ''}`;
+      groups.set(key, [...(groups.get(key) || []), { id: r.id, m }]);
+    }
+    const pairs: { a: DupSide; b: DupSide; by: 'cpf' | 'nome' }[] = [];
+    const has = (x: string, y: string) => pairs.some(p => (p.a.id === x && p.b.id === y) || (p.a.id === y && p.b.id === x));
+    for (const list of groups.values()) {
+      for (let i = 0; i < list.length; i++)
+        for (let j = i + 1; j < list.length; j++) {
+          const [x, y] = [list[i], list[j]];
+          if (!x.m.dependentOf && !y.m.dependentOf) continue;
+          if ((x.m.distinctFrom || []).includes(y.id) || (y.m.distinctFrom || []).includes(x.id)) continue;
+          pairs.push({ a: side(x.id, x.m), b: side(y.id, y.m), by: x.m.duplicateBy === 'cpf' || y.m.duplicateBy === 'cpf' ? 'cpf' : 'nome' });
+        }
+    }
+    // Marcados na inclusão (ex.: pelo CPF, mesmo com o nome escrito diferente)
+    for (const r of rows) {
+      const m = r.data;
+      if (!m.duplicateOf || GONE.includes(m.status) || has(r.id, m.duplicateOf)) continue;
+      const o = rows.find(x => x.id === m.duplicateOf);
+      if (o) pairs.push({ a: side(o.id, o.data), b: side(r.id, m), by: m.duplicateBy || 'nome' });
+    }
+    return { pairs: pairs.slice(0, 100) };
+  },
+});
+
+/** Comprovante do Pix da adesão (enviado logo depois que a ficha cria o cadastro) */
+export const setJoinProof = defineOp({
+  name: 'members.setJoinProof',
+  input: zTenant.extend({ memberId: zId, path: z.string().max(300), contentType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']) }),
+  auth: 'user',
+  tenant: { perm: null, allowNonMember: true },
+  rateLimit: { per: 'uid', max: 20, windowSec: 3600 },
+  async run(ctx, input) {
+    const t = tid(ctx);
+    const m = await ctx.store.get<MemberDoc>(P.member(t, input.memberId));
+    if (!m) fail('not-found', 'Cadastro não encontrado.');
+    if (m!.uid !== ctx.actor?.uid) ctx.require('socios', 'editar');
+    const prefix = `tenants/${t}/members/${input.memberId}/proof/`;
+    if (!input.path.startsWith(prefix) || input.path.includes('..')) fail('invalid-argument', 'Caminho do comprovante inválido.');
+    const settings = await getSettings(ctx);
+    if (m!.joinProof?.path && m!.joinProof.path !== input.path) await ctx.files.remove(m!.joinProof.path).catch(() => undefined);
+    const amountCents = joinAmountCents(settings, m!.categoryId);
+    await ctx.store.update(P.member(t, input.memberId), { joinProof: { path: input.path, at: ctx.nowIso, amountCents, contentType: input.contentType }, updatedAt: ctx.nowIso });
+    if (m!.status === 'pendente') {
+      for (const uid of await boardUids(ctx)) await notify(ctx, uid, 'Comprovante da adesão', `${shortName(m!.fullName)} anexou o comprovante do Pix.`, 'socios');
+    }
+    await ctx.audit('members.join_proof', input.memberId, { amountCents });
+    return { ok: true };
+  },
+});
+
 /** Desligamento com anonimização (respeita retenção legal de financeiro e atas, que guardam só ids) */
 export const anonymizeMember = defineOp({
   name: 'members.anonymize',
@@ -744,6 +959,10 @@ export const anonymizeMember = defineOp({
 });
 
 export const memberOps = [
+  mergeDuplicate,
+  notDuplicate,
+  findDuplicates,
+  setJoinProof,
   applyMember,
   createMember,
   addDependent,

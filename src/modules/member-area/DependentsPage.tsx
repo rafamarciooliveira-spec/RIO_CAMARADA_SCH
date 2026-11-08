@@ -2,12 +2,14 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { UserPlus, Users } from 'lucide-react';
-import { useList, useOp } from '../../app/DataContext.tsx';
+import { useData, useOp } from '../../app/DataContext.tsx';
+import { useMyDependents } from './useMyDependents.ts';
+import { PhotoPick, sendPickedPhoto } from './PhotoPick.tsx';
+import { PhotoUpload } from './PhotoUpload.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
-import { P } from '../../shared/paths.ts';
 import { formatDate } from '../../shared/dates.ts';
 import { MEMBER_STATUS_LABEL, type MemberDoc } from '../../shared/types.ts';
-import { Badge, Button, EmptyState, Loading, Modal, Notice, PageHeader } from '../../ui/index.tsx';
+import { Badge, Button, EmptyState, Loading, Modal, Notice, PageHeader, useToast } from '../../ui/index.tsx';
 import { emptyMemberForm, MemberForm, toPayload, validateMemberForm, type MemberFormValue } from '../members/components/MemberForm.tsx';
 import { statusTone } from '../members/statusTone.ts';
 import { useFormOptions } from '../members/useFormOptions.ts';
@@ -17,7 +19,7 @@ import { useDependentInfo } from '../members/components/FamilyPanel.tsx';
 export default function DependentsPage() {
   const t = useTenant();
   const m = t.member;
-  const list = useList<MemberDoc>(m ? P.members(t.tenantId) : null, m ? { where: [['dependentOf', '==', m.id]], limit: 20 } : undefined);
+  const list = useMyDependents(t.tenantId, m?.id);
   const [open, setOpen] = useState(false);
   const depInfo = useDependentInfo();
   const [change, setChange] = useState<{ d: MemberDoc & { id: string }; kind: 'dados' | 'remover' } | null>(null);
@@ -61,6 +63,14 @@ export default function DependentsPage() {
               </div>
               {d.status === 'rejeitado' && d.statusReason && <p className="text-xs text-warn">Ajuste pedido: {d.statusReason}</p>}
               {d.custom?.parentesco && <div className="text-xs text-muted">{d.custom.parentesco}</div>}
+              {list.coIds.has(d.id) && <div className="text-xs text-muted">Você é o segundo responsável; a mensalidade vai com o titular dele.</div>}
+              {d.duplicateOf && <p className="text-xs text-info">Já estava cadastrado por outro responsável. A {t.labels.board.toLowerCase()} vai juntar num cadastro só, e você continua vendo a carteirinha.</p>}
+              {!d.photoPath && opts.data?.requirePhoto !== false && !['rejeitado', 'desligado'].includes(d.status) && (
+                <div className="pt-2 space-y-1">
+                  <p className="text-xs text-warn font-medium">Falta a foto para a carteirinha.</p>
+                  <PhotoUpload memberId={d.id} hasPhoto={false} own={false} />
+                </div>
+              )}
               {(() => {
                 const i = depInfo(d);
                 return (
@@ -112,12 +122,24 @@ function AddDependent({ onClose, s }: { onClose: () => void; s: ReturnType<typeo
   const def = cats.find(c => c.id === 'dependente')?.id || cats[0]?.id || '';
   const [v, setV] = useState<MemberFormValue>(() => emptyMemberForm(def));
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [photo, setPhoto] = useState<Blob | null>(null);
+  const [sending, setSending] = useState(false);
+  const { client } = useData();
+  const toast = useToast();
+  const needPhoto = s?.requirePhoto !== false;
   const save = async () => {
-    const errs = validateMemberForm(v, s?.customFields || [], { requireConsent: true, tz: t.tenant.timezone });
+    const errs = { ...validateMemberForm(v, s?.customFields || [], { requireConsent: true, tz: t.tenant.timezone }), ...(needPhoto && !photo ? { photo: 'A foto é obrigatória: ela vai na carteirinha.' } : {}) };
     setErrors(errs);
     if (Object.keys(errs).length) return;
-    const r = await run('members.addDependent', { tenantId: t.tenantId, holderId: t.member!.id, ...toPayload(v, t.tenant.timezone) }, { success: 'Dependente incluído. Agora é só aguardar a aprovação.' });
-    if (r) onClose();
+    const r = await run<{ memberId: string; duplicate?: boolean }>('members.addDependent', { tenantId: t.tenantId, holderId: t.member!.id, ...toPayload(v, t.tenant.timezone) });
+    if (!r) return;
+    if (photo) {
+      setSending(true);
+      await sendPickedPhoto(client, (op, input) => client.call(op, input), t.tenantId, r.memberId, photo).catch(() => toast.show('Dependente incluído, mas a foto não foi. Envie de novo pelo cartão dele nesta tela.', 'erro'));
+      setSending(false);
+    }
+    toast.show(r.duplicate ? 'Dependente incluído. Ele já estava cadastrado por outro responsável: a diretoria vai juntar os dois.' : 'Dependente incluído. Agora é só aguardar a aprovação.', 'sucesso');
+    onClose();
   };
   return (
     <Modal
@@ -130,7 +152,7 @@ function AddDependent({ onClose, s }: { onClose: () => void; s: ReturnType<typeo
           <Button variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button loading={busy} onClick={save}>
+          <Button loading={busy || sending} onClick={save}>
             Enviar para aprovação
           </Button>
         </>
@@ -141,6 +163,9 @@ function AddDependent({ onClose, s }: { onClose: () => void; s: ReturnType<typeo
       ) : (
         <>
           <Notice>Para menores de 18 anos, informe você mesmo como responsável legal no bloco que aparece após a data de nascimento.</Notice>
+          <div className="mb-4">
+            <PhotoPick value={photo} onChange={setPhoto} error={errors.photo} label="Foto do dependente para a carteirinha" required={needPhoto} />
+          </div>
           <MemberForm value={v} onChange={setV} categories={cats} customFields={s.customFields || []} errors={errors} tz={t.tenant.timezone} tenantName={t.tenant.name} selfService memberLabel={t.labels.member} />
           {Object.keys(errors).length > 0 && <Notice tone="bad">Confira os campos destacados.</Notice>}
         </>

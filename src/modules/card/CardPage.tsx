@@ -10,6 +10,7 @@ import { Download, FileDown, FileText, Maximize2, RefreshCw, RotateCw, WifiOff, 
 import { useData, useDoc, useFileUrl, useList, useOp } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
 import { setupTenantPwa } from '../../app/pwa.ts';
+import { useMyDependents } from '../member-area/useMyDependents.ts';
 import { P } from '../../shared/paths.ts';
 import { cardStatusFor, VERIFY_LABEL } from '../../shared/memberStatus.ts';
 import { formatDateTime, localDateKey, tzLabel } from '../../shared/dates.ts';
@@ -103,7 +104,8 @@ export default function CardPage() {
   const t = useTenant();
   const { basePath } = useData();
   const holder = t.member;
-  const deps = useList<MemberDoc>(holder ? P.members(t.tenantId) : null, holder ? { where: [['dependentOf', '==', holder.id]], limit: 20 } : undefined);
+  // Os próprios dependentes e os que o sócio cuida como segundo responsável (pai e mãe sócios)
+  const deps = useMyDependents(t.tenantId, holder?.id);
   const [selectedId, setSelectedId] = useState<string>('');
   const people = useMemo(() => (holder ? [holder, ...deps.data] : []), [holder, deps.data]);
   const current = people.find(p => p.id === selectedId) || holder;
@@ -157,6 +159,8 @@ function MemberCard({ member, templates, activeId }: { member: MemberDoc; templa
   const picked = useMemo(() => pickTemplate(templates, activeId, myPositions), [templates, activeId, myPositions]);
   const baseTemplate = useMemo(() => (picked ? { ...fallbackTemplate(t.tenant.name), ...picked } : fallbackTemplate(t.tenant.name)), [picked, t.tenant.name]);
   const logoSrc = useLogoSrc(baseTemplate.logoUrl || t.tenant.branding.logoUrl);
+  const affRaw = useLogoSrc(baseTemplate.affiliationLogoUrl);
+  const affiliationSrc = baseTemplate.affiliationLogoUrl ? affRaw : '';
   const { run } = useOp();
   const online = useOnline();
   const visible = useVisible();
@@ -260,6 +264,7 @@ function MemberCard({ member, templates, activeId }: { member: MemberDoc; templa
           template={template}
           member={data}
           logoSrc={logoSrc}
+          affiliationSrc={affiliationSrc}
           photoUrl={online ? photoUrl : null}
           qrDataUrl={active ? qr?.dataUrl : null}
           qrCaption={caption}
@@ -329,6 +334,7 @@ function MemberCard({ member, templates, activeId }: { member: MemberDoc; templa
             template={template}
             member={data}
             logoSrc={logoSrc}
+            affiliationSrc={affiliationSrc}
             photoUrl={online ? photoUrl : null}
             qrDataUrl={active ? qr?.dataUrl : null}
             qrCaption={caption}
@@ -340,7 +346,7 @@ function MemberCard({ member, templates, activeId }: { member: MemberDoc; templa
         </FullScreen>
       )}
 
-      <DownloadDialog open={askDownload} onClose={() => setAskDownload(false)} member={member} template={template} logoSrc={logoSrc} photoUrl={photoUrl} roles={roles} honors={honors} stickers={stickers} />
+      <DownloadDialog open={askDownload} onClose={() => setAskDownload(false)} member={member} template={template} logoSrc={logoSrc} affiliationSrc={affiliationSrc} photoUrl={photoUrl} roles={roles} honors={honors} stickers={stickers} />
     </div>
   );
 }
@@ -377,6 +383,7 @@ function DownloadDialog({
   member,
   template,
   logoSrc,
+  affiliationSrc,
   photoUrl,
   roles,
   honors,
@@ -387,6 +394,7 @@ function DownloadDialog({
   member: MemberDoc;
   template: CardTemplateDoc;
   logoSrc: string;
+  affiliationSrc: string;
   photoUrl: string | null;
   roles: string[];
   honors: string[];
@@ -395,7 +403,7 @@ function DownloadDialog({
   const t = useTenant();
   const { run } = useOp();
   const [busy, setBusy] = useState<'' | 'png' | 'pdf'>('');
-  const [render, setRender] = useState<{ qr: string; banner: string; photo: string | null; logo: string; stickers: string[] } | null>(null);
+  const [render, setRender] = useState<{ qr: string; banner: string; photo: string | null; logo: string; affiliation: string; stickers: string[] } | null>(null);
   const [error, setError] = useState('');
   const node = useRef<HTMLDivElement>(null);
   const tz = t.tenant.timezone;
@@ -409,8 +417,8 @@ function DownloadDialog({
       const qr = await QRCode.toDataURL(r.verifyUrl, { width: 480, margin: 1, errorCorrectionLevel: 'M' });
       const banner = `Válida até ${formatDateTime(r.expiresAt, r.timezone || tz)} (${tzLabel(r.timezone || tz)})`;
       // Fotos de câmera em tamanho original derrubam a montagem no iPhone: reduz antes
-      const [photo, logo, ...stk] = await Promise.all([shrinkImage(photoUrl, 420, 'image/jpeg'), shrinkImage(logoSrc, 360), ...stickers.map(s => shrinkImage(s, 160))]);
-      setRender({ qr, banner, photo, logo: logo || logoSrc, stickers: stk.filter(Boolean) as string[] });
+      const [photo, logo, aff, ...stk] = await Promise.all([shrinkImage(photoUrl, 420, 'image/jpeg'), shrinkImage(logoSrc, 360), affiliationSrc ? shrinkImage(affiliationSrc, 160) : Promise.resolve(null), ...stickers.map(s => shrinkImage(s, 160))]);
+      setRender({ qr, banner, photo, logo: logo || logoSrc, affiliation: aff || affiliationSrc, stickers: stk.filter(Boolean) as string[] });
       // espera o React desenhar o nó de exportação e as imagens carregarem
       await new Promise(res => setTimeout(res, 350));
       const el = node.current;
@@ -474,7 +482,7 @@ function DownloadDialog({
       {error && <Notice tone="bad">{error}</Notice>}
       {render && (
         <div className="fixed -left-[9999px] top-0" aria-hidden>
-          <CardView ref={node} both stickers={render.stickers} template={template} member={toCardData(member, t.settings?.showMembershipNumber === true, roles, honors)} logoSrc={render.logo} photoUrl={render.photo} qrDataUrl={render.qr} qrCaption="Escaneie para autenticar" banner={render.banner} labelCard={t.labels.card} />
+          <CardView ref={node} both stickers={render.stickers} template={template} member={toCardData(member, t.settings?.showMembershipNumber === true, roles, honors)} logoSrc={render.logo} affiliationSrc={render.affiliation} photoUrl={render.photo} qrDataUrl={render.qr} qrCaption="Escaneie para autenticar" banner={render.banner} labelCard={t.labels.card} />
         </div>
       )}
     </Modal>

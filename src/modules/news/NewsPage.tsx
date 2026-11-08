@@ -4,6 +4,7 @@
  */
 import { useMemo, useState } from 'react';
 import { EyeOff, Eye, ExternalLink, ImagePlus, Link2, Newspaper, Pencil, Pin, PinOff, Plus, RefreshCw, Settings2, ShieldBan, Trash2, X } from 'lucide-react';
+import { decodeEntities } from '../../shared/rss.ts';
 import { useData, useDoc, useFileUrl, useList, useOp } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
 import { P } from '../../shared/paths.ts';
@@ -53,7 +54,11 @@ export default function NewsPage() {
   const cfg = effectiveNewsConfig(t.tenant, cfgDoc.data);
 
   const items = useMemo(
-    () => [...list.data].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.publishedAt.localeCompare(a.publishedAt)),
+    // Notícias gravadas antes da correção podem ter acentos em código (&ccedil;): limpa na exibição
+    () =>
+      [...list.data]
+        .map(n => ({ ...n, title: decodeEntities(n.title || ''), summary: n.summary ? decodeEntities(n.summary) : n.summary, source: n.source ? decodeEntities(n.source) : n.source }))
+        .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.publishedAt.localeCompare(a.publishedAt)),
     [list.data]
   );
   const more = list.data.length >= limits[tab];

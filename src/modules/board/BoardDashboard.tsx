@@ -8,6 +8,7 @@ import { P } from '../../shared/paths.ts';
 import { addDaysKey, formatDate, formatDateTime, localDateKey } from '../../shared/dates.ts';
 import { formatBRL } from '../../shared/money.ts';
 import type { DashboardStats, EventDoc, LibraryDocDoc, MemberDoc, PrivacyRequestDoc, TaskDoc } from '../../shared/types.ts';
+import { uniqueBirthdays, WhoTag } from '../culture/birthdays.tsx';
 import { Badge, Card, EmptyState, Loading, Notice, PageHeader, Section, Stat } from '../../ui/index.tsx';
 
 export default function BoardDashboard() {
@@ -31,7 +32,8 @@ export default function BoardDashboard() {
   const priv = useList<PrivacyRequestDoc>(canPriv ? P.privacyRequests(t.tenantId) : null, { where: [['status', '==', 'aberta']], limit: 20 });
 
   const lateTasks = tasks.data.filter(x => x.status !== 'concluida');
-  const bday = birthdays.data.filter(m => ['ativo', 'aprovado', 'em_atraso'].includes(m.status));
+  const bday = uniqueBirthdays(birthdays.data.filter(m => ['ativo', 'aprovado', 'em_atraso'].includes(m.status)));
+  const known = new Map(birthdays.data.map(m => [m.id, m.fullName]));
   const n = (k: keyof DashboardStats['members']) => (s?.members?.[k] as number) || 0;
   const go = (path: string) => () => navigate(t.to(path));
   const pend = n('pendente');
@@ -101,8 +103,11 @@ export default function BoardDashboard() {
             ) : (
               <ul className="space-y-1.5">
                 {bday.map(m => (
-                  <li key={m.id} className="flex items-center justify-between text-sm">
-                    <span className="truncate">{m.displayName}</span>
+                  <li key={m.id} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="min-w-0">
+                      <span className="block truncate">{m.displayName}</span>
+                      <WhoTag m={m} known={known} />
+                    </span>
                     <Badge tone={m.birthMonthDay === today.slice(5) ? 'brand' : 'neutral'}>{m.birthMonthDay!.split('-').reverse().join('/')}</Badge>
                   </li>
                 ))}

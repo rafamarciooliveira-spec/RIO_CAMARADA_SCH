@@ -203,6 +203,9 @@ export const GENERIC_SCHEMAS: Record<GenericCollection, z.ZodObject<Record<strin
       .max(12)
       .optional(),
     showHonors: z.boolean().optional(),
+    // Filiação no verso (federação, liga, associação regional): texto e logo
+    affiliationText: s(200).optional(),
+    affiliationLogoUrl: z.string().max(600).optional(),
     // Quem usa o modelo (cargos ou grupos do organograma); vazio = modelo geral
     appliesTo: z.array(z.object({ match: z.enum(['grupo', 'cargo']), value: s(120).min(1) })).max(30).optional(),
     isDefault: z.boolean(),

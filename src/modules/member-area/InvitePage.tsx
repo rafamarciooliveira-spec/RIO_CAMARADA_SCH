@@ -12,6 +12,7 @@ import { P } from '../../shared/paths.ts';
 import type { MemberInviteSettings, OrgChartDoc } from '../../shared/types.ts';
 import { AssociationLogo } from '../../components/AssociationLogos.tsx';
 import { useLogoSrc } from '../card/useLogoSrc.ts';
+import { useFormOptions } from '../members/useFormOptions.ts';
 import { nodeToPng, shrinkImage, waitImages } from '../card/exportImage.ts';
 import { Button, Card, EmptyState, Field, Input, Modal, Notice, PageHeader, Textarea, Toggle, useToast } from '../../ui/index.tsx';
 
@@ -161,7 +162,9 @@ export default function InvitePage() {
   const member = t.member?.fullName || t.member?.displayName || '';
   const society = t.tenant.name;
   const president = presidentOf(chart.data);
-  const url = `${location.origin}${t.to('cadastro')}`;
+  // Com a adesão com Pix ligada, o convite leva ao link de adesão (valores, Pix e comprovante antes da ficha)
+  const join = useFormOptions(true).data?.joinPayment?.enabled;
+  const url = `${location.origin}${t.to(join ? 'adesao' : 'cadastro')}`;
   const canConfig = t.can('sociedade', 'editar');
 
   useEffect(() => {

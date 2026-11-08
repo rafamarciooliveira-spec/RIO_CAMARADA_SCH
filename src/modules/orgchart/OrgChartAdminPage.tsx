@@ -5,7 +5,8 @@ import { useTenant } from '../../app/TenantContext.tsx';
 import { Button, Loading, Notice, PageHeader } from '../../ui/index.tsx';
 import { OrgChartView } from './OrgChartView.tsx';
 import { HandoverPanel, MandatesGallery } from './Handover.tsx';
-import { Editor, useChartDoc } from './OrgChartPage.tsx';
+import { useChartDoc } from './OrgChartPage.tsx';
+import { Editor } from './Editor.tsx';
 
 export default function OrgChartAdminPage() {
   const t = useTenant();

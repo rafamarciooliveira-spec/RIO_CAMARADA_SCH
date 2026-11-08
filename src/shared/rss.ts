@@ -7,18 +7,31 @@ import type { NewsHeadline } from './core/ports.ts';
 import type { TenantRegion } from './types.ts';
 import { STATE_NAMES } from './societyTypes.ts';
 
+// Latin-1 completo (160 a 255, na ordem oficial) e a pontuação comum dos sites
+const LATIN1 = 'nbsp iexcl cent pound curren yen brvbar sect uml copy ordf laquo not shy reg macr deg plusmn sup2 sup3 acute micro para middot cedil sup1 ordm raquo frac14 frac12 frac34 iquest Agrave Aacute Acirc Atilde Auml Aring AElig Ccedil Egrave Eacute Ecirc Euml Igrave Iacute Icirc Iuml ETH Ntilde Ograve Oacute Ocirc Otilde Ouml times Oslash Ugrave Uacute Ucirc Uuml Yacute THORN szlig agrave aacute acirc atilde auml aring aelig ccedil egrave eacute ecirc euml igrave iacute icirc iuml eth ntilde ograve oacute ocirc otilde ouml divide oslash ugrave uacute ucirc uuml yacute thorn yuml'.split(' ');
 const NAMED: Record<string, string> = {
-  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '–', mdash: '—', hellip: '…',
-  lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', laquo: '«', raquo: '»', middot: '·',
-  aacute: 'á', Aacute: 'Á', agrave: 'à', Agrave: 'À', acirc: 'â', Acirc: 'Â', atilde: 'ã', Atilde: 'Ã',
-  eacute: 'é', Eacute: 'É', ecirc: 'ê', Ecirc: 'Ê', iacute: 'í', Iacute: 'Í', oacute: 'ó', Oacute: 'Ó',
-  ocirc: 'ô', Ocirc: 'Ô', otilde: 'õ', Otilde: 'Õ', uacute: 'ú', Uacute: 'Ú', uuml: 'ü', Uuml: 'Ü',
-  ccedil: 'ç', Ccedil: 'Ç', ordf: 'ª', ordm: 'º', deg: '°', copy: '©', reg: '®',
+  ...Object.fromEntries(LATIN1.map((n, i) => [n, String.fromCharCode(160 + i)])),
+  nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", ndash: '–', mdash: '—', hellip: '…',
+  lsquo: '‘', rsquo: '’', sbquo: '‚', ldquo: '“', rdquo: '”', bdquo: '„', bull: '•', middot: '·', euro: '€', trade: '™',
+  OElig: 'Œ', oelig: 'œ', Scaron: 'Š', scaron: 'š', thinsp: ' ', ensp: ' ', emsp: ' ', zwnj: '', zwj: '', lrm: '', rlm: '',
 };
 
-/** Decodifica entidades HTML nomeadas e numéricas (uma passada) */
+/**
+ * Decodifica entidades HTML nomeadas e numéricas. Alguns sites escapam duas vezes
+ * ("&amp;ccedil;"): repete enquanto ainda sobrar entidade conhecida (no máximo 3 passadas).
+ */
 export function decodeEntities(text: string): string {
-  return text.replace(/&(#x[0-9a-fA-F]{1,6}|#[0-9]{1,7}|[A-Za-z]{2,10});/g, (all, ent: string) => {
+  let out = text;
+  for (let i = 0; i < 3; i++) {
+    const next = decodeOnce(out);
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+function decodeOnce(text: string): string {
+  return text.replace(/&(#x[0-9a-fA-F]{1,6}|#[0-9]{1,7}|[A-Za-z][A-Za-z0-9]{1,9});/g, (all, ent: string) => {
     if (ent[0] === '#') {
       const code = ent[1] === 'x' || ent[1] === 'X' ? parseInt(ent.slice(2), 16) : parseInt(ent.slice(1), 10);
       if (!Number.isFinite(code) || code <= 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return all;

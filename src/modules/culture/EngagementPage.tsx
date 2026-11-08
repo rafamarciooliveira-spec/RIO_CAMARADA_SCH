@@ -9,6 +9,7 @@ import { formatDate } from '../../shared/dates.ts';
 import type { MemberDoc, SurveyDoc } from '../../shared/types.ts';
 import { Badge, Card, EmptyState, Field, Input, Loading, Notice, PageHeader, Section, Select, Tabs, Textarea } from '../../ui/index.tsx';
 import { CrudPage, type CrudConfig } from './CrudPage.tsx';
+import { uniqueBirthdays, WhoTag } from './birthdays.tsx';
 import { SurveyBars } from './MemberSurveys.tsx';
 import { NewPoll } from './PollsPage.tsx';
 
@@ -48,7 +49,8 @@ function Birthdays() {
   const [month, setMonth] = useState(today.slice(5, 7));
   const members = useActiveMembers();
   if (members.loading) return <Loading />;
-  const list = members.data.filter(m => m.birthMonthDay?.startsWith(`${month}-`)).sort((a, b) => (a.birthMonthDay! < b.birthMonthDay! ? -1 : 1));
+  const list = uniqueBirthdays(members.data.filter(m => m.birthMonthDay?.startsWith(`${month}-`))).sort((a, b) => (a.birthMonthDay! < b.birthMonthDay! ? -1 : 1));
+  const known = new Map(members.data.map(m => [m.id, m.fullName]));
   return (
     <div className="space-y-3">
       <Select aria-label="Mês" value={month} onChange={e => setMonth(e.target.value)} className="sm:w-48">
@@ -66,7 +68,10 @@ function Birthdays() {
             const isToday = m.birthMonthDay === today.slice(5);
             return (
               <li key={m.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                <span className="text-sm">{m.fullName}</span>
+                <span className="min-w-0">
+                  <span className="block text-sm">{m.fullName}</span>
+                  <WhoTag m={m} known={known} />
+                </span>
                 <span className="flex items-center gap-2 text-sm tabular-nums">
                   {m.birthMonthDay!.slice(3)}/{m.birthMonthDay!.slice(0, 2)}
                   {isToday && <Badge tone="brand">Hoje</Badge>}

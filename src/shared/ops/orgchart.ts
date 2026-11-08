@@ -19,6 +19,8 @@ const zPosition = z.object({
   memberId: zId.optional(),
   personName: zText(150).optional(),
   parentId: zId.optional(),
+  row: z.number().int().min(1).max(30).optional(),
+  under: zId.optional(),
   since: zDateKey.optional(),
   roleId: zId.optional(), // papel de acesso que acompanha o cargo (presidente, tesoureiro...)
   roleFromGroup: z.boolean().optional(),
@@ -49,15 +51,20 @@ export const saveOrgChart = defineOp({
     for (const p of input.positions) {
       if (p.parentId && (!ids.has(p.parentId) || p.parentId === p.id)) fail('invalid-argument', `O cargo "${p.title}" aponta para um superior inexistente.`);
     }
-    // Evita ciclos na árvore (A abaixo de B e B abaixo de A)
-    const parent = new Map(input.positions.map(p => [p.id, p.parentId]));
     for (const p of input.positions) {
-      const seen = new Set<string>();
-      let cur: string | undefined = p.id;
-      while (cur) {
-        if (seen.has(cur)) fail('invalid-argument', 'A hierarquia tem um ciclo. Revise os superiores.');
-        seen.add(cur);
-        cur = parent.get(cur);
+      if (p.under && (!ids.has(p.under) || p.under === p.id)) fail('invalid-argument', `O cargo "${p.title}" fica abaixo de um cargo que não existe.`);
+    }
+    // Evita ciclos (A abaixo de B e B abaixo de A), na árvore e na montagem em linhas
+    for (const [field, msg] of [['parentId', 'A hierarquia tem um ciclo. Revise os superiores.'], ['under', 'A montagem tem um círculo em "Abaixo de". Revise os cargos.']] as const) {
+      const parent = new Map(input.positions.map(p => [p.id, p[field]]));
+      for (const p of input.positions) {
+        const seen = new Set<string>();
+        let cur: string | undefined = p.id;
+        while (cur) {
+          if (seen.has(cur)) fail('invalid-argument', msg);
+          seen.add(cur);
+          cur = parent.get(cur);
+        }
       }
     }
     // Nome exibido vem do cadastro quando o cargo é ligado a um sócio (só o nome reduzido)

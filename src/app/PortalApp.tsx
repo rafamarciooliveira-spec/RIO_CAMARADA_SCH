@@ -40,7 +40,7 @@ function SelfMemberBanner() {
   const { basePath } = useData();
   const t = useTenant();
   const location = useLocation();
-  if (basePath || !session.user || t.member || location.pathname.endsWith('/cadastro')) return null;
+  if (basePath || !session.user || t.member || location.pathname.endsWith('/cadastro') || location.pathname.endsWith('/adesao')) return null;
   return (
     <div className="mb-4 p-3 rounded-2xl border border-accent/50 bg-accent/5 flex flex-wrap items-center gap-3">
       <div className="text-sm flex-1 min-w-48">
@@ -335,6 +335,7 @@ function TenantRoutes() {
           <Route path="v/:token" element={<VerifyPage />} />
           <Route path="convite" element={<AcceptInvitePage />} />
           <Route path="cadastro" element={<ApplyPage />} />
+          <Route path="adesao" element={<ApplyPage join />} />
           <Route path="publico" element={<PublicPage />} />
           <Route path="*" element={<Gate />} />
         </Routes>

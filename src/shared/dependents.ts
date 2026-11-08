@@ -72,3 +72,9 @@ export function familyDependentsCents(rules: DependentRules, fees: number[]): nu
   const sum = fees.reduce((a, b) => a + b, 0);
   return rules.familyCapCents > 0 ? Math.min(sum, rules.familyCapCents) : sum;
 }
+
+/** O sócio responde por este cadastro: é o titular dele ou um segundo responsável (pai e mãe sócios) */
+export function caresFor(m: { dependentOf?: string; guardianIds?: string[] }, memberId: string | undefined): boolean {
+  if (!memberId) return false;
+  return m.dependentOf === memberId || (m.guardianIds || []).includes(memberId);
+}

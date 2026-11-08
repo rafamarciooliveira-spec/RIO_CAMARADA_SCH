@@ -4,6 +4,7 @@
  */
 import { z } from 'zod';
 import { defineOp, fail, registerJobs, zId, zTenant, zText, type OpContext } from '../core/ops.ts';
+import { caresFor } from '../dependents.ts';
 import { P } from '../paths.ts';
 import { addMonthsKey, localDateKey } from '../dates.ts';
 import type { ChargeDoc, CheckinDoc, MemberDoc, MemberHistoryDoc, MemberPiiDoc, NotificationDoc, PrivacyRequestDoc, TenantSettings } from '../types.ts';
@@ -23,7 +24,7 @@ export const PRIVACY_KIND_LABEL: Record<PrivacyRequestDoc['kind'], string> = {
 async function ownMember(ctx: OpContext, memberId: string): Promise<MemberDoc> {
   const m = await ctx.store.get<MemberDoc>(P.member(tid(ctx), memberId));
   if (!m) fail('not-found', 'Cadastro não encontrado.');
-  const own = m!.uid === ctx.actor?.uid || (!!m!.dependentOf && m!.dependentOf === ctx.membership?.memberId);
+  const own = m!.uid === ctx.actor?.uid || caresFor(m!, ctx.membership?.memberId);
   if (!own) fail('permission-denied', 'Você só pode tratar dos seus próprios dados.');
   return m!;
 }
@@ -204,6 +205,9 @@ export const formOptions = defineOp({
       categories: (s?.categories || []).map(c => ({ id: c.id, name: c.name, feeCents: c.feeCents, period: c.period, allowsDependents: c.allowsDependents })),
       customFields: (s?.customFields || []).map(f => ({ id: f.id, label: f.label, type: f.type, options: f.options || [], required: f.required, sensitive: f.sensitive })),
       approvalRequired: s?.approvalRequired ?? true,
+      requirePhoto: s?.cardRequiresPhoto !== false,
+      // Adesão com Pix: valores e chave (pública por natureza) para quem ainda vai se associar
+      ...(s?.joinPayment?.enabled ? { joinPayment: s.joinPayment, pixKey: s.pixKey || '', pixCity: ctx.tenant?.publicPage?.city || '' } : {}),
     };
   },
 });

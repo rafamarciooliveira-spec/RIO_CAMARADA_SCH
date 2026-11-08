@@ -3,7 +3,7 @@ rules_version = '2';
 // =====================================================================================
 // Sodalis: regras do Cloud Storage
 //
-// - Negar por padrão; só as quatro pastas abaixo aceitam envio do cliente.
+// - Negar por padrão; só as pastas abaixo aceitam envio do cliente.
 // - O tipo declarado e o tamanho são conferidos aqui; o tipo REAL (bytes mágicos) é conferido
 //   no servidor pela função uploadGuard, que apaga o que não bater.
 // - As regras do Storage só conseguem consultar o banco (default) do Firestore
@@ -46,7 +46,8 @@ service firebase.storage {
       let m = firestore.get(/databases/(default)/documents/tenants/$(t)/members/$(memberId));
       return emailOk() && m != null && (
         m.data.get('uid', '__sem_uid__') == request.auth.uid ||
-        (isMember(t) && m.data.get('dependentOf', '__sem_titular__') == msDoc(t).data.get('memberId', '__sem_cadastro__'))
+        (isMember(t) && m.data.get('dependentOf', '__sem_titular__') == msDoc(t).data.get('memberId', '__sem_cadastro__')) ||
+        (isMember(t) && m.data.get('guardianIds', []).hasAny([msDoc(t).data.get('memberId', '__sem_cadastro__')]))
       );
     }
 
@@ -90,6 +91,13 @@ service firebase.storage {
     match /tenants/{t}/members/{memberId}/photo/{file} {
       allow read: if ownsMember(t, memberId) || perm(t, 'socios', 'ver');
       allow create, update: if okName(file) && isImage(2) && (ownsMember(t, memberId) || perm(t, 'socios', 'editar'));
+      allow delete: if perm(t, 'socios', 'editar');
+    }
+
+    // Comprovante do Pix da adesão: quem se associa envia; a diretoria (sócios ou financeiro) confere
+    match /tenants/{t}/members/{memberId}/proof/{file} {
+      allow read: if ownsMember(t, memberId) || perm(t, 'socios', 'ver') || perm(t, 'financeiro', 'ver');
+      allow create: if okName(file) && isDocOrImage(10) && ownsMember(t, memberId);
       allow delete: if perm(t, 'socios', 'editar');
     }
 

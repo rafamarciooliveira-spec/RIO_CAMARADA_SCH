@@ -36,6 +36,12 @@ export interface CardTemplateDoc {
    * Vazio = modelo geral; o geral em uso é o marcado como Ativo e vale para quem não cai em outro.
    */
   appliesTo?: CardAudience[];
+  /**
+   * Entidade a que a sociedade é filiada (federação, liga, associação regional), no verso:
+   * ex.: "Afiliada à Associação dos Clubes e Sociedades de Tiro do Vale do Itapocu", com a logo dela.
+   */
+  affiliationText?: string;
+  affiliationLogoUrl?: string;
   /** Verso com o histórico de cargos e honrarias do sócio */
   showHonors?: boolean;
   isDefault: boolean;
@@ -71,6 +77,8 @@ export const TEMPLATE_FIELDS: (keyof CardTemplateDoc)[] = [
   'roleThemes',
   'appliesTo',
   'showHonors',
+  'affiliationText',
+  'affiliationLogoUrl',
   'isDefault',
 ];
 

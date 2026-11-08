@@ -5,6 +5,7 @@
  */
 import { z } from 'zod';
 import { defineOp, fail, zId, zTenant, type OpContext } from '../core/ops.ts';
+import { caresFor } from '../dependents.ts';
 import { P } from '../paths.ts';
 import { cardStatusFor } from '../memberStatus.ts';
 import { endOfDayIso, endOfMonthKey, localDateKey } from '../dates.ts';
@@ -19,7 +20,7 @@ export const DOWNLOAD_TTL_SEC = 24 * 3600;
 async function ownCardMember(ctx: OpContext, memberId: string): Promise<MemberDoc> {
   const m = await ctx.store.get<MemberDoc>(P.member(tid(ctx), memberId));
   if (!m) fail('not-found', 'Cadastro não encontrado.');
-  const own = m!.uid === ctx.actor?.uid || (m!.dependentOf && m!.dependentOf === ctx.membership?.memberId);
+  const own = m!.uid === ctx.actor?.uid || caresFor(m!, ctx.membership?.memberId);
   if (!own) fail('permission-denied', 'Esta carteirinha não é sua.');
   return m!;
 }

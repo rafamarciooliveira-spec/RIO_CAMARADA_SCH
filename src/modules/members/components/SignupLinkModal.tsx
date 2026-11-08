@@ -8,7 +8,8 @@ import { Button, Modal, Notice, useToast } from '../../../ui/index.tsx';
 export function SignupLinkModal({ onClose }: { onClose: () => void }) {
   const t = useTenant();
   const toast = useToast();
-  const url = `${location.origin}${t.to('cadastro')}`;
+  const join = !!t.settings?.joinPayment?.enabled;
+  const url = `${location.origin}${t.to(join ? 'adesao' : 'cadastro')}`;
   const [qr, setQr] = useState('');
   useEffect(() => {
     QRCode.toDataURL(url, { width: 480, margin: 1, errorCorrectionLevel: 'M' }).then(setQr).catch(() => setQr(''));
@@ -26,6 +27,7 @@ export function SignupLinkModal({ onClose }: { onClose: () => void }) {
     <Modal open onClose={onClose} title="Link de cadastro">
       <div className="space-y-4">
         <p className="text-sm text-muted">
+          {join && <>Link de <strong>adesão</strong>: a pessoa vê a taxa e a anuidade, paga pelo Pix e anexa o comprovante antes da ficha. A ficha sem pagamento continua em {location.origin}{t.to('cadastro')}. </>}
           Mande este link para quem vai se associar. A pessoa entra com a conta Google, preenche a ficha (com os dependentes) e o cadastro aparece aqui em <strong>Aguardando aprovação</strong>.
         </p>
         <div className="p-3 rounded-xl bg-surface-2 font-mono text-xs break-all select-all">{url}</div>

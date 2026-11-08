@@ -1,7 +1,7 @@
 /** Sócios: lista paginada, busca, filtros, pendentes primeiro, detalhe, cadastro, importação e exportação. */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronRight, CornerDownRight, Download, Link2, Megaphone, Upload, UserPlus, Users } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, CornerDownRight, Download, Link2, Megaphone, Upload, UserPlus, Users } from 'lucide-react';
 import { useData, useList, useOp } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
 import { P } from '../../shared/paths.ts';
@@ -14,6 +14,7 @@ import { ExportModal, ImportModal } from './components/ImportExport.tsx';
 import { emptyMemberForm, MemberForm, toPayload, validateMemberForm, type MemberFormValue } from './components/MemberForm.tsx';
 import { statusTone } from './statusTone.ts';
 import { SignupLinkModal } from './components/SignupLinkModal.tsx';
+import { DuplicatesFinder } from './components/Duplicates.tsx';
 import { TransfersSection } from './components/Transfers.tsx';
 
 const PAGE = 50;
@@ -26,7 +27,7 @@ export default function MembersPage() {
   const [search, setSearch] = useState('');
   const [limit, setLimit] = useState(PAGE);
   const [openId, setOpenId] = useState('');
-  const [modal, setModal] = useState<'' | 'novo' | 'importar' | 'exportar' | 'link'>('');
+  const [modal, setModal] = useState<'' | 'novo' | 'importar' | 'exportar' | 'link' | 'repetidos'>('');
 
   const q = useMemo<QuerySpec>(() => {
     const where: QuerySpec['where'] = [];
@@ -157,6 +158,11 @@ export default function MembersPage() {
                 </Button>
               </>
             )}
+            {t.can('socios', 'editar') && (
+              <Button size="sm" variant="secondary" icon={<Copy className="w-4 h-4" />} onClick={() => setModal('repetidos')}>
+                Repetidos
+              </Button>
+            )}
             {t.can('socios', 'exportar') && (
               <Button size="sm" variant="secondary" icon={<Download className="w-4 h-4" />} onClick={() => setModal('exportar')}>
                 Exportar
@@ -226,6 +232,7 @@ export default function MembersPage() {
       <ImportModal open={modal === 'importar'} onClose={() => setModal('')} />
       <ExportModal open={modal === 'exportar'} onClose={() => setModal('')} />
       {modal === 'link' && <SignupLinkModal onClose={() => setModal('')} />}
+      {modal === 'repetidos' && <DuplicatesFinder onClose={() => setModal('')} />}
       {modal === 'novo' && <NewMemberModal onClose={() => setModal('')} onCreated={id => (setModal(''), setOpenId(id))} />}
     </div>
   );

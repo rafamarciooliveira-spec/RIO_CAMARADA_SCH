@@ -3,7 +3,7 @@
  * Lê só o que o próprio site oferece para compartilhamento: título, nome do veículo e a chamada curta
  * (og:title, og:site_name, og:description). O texto da matéria nunca é copiado.
  */
-import { domainOf } from './rss.ts';
+import { decodeEntities, domainOf } from './rss.ts';
 
 export interface LinkPreview {
   title: string;
@@ -11,14 +11,8 @@ export interface LinkPreview {
   siteName: string;
 }
 
-const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '-', mdash: '-', hellip: '...', laquo: '"', raquo: '"', ldquo: '"', rdquo: '"', lsquo: "'", rsquo: "'" };
-
-export function decodeEntities(s: string): string {
-  return s
-    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Math.min(Number(n), 0x10ffff)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(Math.min(parseInt(h, 16), 0x10ffff)))
-    .replace(/&([a-z]+);/gi, (m, name) => ENTITIES[name.toLowerCase()] ?? m);
-}
+/** Mesma decodificação dos feeds: Latin-1 completo (&ccedil;, &atilde;...) e escape duplo */
+export { decodeEntities };
 
 const clean = (s: string | undefined, max: number) =>
   decodeEntities((s || '').replace(/<[^>]*>/g, ' '))

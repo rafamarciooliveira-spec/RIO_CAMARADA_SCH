@@ -167,6 +167,7 @@ export const updateSettings = defineOp({
         retentionYears: z.object({ financeiro: z.number().int().min(5).max(99), atas: z.number().int().min(5).max(99), inativos: z.number().int().min(1).max(99) }),
         emailTemplates: z.record(z.string().max(40), z.object({ subject: zText(200), body: zText(4000) })),
         activeCardTemplateId: zId,
+        joinPayment: z.object({ enabled: z.boolean(), feeCents: z.number().int().min(0).max(1_000_000_00), feeLabel: zText(60).min(2), includeCategoryFee: z.boolean(), requireProof: z.boolean(), note: zText(600) }),
         memberInvite: z.object({ enabled: z.boolean(), title: zText(60).min(2), intro: zText(400).min(5), closing: zText(200), showQr: z.boolean() }),
       })
       .partial(),

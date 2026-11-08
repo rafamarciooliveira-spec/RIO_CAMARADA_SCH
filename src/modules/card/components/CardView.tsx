@@ -38,6 +38,8 @@ interface Props {
   template: CardTemplateDoc;
   member: CardMemberData;
   logoSrc: string;
+  /** Logo da entidade de filiação (já resolvida), quando o modelo tiver filiação */
+  affiliationSrc?: string;
   photoUrl?: string | null;
   qrDataUrl?: string | null;
   qrCaption?: string;
@@ -99,7 +101,7 @@ function Scaled({ base, width, children }: { base: { w: number; h: number }; wid
 }
 
 export const CardView = forwardRef<HTMLDivElement, Props>(function CardView(
-  { template: t, member: m, logoSrc, photoUrl, qrDataUrl, qrCaption, banner, side = 'frente', both, onFlip, labelCard, width, stickers = [] },
+  { template: t, member: m, logoSrc, affiliationSrc, photoUrl, qrDataUrl, qrCaption, banner, side = 'frente', both, onFlip, labelCard, width, stickers = [] },
   ref
 ) {
   const vertical = t.orientation !== 'horizontal';
@@ -113,6 +115,7 @@ export const CardView = forwardRef<HTMLDivElement, Props>(function CardView(
   const detailPx = DETAIL_PX[t.detailsFontSize || 'xs'];
   const textAlign: React.CSSProperties['textAlign'] = !vertical ? 'left' : t.infoAlignment === 'left' ? 'left' : t.infoAlignment === 'right' ? 'right' : 'center';
   const visibleCustom = (t.customFields || []).filter(f => f.visible !== false && f.label);
+  const affiliation = (t.affiliationText || '').trim();
 
   const header = (
     <div className={cx('flex gap-3 min-h-0 overflow-hidden', logoLeft ? 'flex-row items-center text-left' : 'flex-col items-center text-center')} style={{ height: vertical ? (logoLeft ? 84 : logoPx + 64) : 70 }}>
@@ -266,10 +269,22 @@ export const CardView = forwardRef<HTMLDivElement, Props>(function CardView(
         <div className="uppercase" style={{ color: t.accentColor, fontSize: 10, letterSpacing: '0.2em', ...lines(1) }}>
           {t.associationName}
         </div>
+        {affiliation && (
+          <div className="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left" style={{ background: 'rgba(255,255,255,0.12)' }}>
+            {affiliationSrc && (
+              <span className="shrink-0 rounded-md bg-white flex items-center justify-center overflow-hidden" style={{ width: vertical ? 40 : 34, height: vertical ? 40 : 34, padding: 2 }}>
+                <AssociationLogo logoKeyOrUrl={affiliationSrc} className="w-full h-full object-contain" color={t.primaryColor} />
+              </span>
+            )}
+            <span className="leading-snug font-semibold" style={{ fontSize: vertical ? 10.5 : 9.5, ...lines(vertical ? 3 : 2) }}>
+              {affiliation}
+            </span>
+          </div>
+        )}
         <div className="text-left w-full leading-snug opacity-90 min-h-0 overflow-hidden" style={{ fontSize: vertical ? 10 : 9.5 }}>
           <p className="mb-1.5"><strong>Documento pessoal e intransferível.</strong> Apresente junto com um documento oficial com foto quando for pedido.</p>
           <p className="mb-1.5"><strong>Autenticação:</strong> a validade e a situação verdadeiras são as que aparecem ao escanear o QR da frente. Se a data impressa for diferente da mostrada na conferência, o documento foi alterado.</p>
-          {!(t.showHonors && m.honors?.length) && (
+          {!(t.showHonors && m.honors?.length) && !(affiliation && !vertical) && (
             <>
               <p className="mb-1.5"><strong>Arquivo baixado:</strong> o QR do arquivo vale até a data em destaque no próprio arquivo. Para uso contínuo, mostre a carteirinha aberta no portal, onde o QR se renova sozinho.</p>
               <p><strong>Perda ou suspensão:</strong> a diretoria pode suspender a carteirinha a qualquer momento, e o QR deixa de validar na hora.</p>
