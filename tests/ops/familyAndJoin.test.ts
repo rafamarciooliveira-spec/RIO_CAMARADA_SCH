@@ -112,3 +112,15 @@ describe('adesão com Pix', () => {
     expect(joinAmountCents({ ...settings, joinPayment: { ...jp, enabled: false } }, 'efetivo')).toBe(0);
   });
 });
+
+describe('filiação no verso da carteirinha', () => {
+  it('o modelo guarda o texto e a logo da entidade (federação ou associação da região)', async () => {
+    const { fallbackTemplate, TEMPLATE_FIELDS } = await import('../../src/modules/card/cardTemplate.ts');
+    const h = await makeTestTenant();
+    const tpl = { ...fallbackTemplate('Sociedade'), affiliationText: 'Afiliada à Associação dos Clubes e Sociedades de Tiro do Vale do Itapocu', affiliationLogoUrl: `tenants/${h.tenantId}/public/card-affiliation-x.png` } as Record<string, unknown>;
+    const data = Object.fromEntries(TEMPLATE_FIELDS.filter(k => tpl[k] !== undefined).map(k => [k, tpl[k]]));
+    const { id } = await h.call<{ id: string }>('generic.save', { tenantId: h.tenantId, collection: 'cardTemplates', data }, h.actors.presidente);
+    const saved = await h.store.get<Record<string, unknown>>(P.cardTemplate(h.tenantId, id));
+    expect(saved).toMatchObject({ affiliationText: tpl.affiliationText, affiliationLogoUrl: tpl.affiliationLogoUrl });
+  });
+});

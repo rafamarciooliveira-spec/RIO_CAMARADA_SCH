@@ -1,11 +1,11 @@
 /** Editor do modelo da carteirinha: painéis à esquerda, prévia ao vivo à direita. */
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Copy, Plus, Save, Trash2 } from 'lucide-react';
-import { useDoc, useList, useOp } from '../../app/DataContext.tsx';
+import { useData, useDoc, useList, useOp } from '../../app/DataContext.tsx';
 import type { OrgChartDoc } from '../../shared/types.ts';
 import { useTenant } from '../../app/TenantContext.tsx';
 import { P } from '../../shared/paths.ts';
-import { Badge, Button, Card, cx, EmptyState, Loading, Notice, PageHeader, Select, Tabs, useConfirm } from '../../ui/index.tsx';
+import { Badge, Button, Card, cx, EmptyState, Loading, Notice, PageHeader, Select, Tabs, useConfirm, useToast } from '../../ui/index.tsx';
 import { CardView } from './components/CardView.tsx';
 import { MultiPick } from './design/MultiPick.tsx';
 import { fallbackTemplate, ruleValues, stickersFor, TEMPLATE_FIELDS, themeFor, type CardAudience, type CardTemplateDoc } from './cardTemplate.ts';
@@ -37,6 +37,8 @@ function pickFields(v: CardTemplateDoc): Record<string, unknown> {
 export default function CardDesignPage() {
   const t = useTenant();
   const { run, busy } = useOp();
+  const { client } = useData();
+  const toast = useToast();
   const confirm = useConfirm();
   const list = useList<CardTemplateDoc>(P.cardTemplates(t.tenantId), { limit: 30 });
   const activeId = t.settings?.activeCardTemplateId || 'padrao';
@@ -114,6 +116,11 @@ export default function CardDesignPage() {
     if (r) {
       setDirty(false);
       setEditId(r.id);
+      // Servidor antigo descarta calado o campo que ainda não conhece: confere o que ficou gravado
+      const want = pickFields(draft) as Record<string, unknown>;
+      const got = await client.get<Record<string, unknown>>(P.cardTemplate(t.tenantId, r.id)).catch(() => null);
+      const lost = got ? (['affiliationText', 'affiliationLogoUrl'] as const).filter(k => want[k] && got[k] === undefined) : [];
+      if (lost.length) toast.show('O modelo foi salvo, mas o servidor da plataforma ainda não recebeu a atualização e não guardou a filiação (texto e logo). Peça para publicar o servidor e salve de novo.', 'erro');
     }
   };
 
@@ -187,7 +194,9 @@ export default function CardDesignPage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-6 items-start">
           <Card className="min-w-0">
+            {/* No celular as abas quebram de linha: "Verso" ficava escondida à direita */}
             <Tabs
+              wrap
               value={panel}
               onChange={setPanel}
               tabs={[
@@ -195,7 +204,7 @@ export default function CardDesignPage() {
                 { id: 'cores', label: 'Cores' },
                 { id: 'layout', label: 'Layout' },
                 { id: 'campos', label: 'Campos' },
-                { id: 'verso', label: 'Verso' },
+                { id: 'verso', label: 'Verso e filiação' },
               ]}
             />
             <fieldset disabled={!canEdit} className="min-w-0">

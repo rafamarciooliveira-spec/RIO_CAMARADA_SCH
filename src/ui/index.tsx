@@ -233,9 +233,9 @@ export function SearchBox({ value, onChange, placeholder = 'Buscar...' }: { valu
 }
 
 // ---------- Abas ----------
-export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: string; count?: number }[]; value: T; onChange: (v: T) => void }) {
+export function Tabs<T extends string>({ tabs, value, onChange, wrap }: { tabs: { id: T; label: string; count?: number }[]; value: T; onChange: (v: T) => void; wrap?: boolean }) {
   return (
-    <div role="tablist" className="flex gap-1 overflow-x-auto custom-scrollbar border-b border-line mb-4 -mx-1 px-1">
+    <div role="tablist" className={cx('flex gap-1 border-b border-line mb-4 -mx-1 px-1', wrap ? 'flex-wrap' : 'overflow-x-auto custom-scrollbar')}>
       {tabs.map(t => (
         <button
           key={t.id}
