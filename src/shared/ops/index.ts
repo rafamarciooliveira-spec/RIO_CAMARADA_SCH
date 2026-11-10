@@ -20,6 +20,7 @@ import { dependentOps } from './dependents.ts';
 import { handbookOps } from './handbook.ts';
 import { accountabilityOps } from './accountability.ts';
 import { rosterOps } from './rosters.ts';
+import { loginAccessOps } from './loginAccess.ts';
 
 let done = false;
 export function registerAllOps(): void {
@@ -28,6 +29,7 @@ export function registerAllOps(): void {
   registerOps([
     ...platformOps,
     ...accessOps,
+    ...loginAccessOps,
     ...memberOps,
     ...cardOps,
     ...genericOps,

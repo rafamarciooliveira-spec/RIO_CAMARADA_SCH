@@ -5,6 +5,7 @@
  *   await h.call('members.approve', { tenantId: h.tenantId, memberId }, h.actors.presidente);
  *   h.clock.advance(25 * 3600_000);
  */
+import { memoryAuthAdmin } from '../../src/shared/core/memoryAuth.ts';
 import { MemoryStore } from '../../src/shared/core/memoryStore.ts';
 import { executeOp, type Actor, type Env } from '../../src/shared/core/ops.ts';
 import { createWebCrypto, ephemeralKeys, simulatedMail } from '../../src/shared/core/ports.ts';
@@ -31,6 +32,7 @@ export function makeEnv(start = '2026-11-02T12:00:00.000Z') {
     mail: simulatedMail,
     payments: createSandboxPayments(crypto, 'segredo-de-teste'),
     files: { signedUrl: async p => `memoria://${p}`, remove: async () => undefined },
+    authAdmin: memoryAuthAdmin(),
     now: () => new Date(nowMs),
     appUrl: 'http://localhost:3000',
     demo: false,

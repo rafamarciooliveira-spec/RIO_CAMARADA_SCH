@@ -1,4 +1,4 @@
-/** Entrada no portal: Google (sempre) ou link mágico (se a sociedade ativar). Sem senha. */
+/** Entrada no portal: Google (sempre), CPF e senha (padrão ligado) ou link no e-mail (se a sociedade ativar). */
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { Mail } from 'lucide-react';
@@ -8,6 +8,7 @@ import { AssociationLogo } from '../../components/AssociationLogos.tsx';
 import { Button, Card, Field, Input, Notice } from '../../ui/index.tsx';
 import { RememberMe } from '../../ui/RememberMe.tsx';
 import { useGoogleSignIn } from './useGoogleSignIn.ts';
+import { CpfLoginForm } from './CpfLogin.tsx';
 
 export default function LoginPage() {
   const t = useTenant();
@@ -55,6 +56,12 @@ export default function LoginPage() {
           Continuar com a Conta Google
         </Button>
         <RememberMe />
+        {t.tenant.loginMethods?.cpfPassword !== false && (
+          <>
+            <div className="text-center text-xs text-muted">ou entre com CPF e senha</div>
+            <CpfLoginForm back={back.startsWith('/') ? back : t.to('inicio')} />
+          </>
+        )}
         {t.tenant.loginMethods?.emailLink !== false && (
           <>
             <div className="text-center text-xs text-muted">ou receba um link no e-mail</div>

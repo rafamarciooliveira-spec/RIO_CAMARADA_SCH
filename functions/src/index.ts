@@ -32,6 +32,7 @@ import { EMULATOR_WEBHOOK_SECRET, emulatorCpfKeys } from './emulatorKeys.ts';
 import { judgeUpload } from './uploadCheck.ts';
 import { googleNewsPort } from './newsPort.ts';
 import { fcmPush } from './pushPort.ts';
+import { firebaseAuthAdmin } from './authAdmin.ts';
 import { stripeBilling, stripeEventToOp, verifyStripeSignature } from './stripeBilling.ts';
 import type { PlanDoc } from '../../src/shared/types.ts';
 
@@ -98,6 +99,7 @@ function env(): Env {
     mail: resendMail(resendKey, MAIL_FROM.value()),
     payments: createSandboxPayments(crypto, webhookSecret),
     files: storageFiles(a),
+    authAdmin: firebaseAuthAdmin(a),
     news: googleNewsPort(),
     ...(STRIPE_SECRET_KEY ? { billing: stripeBilling(STRIPE_SECRET_KEY.value()) } : {}),
     push: IS_EMULATOR ? undefined : fcmPush(a, APP_URL.value().replace(/\/+$/, '')),

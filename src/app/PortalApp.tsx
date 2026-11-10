@@ -18,6 +18,7 @@ import { formatDateTime } from '../shared/dates.ts';
 
 const LoginPage = React.lazy(() => import('../modules/auth/LoginPage.tsx'));
 const AcceptInvitePage = React.lazy(() => import('../modules/auth/AcceptInvitePage.tsx'));
+const FirstAccessPage = React.lazy(() => import('../modules/auth/CpfLogin.tsx'));
 const VerifyPage = React.lazy(() => import('../modules/card/VerifyPage.tsx'));
 const ApplyPage = React.lazy(() => import('../modules/members/ApplyPage.tsx'));
 const PublicPage = React.lazy(() => import('../modules/public/PublicTenantPage.tsx'));
@@ -334,6 +335,7 @@ function TenantRoutes() {
           <Route path="entrar" element={<LoginPage />} />
           <Route path="v/:token" element={<VerifyPage />} />
           <Route path="convite" element={<AcceptInvitePage />} />
+          <Route path="primeiro-acesso" element={<FirstAccessPage />} />
           <Route path="cadastro" element={<ApplyPage />} />
           <Route path="adesao" element={<ApplyPage join />} />
           <Route path="publico" element={<PublicPage />} />

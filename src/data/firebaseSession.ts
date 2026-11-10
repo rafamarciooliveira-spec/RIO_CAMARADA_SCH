@@ -9,6 +9,7 @@ import {
   onIdTokenChanged,
   setPersistence,
   sendSignInLinkToEmail,
+  signInWithEmailAndPassword,
   signInWithEmailLink,
   signInWithPopup,
   signInWithRedirect,
@@ -65,6 +66,11 @@ export async function signInGoogle(): Promise<void> {
     return;
   }
   await signInWithPopup(getAuthInstance(), provider);
+}
+
+export async function signInPassword(email: string, password: string): Promise<void> {
+  await applyRemember(getAuthInstance());
+  await signInWithEmailAndPassword(getAuthInstance(), email, password);
 }
 
 /** Volta do redirecionamento do Google: devolve o erro, se houve, para a tela mostrar */

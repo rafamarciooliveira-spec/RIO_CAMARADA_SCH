@@ -11,6 +11,15 @@ export interface CryptoPort {
   decrypt(payload: string): Promise<string>;
 }
 
+/**
+ * Contas de login com senha (entrada por CPF e senha, para quem não usa a conta Google).
+ * Só o servidor cria ou troca a senha; a pessoa escolhe a senha no primeiro acesso.
+ */
+export interface AuthAdminPort {
+  /** Cria a conta (ou troca a senha da que já existe) e devolve o uid e o e-mail de login */
+  setPassword(o: { uid?: string; email: string; password: string; displayName: string }): Promise<{ uid: string; email: string }>;
+}
+
 export interface MailMessage {
   to: string;
   subject: string;

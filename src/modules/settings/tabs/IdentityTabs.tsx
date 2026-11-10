@@ -306,16 +306,20 @@ export function LoginTab({ readOnly }: { readOnly: boolean }) {
   const t = useTenant();
   const { run, busy } = useOp();
   const [emailLink, setEmailLink] = useState(!!t.tenant.loginMethods?.emailLink);
+  const [cpfPassword, setCpfPassword] = useState(t.tenant.loginMethods?.cpfPassword !== false);
   const [dirty, setDirty] = useState(false);
   const save = async () => {
-    const r = await run('tenant.update', { tenantId: t.tenantId, loginMethods: { google: true, emailLink } }, { success: 'Formas de entrada salvas.' });
+    const r = await run('tenant.update', { tenantId: t.tenantId, loginMethods: { google: true, emailLink, cpfPassword } }, { success: 'Formas de entrada salvas.' });
     if (r) setDirty(false);
   };
   return (
     <fieldset disabled={readOnly} className="space-y-3 min-w-0">
       <Toggle checked disabled onChange={() => undefined} label="Entrar com Google (sempre ligado)" />
       <Toggle checked={emailLink} onChange={v => (setEmailLink(v), setDirty(true))} label="Entrar com link mágico por e-mail (sem senha)" />
-      <Notice>O portal não usa senha. Quem não tem conta Google recebe um link de entrada no e-mail.</Notice>
+      <Toggle checked={cpfPassword} onChange={v => (setCpfPassword(v), setDirty(true))} label="Entrar com CPF e senha (bom para quem não usa a conta Google)" />
+      <Notice>
+        Entrada por CPF e senha: no cadastro do sócio (Sócios, Ações) a diretoria gera um código de primeiro acesso, que vale 3 dias e uma vez só. A pessoa abre o link, digita o CPF e o código e escolhe a própria senha. Ninguém da diretoria fica sabendo a senha. Esqueceu: gere outro código.
+      </Notice>
       {!readOnly && <SaveBar dirty={dirty} busy={busy} onSave={save} />}
     </fieldset>
   );

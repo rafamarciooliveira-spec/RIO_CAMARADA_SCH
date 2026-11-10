@@ -76,7 +76,7 @@ export const updateTenant = defineOp({
         contactEmail: z.string().email().max(120).optional().or(z.literal('')),
       })
       .optional(),
-    loginMethods: z.object({ google: z.literal(true), emailLink: z.boolean() }).optional(),
+    loginMethods: z.object({ google: z.literal(true), emailLink: z.boolean(), cpfPassword: z.boolean().optional() }).optional(),
     timezone: z.string().max(60).optional(),
     societyType: z.string().max(40).optional(),
     region: z.object({ city: zText(80), state: z.string().max(2) }).optional(),

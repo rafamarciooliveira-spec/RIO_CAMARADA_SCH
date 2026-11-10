@@ -10,7 +10,7 @@ import { z, ZodType } from 'zod';
 // Mensagens de validação em português do Brasil
 z.config(z.locales.pt());
 import type { Store } from './store.ts';
-import type { BillingPort, CryptoPort, FilePort, MailPort, NewsPort, PaymentProvider, PushPort } from './ports.ts';
+import type { AuthAdminPort, BillingPort, CryptoPort, FilePort, MailPort, NewsPort, PaymentProvider, PushPort } from './ports.ts';
 import type { Action, ModuleId } from '../modules.ts';
 import { can } from '../modules.ts';
 import type { AuditDoc, MembershipDoc, TenantDoc } from '../types.ts';
@@ -56,6 +56,7 @@ export interface Env {
   billing?: BillingPort; // Stripe; sem porta a troca de plano é pedida à plataforma
   news?: NewsPort; // sem porta configurada, as notícias externas ficam desligadas
   push?: PushPort; // sem porta configurada, não há notificação no celular
+  authAdmin?: AuthAdminPort; // sem porta, a entrada por CPF e senha fica desligada
   now: () => Date;
   appUrl: string;
   demo: boolean; // demonstração: dispensa MFA do master

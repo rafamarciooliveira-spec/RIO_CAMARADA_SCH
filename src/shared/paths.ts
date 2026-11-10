@@ -33,6 +33,9 @@ export const P = {
   memberChanges: (t: string, id: string) => `tenants/${t}/members/${id}/changes`,
   memberChange: (t: string, id: string, c: string) => `tenants/${t}/members/${id}/changes/${c}`,
   cpfIndex: (t: string, hmac: string) => `tenants/${t}/cpfIndex/${hmac}`,
+  accessCodes: (t: string) => `tenants/${t}/accessCodes`,
+  accessCode: (t: string, memberId: string) => `tenants/${t}/accessCodes/${memberId}`,
+  loginIndex: (hash: string) => `loginIndex/${hash}`,
 
   cardTemplates: (t: string) => `tenants/${t}/cardTemplates`,
   cardTemplate: (t: string, id: string) => `tenants/${t}/cardTemplates/${id}`,

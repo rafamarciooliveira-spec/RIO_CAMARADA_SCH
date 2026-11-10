@@ -44,6 +44,8 @@ export interface SessionApi {
   loading: boolean;
   signInGoogle(): Promise<void>;
   sendMagicLink(email: string, returnPath: string): Promise<void>;
+  /** Entrada por CPF e senha: o servidor confere a senha e devolve o e-mail interno da conta */
+  signInPassword(email: string, password: string): Promise<void>;
   signOut(): Promise<void>;
   refreshClaims(): Promise<void>;
 }

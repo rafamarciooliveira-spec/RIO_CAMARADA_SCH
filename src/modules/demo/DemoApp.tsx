@@ -106,6 +106,7 @@ export default function DemoApp() {
       loading: !actor,
       async signInGoogle() {},
       async sendMagicLink() {},
+      async signInPassword() {},
       async signOut() {
         navigate('/');
       },

@@ -3,6 +3,7 @@
  * Não importa o SDK do Firebase, não faz chamada de rede e não tem credencial.
  * As operações são as MESMAS do servidor (src/shared/ops), rodando sobre um MemoryStore.
  */
+import { memoryAuthAdmin } from '../shared/core/memoryAuth.ts';
 import { MemoryStore } from '../shared/core/memoryStore.ts';
 import { executeOp, OpError, type Actor, type Env } from '../shared/core/ops.ts';
 import { createWebCrypto, ephemeralKeys, simulatedMail } from '../shared/core/ports.ts';
@@ -47,6 +48,7 @@ export function createMemoryBackend(appUrl: string): MemoryBackend {
         },
       },
       news: createDemoNews(),
+      authAdmin: memoryAuthAdmin(),
       now: () => new Date(),
       appUrl,
       demo: true,

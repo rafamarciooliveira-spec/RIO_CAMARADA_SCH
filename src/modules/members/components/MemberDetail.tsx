@@ -16,6 +16,7 @@ import { TransferAction } from './Transfers.tsx';
 import { HolderFamily, PromoteDependent } from './FamilyPanel.tsx';
 import { DuplicateNotice, Guardians, JoinProofView } from './Duplicates.tsx';
 import { MemberAccess } from './MemberAccess.tsx';
+import { AccessCodeBlock } from './AccessCodeBlock.tsx';
 
 const FIX_REASONS = [
   'Foto ilegível ou ausente',
@@ -185,6 +186,7 @@ export function MemberDetail({ memberId, onClose }: { memberId: string; onClose:
         <div className="space-y-5">
           {/* Permissões do sócio (sub-administrador: financeiro, agenda, cadastros...) */}
           {!anonymized && !m.dependentOf && <MemberAccess m={m} />}
+          {!anonymized && <AccessCodeBlock m={m} />}
           <Actions m={m} cats={cats} canApprove={canApprove} anonymized={anonymized} onDone={onClose} />
         </div>
       )}

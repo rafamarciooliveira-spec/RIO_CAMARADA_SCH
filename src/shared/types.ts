@@ -130,7 +130,7 @@ export interface TenantDoc {
     socials: { instagram?: string; facebook?: string; site?: string; whatsapp?: string };
     contactEmail?: string;
   };
-  loginMethods: { google: boolean; emailLink: boolean };
+  loginMethods: { google: boolean; emailLink: boolean; cpfPassword?: boolean }; // cpfPassword: entrada por CPF e senha (padrão: ligada)
   timezone: string;
   societyType?: string; // id de SOCIETY_TYPES (tiro_esportivo, bolao, futebol, folclore...)
   /** Dados de documento oficial (cabeçalho da prestação de contas, recibos e declarações) */

@@ -2,7 +2,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { createFirebaseClient, USE_EMULATORS } from '../data/firebaseClient.ts';
-import { completeMagicLink, doSignOut, finishRedirect, refreshClaims, sendMagicLink, signInGoogle, watchSession } from '../data/firebaseSession.ts';
+import { completeMagicLink, doSignOut, finishRedirect, refreshClaims, sendMagicLink, signInGoogle, signInPassword, watchSession } from '../data/firebaseSession.ts';
 import type { SessionApi, SessionUser } from '../data/client.ts';
 import { DataProvider } from './DataContext.tsx';
 import PortalApp from './PortalApp.tsx';
@@ -63,6 +63,7 @@ export default function RealApp() {
       loading,
       signInGoogle,
       sendMagicLink,
+      signInPassword,
       async signOut() {
         // Limpa caches locais da carteirinha ao sair
         try {

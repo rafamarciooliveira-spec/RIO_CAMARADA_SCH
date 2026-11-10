@@ -25,6 +25,7 @@ const MATRIX: { path: string; data: Record<string, unknown>; kind: Kind }[] = [
   { path: 'idempotency/d1', data: { result: 1 }, kind: 'none' },
   { path: 'billing/current', data: { status: 'ativa', customerId: 'cus_1' }, kind: 'none' },
   { path: 'cpfIndex/d1', data: { memberId: 'm1' }, kind: 'none' },
+  { path: 'accessCodes/m1', data: { codeHash: 'x', tries: 0 }, kind: 'none' },
   { path: 'cardTokens/d1', data: { memberId: 'm1' }, kind: 'none' },
   { path: 'outbox/d1', data: { status: 'simulado' }, kind: 'none' },
   { path: 'icsTokens/d1', data: { uid: 'x' }, kind: 'none' },
@@ -405,6 +406,10 @@ describe('plataforma', () => {
     await assertFails(getDocs(collection(db('presA'), 'users')));
     await assertFails(getDoc(doc(db('socioA'), 'users/socioA/pushTokens/k1')));
     await assertFails(getDoc(doc(master(), 'rateLimits/k1')));
+    // Índice da entrada por CPF (hash da senha): só o servidor
+    await assertFails(getDoc(doc(db('socioA'), 'loginIndex/h1')));
+    await assertFails(getDocs(collection(db('presA'), 'loginIndex')));
+    await assertFails(getDoc(doc(db('anon'), 'loginIndex/h1')));
   });
 
   it('a matriz cobre todas as coleções declaradas em paths.ts', async () => {
