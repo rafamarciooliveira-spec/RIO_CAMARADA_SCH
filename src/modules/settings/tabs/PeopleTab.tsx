@@ -36,6 +36,9 @@ function Roles() {
   const { run, busy } = useOp();
   const confirm = useConfirm();
   const roles = useList<RoleDoc>(P.roles(t.tenantId), { limit: 50 });
+  // Quem tem cada papel: editar o papel muda o que ele libera, mas não entrega o papel a ninguém
+  const people = useList<MembershipDoc>(P.memberships(t.tenantId), { where: [['active', '==', true]], limit: 300 });
+  const holders = (id?: string) => (id ? people.data.filter(m => m.roleIds.includes(id)) : []);
   const [editing, setEditing] = useState<{ id?: string; name: string; perms: Perms; board: boolean; system?: boolean } | null>(null);
   const canEdit = t.can('papeis', 'aprovar');
   const toggle = (m: ModuleId, a: Action, on: boolean) => {
@@ -53,7 +56,10 @@ function Roles() {
   const save = async () => {
     if (!editing) return;
     const perms = Object.fromEntries(Object.entries(editing.perms).filter(([, a]) => a && a.length));
-    const r = await run('roles.save', { tenantId: t.tenantId, ...(editing.id ? { id: editing.id } : {}), name: editing.name.trim(), perms, board: editing.board }, { success: 'Papel salvo. As permissões valem na hora para quem tem este papel.' });
+    const n = holders(editing.id).length;
+    const r = await run('roles.save', { tenantId: t.tenantId, ...(editing.id ? { id: editing.id } : {}), name: editing.name.trim(), perms, board: editing.board }, {
+      success: n ? `Papel salvo. Já vale para ${n === 1 ? 'a pessoa que tem' : `as ${n} pessoas que têm`} este papel.` : 'Papel salvo, mas ninguém tem este papel ainda. Dê o papel à pessoa em Sócios, no cadastro dela, aba Ações, Acesso ao portal.',
+    });
     if (r) setEditing(null);
   };
   const remove = async (r: RoleDoc & { id: string }) => {
@@ -73,6 +79,11 @@ function Roles() {
                 {r.board && <Badge tone="brand">{t.labels.board}</Badge>}
                 {r.system && <Badge>Padrão</Badge>}
               </div>
+              {r.id !== 'socio' && (
+                <div className={holders(r.id).length ? 'text-xs text-muted mt-1 truncate' : 'text-xs text-warn mt-1'}>
+                  {holders(r.id).length ? holders(r.id).map(m => m.displayName || m.email).join(', ') : 'Ninguém tem este papel'}
+                </div>
+              )}
             </div>
             <div className="flex gap-1">
               <Button size="sm" variant="secondary" onClick={() => setEditing({ id: r.id, name: r.name, perms: { ...r.perms }, board: r.board, system: r.system })}>
@@ -108,6 +119,15 @@ function Roles() {
           }
         >
           <fieldset disabled={!canEdit} className="space-y-3 min-w-0">
+            {editing.id && editing.id !== 'socio' && (
+              holders(editing.id).length ? (
+                <Notice>Quem tem este papel agora: {holders(editing.id).map(m => m.displayName || m.email).join(', ')}. O que você mudar aqui vale na hora para eles.</Notice>
+              ) : (
+                <Notice tone="warn">
+                  Ninguém tem este papel ainda. Marcar as permissões aqui não entrega o papel a ninguém: depois de salvar, abra a pessoa em Sócios, aba Ações, Acesso ao portal, e marque {editing.name || 'este papel'}. A pessoa precisa ter entrado no portal uma vez com a conta Google.
+                </Notice>
+              )
+            )}
             <div className="grid sm:grid-cols-2 gap-3 items-end">
               <Field label="Nome">{id => <Input id={id} value={editing.name} maxLength={60} onChange={e => setEditing({ ...editing, name: e.target.value })} />}</Field>
               <Toggle checked={editing.board} onChange={v => setEditing({ ...editing, board: v })} label={`Faz parte da ${t.labels.board.toLowerCase()}`} />
