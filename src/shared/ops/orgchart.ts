@@ -5,7 +5,8 @@
 import { z } from 'zod';
 import { defineOp, fail, zDateKey, zId, zTenant, zText, type OpContext } from '../core/ops.ts';
 import { P } from '../paths.ts';
-import type { MemberDoc, MembershipDoc, OrgChartDoc, OrgPosition, TermDoc } from '../types.ts';
+import type { MemberDoc, MembershipDoc, OrgChartDoc, OrgPosition, RoleDoc, TermDoc } from '../types.ts';
+import { roleForTitle } from '../roleMatch.ts';
 import { societyType } from '../societyTypes.ts';
 import { notify, permsForRoles, tid } from './helpers.ts';
 import { assertKeepsAnAdmin } from './access.ts';
@@ -24,6 +25,7 @@ const zPosition = z.object({
   since: zDateKey.optional(),
   roleId: zId.optional(), // papel de acesso que acompanha o cargo (presidente, tesoureiro...)
   roleFromGroup: z.boolean().optional(),
+  accessOff: z.boolean().optional(),
 });
 
 const zGroup = z.object({ name: zText(60).min(1), order: z.number().int().min(0).max(999), roleId: zId.optional() });
@@ -80,10 +82,20 @@ export const saveOrgChart = defineOp({
       if (gr) Object.assign(p, { roleId: gr, roleFromGroup: true });
       else if (p.roleFromGroup) Object.assign(p, { roleId: undefined, roleFromGroup: undefined });
     }
+    // Cargo com papel de mesmo nome (Secretário(a) -> papel Secretário(a)) liga o acesso sozinho:
+    // quem está no cargo (inclusive quem foi escolhido agora) ganha o acesso. Depois de ligado, a troca é pela passagem de cargo.
+    const unlinked = new Set(input.positions.filter(p => !p.roleId && !stored.get(p.id)?.roleId).map(p => p.id));
+    const linkNotes = await autoLinkRoles(ctx, t, input.positions.filter(p => unlinked.has(p.id)), p => p.memberId);
+    const autoLinked = new Set(input.positions.filter(p => unlinked.has(p.id) && p.roleId).map(p => p.id));
     // Acesso trocado em cargo ocupado: quem ocupa ganha o novo e perde o antigo (depois de gravar)
     const accessChanges: { memberId: string; title: string; from?: string; to?: string }[] = [];
     for (const p of input.positions) {
       const old = stored.get(p.id);
+      if (autoLinked.has(p.id)) {
+        await permsForRoles(ctx, t, [p.roleId!]);
+        if (p.memberId) accessChanges.push({ memberId: p.memberId, title: p.title, to: p.roleId });
+        continue;
+      }
       if (p.roleId || old?.roleId) ctx.require('papeis', 'aprovar');
       if (p.roleId) await permsForRoles(ctx, t, [p.roleId]);
       if (old?.memberId && (old.roleId || '') !== (p.roleId || '')) accessChanges.push({ memberId: old.memberId, title: p.title, from: old.roleId, to: p.roleId });
@@ -119,7 +131,7 @@ export const saveOrgChart = defineOp({
     }
     await ctx.audit('orgchart.saved', undefined, { positions: positions.length });
     await syncTermFromChart(ctx, t, positions);
-    return { ok: true };
+    return { ok: true, notes: linkNotes };
   },
 });
 
@@ -131,7 +143,15 @@ export const orgChartPreset = defineOp({
   tenant: { perm: ['organograma', 'ver'] },
   async run(ctx, input) {
     const preset = societyType(input.societyType || ctx.tenant!.societyType);
-    return { style: preset.orgStyle, positions: preset.positions.map((p, i) => ({ ...p, id: `cargo_${i + 1}` })) };
+    // Cargo com papel de mesmo nome (Presidente, Secretário(a), Tesoureiro(a)) já vem com o acesso ligado
+    const roles = ctx.can('papeis', 'aprovar') ? (await ctx.store.query<RoleDoc>(P.roles(tid(ctx)), { limit: 50 })).map(r => ({ ...r.data, id: r.id })) : [];
+    return {
+      style: preset.orgStyle,
+      positions: preset.positions.map((p, i) => {
+        const role = roleForTitle(p.title, roles);
+        return { ...p, id: `cargo_${i + 1}`, ...(role ? { roleId: role.id } : {}) };
+      }),
+    };
   },
 });
 
@@ -301,6 +321,25 @@ export async function applyTermToChart(ctx: OpContext, t: string, board: BoardRo
     rows.push({ ...b, positionId: p.id, roleId: p.roleId || p.id });
   }
   if (structural) ctx.require('organograma', 'editar');
+  // Gestão também liga sozinho o acesso do cargo de mesmo nome (quem entra ganha, quem sai perde)
+  {
+    const want = new Map(rows.map(r => [r.positionId, r]));
+    const candidates = positions.filter(x => want.has(x.id)).map(x => ({ ...x }));
+    await autoLinkRoles(ctx, t, candidates, x => want.get(x.id)?.memberId || (want.get(x.id)?.name.trim() ? '__nome__' : undefined));
+    for (const c of candidates) {
+      const before = positions.find(x => x.id === c.id)!;
+      if (!c.roleId || before.roleId) continue;
+      positions = positions.map(x => (x.id === c.id ? { ...x, roleId: c.roleId } : x));
+      structural = true;
+      // Quem já estava no cargo e continua: ganha o acesso agora (a troca de ocupante dá o acesso pela passagem)
+      const r = want.get(c.id)!;
+      if (r.memberId && r.memberId === before.memberId) {
+        const m = await ctx.store.get<MemberDoc>(P.member(t, r.memberId));
+        if (m?.uid) await grantRole(ctx, t, m.uid, c.roleId, c.title);
+      }
+    }
+    for (const r of rows) r.roleId = positions.find(x => x.id === r.positionId)!.roleId || r.positionId || r.roleId;
+  }
   for (const r of rows) {
     const p = positions.find(x => x.id === r.positionId)!;
     const want = r.memberId ? { memberId: r.memberId } : r.name.trim() ? { personName: r.name.trim() } : null;
@@ -324,3 +363,35 @@ export async function applyTermToChart(ctx: OpContext, t: string, board: BoardRo
 }
 
 export const orgchartOps = [saveOrgChart, orgChartPreset, handover];
+
+/**
+ * Liga o papel de mesmo nome (Presidente, Secretário(a), Tesoureiro(a)...) aos cargos que ainda estão sem acesso.
+ * Só para quem gerencia papéis; não liga quando a diretoria escolheu "Só no organograma" (accessOff),
+ * quando o cargo está numa aba com acesso próprio, quando quem ocupa é um nome sem cadastro ou ainda não entrou
+ * no portal (o acesso precisa de uma conta). Muda as posições no lugar e devolve os avisos do que ficou para depois.
+ */
+async function autoLinkRoles(ctx: OpContext, t: string, positions: OrgPosition[], occupantOf: (p: OrgPosition) => string | undefined): Promise<string[]> {
+  if (!ctx.can('papeis', 'aprovar')) return [];
+  const candidates = positions.filter(p => !p.roleId && !p.accessOff && !p.roleFromGroup);
+  if (!candidates.length) return [];
+  const roles = (await ctx.store.query<RoleDoc>(P.roles(t), { limit: 50 })).map(r => ({ ...r.data, id: r.id }));
+  const notes: string[] = [];
+  for (const p of candidates) {
+    const role = roleForTitle(p.title, roles);
+    if (!role) continue;
+    const who = occupantOf(p);
+    if (who === '__nome__' || (!who && p.personName?.trim() && !p.memberId)) {
+      notes.push(`${p.title}: quem ocupa não tem cadastro de sócio, então o acesso do cargo fica desligado.`);
+      continue;
+    }
+    if (who) {
+      const m = await ctx.store.get<MemberDoc>(P.member(t, who));
+      if (!m?.uid) {
+        notes.push(`${p.title}: ${m?.fullName || 'quem ocupa'} ainda não entrou no portal; o acesso do cargo liga quando entrar e o cargo for salvo de novo.`);
+        continue;
+      }
+    }
+    p.roleId = role.id;
+  }
+  return notes;
+}

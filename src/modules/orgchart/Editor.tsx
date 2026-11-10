@@ -16,6 +16,7 @@ import { orderedGroups } from './groups.ts';
 import { Styled } from './OrgChartView.tsx';
 import { instructionRows, mergeSheet, norm, parseSheet, SHEET_COLUMNS, templateRows, type MergeResult } from './orgSheet.ts';
 import { parseCsv } from '../members/csvParse.ts';
+import { roleForTitle } from '../../shared/roleMatch.ts';
 import { readXlsx, saveBlob, writeXlsx } from '../../utils/xlsx.ts';
 
 const STYLES: { id: OrgChartStyle; label: string; hint: string }[] = [
@@ -147,10 +148,25 @@ export function Editor({ chart, onClose }: { chart: OrgChartDoc; onClose: () => 
       );
     });
 
+  // Cargo com papel de mesmo nome (Secretário(a), Tesoureiro(a)...) ainda "Só no organograma": oferece ligar o acesso,
+  // para que pôr alguém no cargo (aqui, na gestão ou em Passar o cargo) já dê as permissões e tirar quem sai
+  const linkable = canRoles
+    ? draft.positions
+        .filter(p => !p.roleId && !p.accessOff && !groups.find(g => g.key === p.group)?.roleId)
+        .map(p => ({ p, role: roleForTitle(p.title, roles.data) }))
+        .filter((x): x is { p: OrgPosition; role: RoleDoc & { id: string } } => !!x.role)
+    : [];
+  // Pode ligar: cargo vago, ou ocupado por sócio que já entra no portal. Nome digitado sem cadastro, não
+  const occupantOk = (p: OrgPosition) => (p.memberId ? !!members.data.find(m => m.id === p.memberId)?.uid : !p.personName?.trim());
+  const waitReason = (p: OrgPosition) => (p.memberId ? 'ainda não entrou no portal' : 'nome sem cadastro de sócio');
+  const linkReady = linkable.filter(x => occupantOk(x.p));
+  const linkWaiting = linkable.filter(x => !occupantOk(x.p));
+  const autoRole = (p: OrgPosition) => linkReady.find(x => x.p.id === p.id)?.role.id;
+
   // Quem ocupa cargo numa aba com acesso novo passa a ter esse acesso: avisar antes de salvar
   const accessNews = draft.positions.filter(p => {
     const g = groups.find(x => x.key === p.group);
-    const eff = g?.roleId || (p.roleFromGroup ? undefined : p.roleId);
+    const eff = g?.roleId || (p.roleFromGroup ? undefined : p.roleId || autoRole(p));
     return saved.get(p.id)?.memberId && (saved.get(p.id)?.roleId || '') !== (eff || '');
   });
 
@@ -178,10 +194,11 @@ export function Editor({ chart, onClose }: { chart: OrgChartDoc; onClose: () => 
       memberId: p.memberId || undefined,
       parentId: p.parentId || undefined,
       under: p.under || undefined,
-      roleId: p.roleId || undefined,
+      roleId: p.roleId || autoRole(p) || undefined,
+      accessOff: p.accessOff || undefined,
       row: p.row || undefined,
     }));
-    const r = await run(
+    const r = await run<{ ok: boolean; notes?: string[] }>(
       'orgchart.save',
       {
         tenantId: t.tenantId,
@@ -194,10 +211,12 @@ export function Editor({ chart, onClose }: { chart: OrgChartDoc; onClose: () => 
       },
       { success: 'Organograma salvo.' }
     );
+    if (r?.notes?.length) toast.show(r.notes.join(' '), 'info');
     if (r) onClose();
   };
 
   const tree = draft.style === 'arvore';
+
 
   return (
     <Card className="space-y-5">
@@ -239,6 +258,20 @@ export function Editor({ chart, onClose }: { chart: OrgChartDoc; onClose: () => 
           )}
         </p>
       </div>
+
+      {linkable.length > 0 && (
+        <Notice tone={linkWaiting.length ? 'warn' : 'info'}>
+          <div className="space-y-2">
+            <p>
+              {linkReady.length > 0 ? 'Ao salvar, estes cargos passam a dar o acesso do papel de mesmo nome:' : 'Estes cargos têm um papel de acesso com o mesmo nome, mas ainda não dá para ligar:'}{' '}
+              {linkReady.map(x => `${x.p.title}${x.p.personName ? ` (${x.p.personName})` : ''}`).join(', ')}
+              {linkWaiting.length > 0 && `${linkReady.length ? '; ' : ''}${linkWaiting.map(x => `${x.p.title} (${x.p.personName}, ${waitReason(x.p)})`).join(', ')}`}.
+            </p>
+            <p>Quem estiver no cargo recebe o acesso do papel e, na troca de cargo (aqui, em Passar o cargo ou na gestão), quem sai perde e quem entra ganha. Para um cargo não dar acesso, escolha "Só no organograma" em Acesso no portal.</p>
+            {linkWaiting.length > 0 && <p className="text-xs">Para esses: escolha o sócio cadastrado em Quem ocupa, e ele precisa ter entrado uma vez no portal com a conta Google (o convite fica em Sócios). Depois volte aqui.</p>}
+          </div>
+        </Notice>
+      )}
 
       {groups.map((g, gi) => {
         const list = inGroup(g.key);
@@ -319,8 +352,20 @@ export function Editor({ chart, onClose }: { chart: OrgChartDoc; onClose: () => 
                       {canRoles && !g.roleId && (
                         <label className="flex items-center gap-2 text-sm">
                           Acesso no portal
-                          <Select aria-label="Acesso ligado ao cargo" className="w-48" value={p.roleFromGroup ? '' : p.roleId || ''} onChange={e => setPos(p.id, { roleId: e.target.value || undefined, roleFromGroup: undefined })}>
-                            <option value="">Só no organograma</option>
+                          <Select
+                            aria-label="Acesso ligado ao cargo"
+                            className="w-48"
+                            value={p.roleFromGroup ? '' : p.roleId || (p.accessOff ? '__off' : '')}
+                            onChange={e => setPos(p.id, e.target.value === '__off' ? { roleId: undefined, accessOff: true, roleFromGroup: undefined } : { roleId: e.target.value || undefined, accessOff: undefined, roleFromGroup: undefined })}
+                          >
+                            {roleForTitle(p.title, roles.data) ? (
+                              <>
+                                <option value="">Automático: {roleForTitle(p.title, roles.data)!.name}</option>
+                                <option value="__off">Só no organograma (sem acesso)</option>
+                              </>
+                            ) : (
+                              <option value="">Só no organograma</option>
+                            )}
                             {roles.data.filter(r => r.id !== 'socio').map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                           </Select>
                         </label>

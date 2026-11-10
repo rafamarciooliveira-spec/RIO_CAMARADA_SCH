@@ -548,7 +548,8 @@ export async function buildDemoData(env: Env, opts: { files?: Map<string, string
       Dama: { name: pick(13).name, memberId: pick(13).id },
       'Conselho fiscal': { name: pick(14).name, memberId: pick(14).id },
     };
-    const positions = r.positions.map(p => ({ ...p, personName: names[p.title]?.name, ...(names[p.title]?.memberId ? { memberId: names[p.title]!.memberId } : {}), ...(p.title !== 'Presidente' && p.group === 'Diretoria' ? { parentId: r.positions.find(x => x.title === 'Presidente')?.id } : {}) }));
+    // Nome fictício sem cadastro não pode ocupar cargo que dá acesso: nesses o acesso fica desligado na demonstração
+    const positions = r.positions.map(p => ({ ...p, ...(names[p.title] && !names[p.title].memberId ? { roleId: undefined } : {}), personName: names[p.title]?.name, ...(names[p.title]?.memberId ? { memberId: names[p.title]!.memberId } : {}), ...(p.title !== 'Presidente' && p.group === 'Diretoria' ? { parentId: r.positions.find(x => x.title === 'Presidente')?.id } : {}) }));
     await call('orgchart.save', { tenantId: t, style: 'corte', title: 'Diretoria e Majestades 2026', positions, showOnPublicPage: true }, diretoria);
     // A gestão atual usa os mesmos cargos e pessoas do organograma
     await gsave('terms', { name: `Gestão ${today.slice(0, 4)} a ${Number(today.slice(0, 4)) + 1}`, start: `${today.slice(0, 4)}-01-01`, end: `${Number(today.slice(0, 4)) + 1}-12-31`, current: true, board: positions.filter(p => p.group === 'Diretoria' && p.personName).map(p => ({ positionId: p.id, ...(p.memberId ? { memberId: p.memberId } : {}), name: p.personName!, roleId: (p as { roleId?: string }).roleId || p.id, roleName: p.title })) });

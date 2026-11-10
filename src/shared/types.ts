@@ -993,6 +993,7 @@ export interface OrgPosition {
   since?: DateKey;
   roleId?: string; // papel de acesso que vai junto com o cargo
   roleFromGroup?: boolean; // o acesso veio da aba (grupo); muda junto quando a aba muda
+  accessOff?: boolean; // a diretoria escolheu "Só no organograma": não liga sozinho o papel de mesmo nome
 }
 
 /** Aba do organograma (Diretoria, Diretoria executiva, Majestades do tiro...): ordem e nível de acesso de quem está nela */

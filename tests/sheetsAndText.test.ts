@@ -115,3 +115,18 @@ describe('aniversariantes', () => {
     expect(dependentText(m('a', {}), 'Rafael')).toBe('Dependente de Rafael');
   });
 });
+
+describe('cargo e papel de mesmo nome', () => {
+  it('reconhece com acento, (a), feminino e maiúsculas; não confunde cargos diferentes', async () => {
+    const { roleForTitle, sameRoleName } = await import('../src/shared/roleMatch.ts');
+    const roles = [{ id: 'socio', name: 'Sócio(a)' }, { id: 'secretario', name: 'Secretário(a)' }, { id: 'tesoureiro', name: 'Tesoureiro(a)' }, { id: 'presidente', name: 'Presidente' }];
+    expect(roleForTitle('Secretária', roles)?.id).toBe('secretario');
+    expect(roleForTitle('SECRETARIO', roles)?.id).toBe('secretario');
+    expect(roleForTitle('Tesoureira', roles)?.id).toBe('tesoureiro');
+    expect(roleForTitle('Presidente', roles)?.id).toBe('presidente');
+    expect(roleForTitle('Vice-presidente', roles)).toBeUndefined();
+    expect(roleForTitle('Vice Secretária', roles)).toBeUndefined();
+    expect(roleForTitle('Sócia', roles)).toBeUndefined();
+    expect(sameRoleName('Diretor(a) de tiro', 'Diretora de tiro')).toBe(true);
+  });
+});

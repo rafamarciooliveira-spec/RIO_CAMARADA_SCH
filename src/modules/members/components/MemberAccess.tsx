@@ -10,9 +10,10 @@ import { useDoc, useList, useOp, useSession } from '../../../app/DataContext.tsx
 import { useTenant } from '../../../app/TenantContext.tsx';
 import { P } from '../../../shared/paths.ts';
 import { MODULES } from '../../../shared/modules.ts';
-import type { MemberDoc, MembershipDoc, RoleDoc } from '../../../shared/types.ts';
+import type { MemberDoc, MembershipDoc, OrgChartDoc, RoleDoc } from '../../../shared/types.ts';
 import { Badge, Button, Notice } from '../../../ui/index.tsx';
 import { MultiPick } from '../../card/design/MultiPick.tsx';
+import { roleForTitle } from '../../../shared/roleMatch.ts';
 
 /** O que o papel libera: primeiro onde mexe (criar, editar, aprovar), depois quantas áreas só vê */
 function roleSummary(r: RoleDoc): string {
@@ -33,6 +34,7 @@ export function MemberAccess({ m }: { m: MemberDoc & { id: string } }) {
   const canRoles = t.can('papeis', 'aprovar');
   const ms = useDoc<MembershipDoc>(canRoles && m.uid ? P.membership(t.tenantId, m.uid) : null);
   const roles = useList<RoleDoc>(canRoles ? P.roles(t.tenantId) : null, { limit: 50 });
+  const chart = useDoc<OrgChartDoc>(canRoles ? P.orgchart(t.tenantId) : null);
   const [sel, setSel] = useState<string[]>([]);
   const current = ms.data?.roleIds || [];
   useEffect(() => setSel(ms.data?.roleIds || []), [ms.data?.roleIds]);
@@ -43,6 +45,11 @@ export function MemberAccess({ m }: { m: MemberDoc & { id: string } }) {
   const extra = roles.data.filter(r => r.id !== 'socio');
   const own = m.uid && m.uid === session.user?.uid;
   const changed = sel.join(',') !== current.join(',');
+  // Cargos da pessoa no organograma e o papel de mesmo nome (Secretário(a) -> papel Secretário(a))
+  const positions = (chart.data?.positions || []).filter(p => p.memberId === m.id);
+  const suggest = positions
+    .map(p => ({ p, role: p.roleId ? undefined : roleForTitle(p.title, extra) }))
+    .filter(x => x.role && !sel.includes(x.role.id));
   const save = () => run('memberships.setRoles', { tenantId: t.tenantId, uid: m.uid, roleIds: ['socio', ...sel.filter(x => x !== 'socio')].slice(0, 5) }, { success: 'Acesso atualizado. Vale na hora.' });
 
   return (
@@ -72,6 +79,17 @@ export function MemberAccess({ m }: { m: MemberDoc & { id: string } }) {
               </Badge>
             ))}
           </div>
+          {positions.length > 0 && (
+            <p className="text-xs">
+              Cargo no organograma: <strong>{positions.map(p => p.title).join(', ')}</strong>
+              {positions.some(p => !p.roleId) && <span className="text-muted"> (o cargo sozinho não dá acesso; marque o papel aqui ou ligue o acesso ao cargo no organograma)</span>}
+            </p>
+          )}
+          {suggest.map(({ p, role }) => (
+            <Button key={p.id} size="sm" variant="secondary" onClick={() => setSel(x => [...x, role!.id])}>
+              Dar o acesso de {role!.name}, como o cargo
+            </Button>
+          ))}
           <MultiPick
             label="Papéis do sócio"
             options={extra.map(r => r.name)}

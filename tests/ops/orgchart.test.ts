@@ -157,3 +157,50 @@ describe('abas do organograma com nível de acesso', () => {
     await expect(h.call('orgchart.save', { tenantId: t, style: 'cartoes', title: 'Diretoria', showOnPublicPage: false, groups: [{ name: 'Diretoria', order: 1, roleId: 'tesoureiro' }], positions: after.positions }, h.actors.secretario)).rejects.toMatchObject({ code: 'permission-denied' });
   });
 });
+
+describe('cargo dá o acesso do papel de mesmo nome', () => {
+  async function two() {
+    const h = await makeTestTenant();
+    const a = await makeMember(h, 'danubia', 'Danubia Beck');
+    const b = actor('aline');
+    const { memberId: bId } = await h.call<{ memberId: string }>(
+      'members.apply',
+      { tenantId: h.tenantId, data: { fullName: 'Aline Esperanca', cpf: '111.444.777-35', birthDate: '1985-01-01', categoryId: 'efetivo' }, consents: { cadastro: true, imagem: false, comunicacao: false, marketing: false } },
+      b
+    );
+    await h.call('members.approve', { tenantId: h.tenantId, memberId: bId }, h.actors.presidente);
+    const roles = async (uid: string) => (await h.store.get<MembershipDoc>(P.membership(h.tenantId, uid)))!.roleIds;
+    return { h, a, b, bId, roles };
+  }
+
+  it('pelo organograma: Secretária ocupada liga sozinho; "Só no organograma" não liga; nome sem cadastro fica de fora', async () => {
+    const { h, a, roles } = await two();
+    const t = h.tenantId;
+    const r = await h.call<{ notes: string[] }>('orgchart.save', {
+      tenantId: t, style: 'cartoes', title: 'Diretoria', showOnPublicPage: false,
+      positions: [pos('sec', 'Secretária', { memberId: a.memberId }), pos('tes', 'Tesoureiro(a)', { personName: 'Fulano Sem Cadastro' }), pos('vice', 'Vice-presidente', { accessOff: true })],
+    }, h.actors.presidente);
+    const chart = (await h.store.get<OrgChartDoc>(P.orgchart(t)))!;
+    expect(chart.positions.find(p => p.id === 'sec')!.roleId).toBe('secretario');
+    expect(await roles(a.who.uid)).toContain('secretario');
+    expect(chart.positions.find(p => p.id === 'tes')!.roleId).toBeUndefined();
+    expect(r.notes.join(' ')).toMatch(/Tesoureiro.*sem cadastro|não tem cadastro/);
+    expect(chart.positions.find(p => p.id === 'vice')!.roleId).toBeUndefined();
+  });
+
+  it('pela gestão: cargo sem acesso ligado passa a dar o acesso, e na troca quem sai perde e quem entra ganha', async () => {
+    const { h, a, b, bId, roles } = await two();
+    const t = h.tenantId;
+    // Organograma salvo por quem não gerencia papéis (sem ligar): o cargo fica "Só no organograma"
+    await h.store.set(P.orgchart(t), { style: 'cartoes', title: 'Diretoria', showOnPublicPage: false, updatedAt: '', positions: [pos('sec', 'Secretário(a)', { memberId: a.memberId, personName: 'Danubia Beck' })] });
+    const { id } = await h.call<{ id: string }>('generic.save', {
+      tenantId: t, collection: 'terms',
+      data: { name: 'Gestão 2026 a 2027', start: '2026-01-01', end: '2027-12-31', current: true, board: [{ positionId: 'sec', memberId: a.memberId, name: 'Danubia Beck', roleId: 'sec', roleName: 'Secretário(a)' }] },
+    }, h.actors.presidente);
+    expect(await roles(a.who.uid)).toContain('secretario');
+    // Troca de secretária na gestão
+    await h.call('generic.save', { tenantId: t, collection: 'terms', id, data: { board: [{ positionId: 'sec', memberId: bId, name: 'Aline Esperanca', roleId: 'secretario', roleName: 'Secretário(a)' }] } }, h.actors.presidente);
+    expect(await roles(b.uid)).toContain('secretario');
+    expect(await roles(a.who.uid)).not.toContain('secretario');
+  });
+});

@@ -59,9 +59,23 @@ export default function LoginPage() {
           <>
             <div className="text-center text-xs text-muted">ou receba um link no e-mail</div>
             {sentTo ? (
-              <Notice tone="ok">
-                Enviamos um link para <strong>{sentTo}</strong>. Abra o e-mail neste aparelho e toque no link. Ele vale por pouco tempo e é de uso único.
-              </Notice>
+              <div className="space-y-2">
+                <Notice tone="ok">
+                  Pedimos o envio do link para <strong>{sentTo}</strong>. Abra o e-mail neste aparelho e toque no link. Ele vale por pouco tempo e é de uso único.
+                </Notice>
+                {/* O e-mail sai do serviço de login (remetente noreply@...firebaseapp.com) e muitas vezes cai no spam */}
+                <p className="text-xs text-muted">
+                  Não chegou em 2 minutos? Procure em <strong>Spam</strong>, <strong>Promoções</strong> ou <strong>Lixeira</strong>: o remetente termina em <strong>firebaseapp.com</strong>. Marque como "não é spam" para os próximos chegarem certo.
+                </p>
+                {/@(gmail|googlemail)\.com$/i.test(sentTo) && (
+                  <p className="text-xs">
+                    Este e-mail é do Gmail: é mais rápido tocar em <strong>Continuar com a Conta Google</strong>, sem esperar e-mail.
+                  </p>
+                )}
+                <button type="button" className="text-xs text-accent underline cursor-pointer" onClick={() => setSentTo('')}>
+                  Mandar de novo ou usar outro e-mail
+                </button>
+              </div>
             ) : (
               <form onSubmit={link} className="space-y-3">
                 <Field label="Seu e-mail">
