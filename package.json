@@ -21,7 +21,7 @@
     "indexes:scan": "tsx scripts/scan-queries.ts"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.3.3",
+    "@tailwindcss/vite": "^4.3.5",
     "@vitejs/plugin-react": "^6.1.1",
     "firebase": "^13.2.0",
     "html-to-image": "^1.11.13",
