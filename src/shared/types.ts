@@ -268,6 +268,7 @@ export interface MemberDoc {
   uid?: string; // conta vinculada
   fullName: string;
   displayName: string; // nome reduzido para a validação
+  preCadastro?: boolean; // feito pela diretoria só com nome e telefone; a pessoa completa (CPF, nascimento, aceites) no primeiro acesso
   categoryId: string;
   categoryName: string;
   status: MemberStatus;

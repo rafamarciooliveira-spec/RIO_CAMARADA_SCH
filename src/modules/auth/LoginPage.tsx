@@ -1,7 +1,11 @@
-/** Entrada no portal: Google (sempre), CPF e senha (padrão ligado) ou link no e-mail (se a sociedade ativar). */
+/**
+ * Entrada no portal. Primeiro a pessoa escolhe, com uma pergunta clara, como quer entrar (tenho senha, recebi um
+ * código, conta Google, quero me cadastrar); só depois aparece o formulário daquele jeito. Assim quem usa a conta
+ * Google não vê pedido de CPF e senha, e quem tem mais idade não precisa entender tudo de uma vez.
+ */
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
-import { Mail } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Mail } from 'lucide-react';
 import { useData, useSession } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
 import { AssociationLogo } from '../../components/AssociationLogos.tsx';
@@ -21,6 +25,7 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const g = useGoogleSignIn();
   const [error, setError] = useState('');
+  const [how, setHow] = useState<null | 'senha' | 'email'>(() => (params.get('modo') === 'senha' ? 'senha' : null));
 
   useEffect(() => setError(''), [email]);
 
@@ -40,31 +45,86 @@ export default function LoginPage() {
     }
   };
 
+  const target = back.startsWith('/') ? back : t.to('inicio');
+  const cpfOn = t.tenant.loginMethods?.cpfPassword !== false;
+  const emailOn = t.tenant.loginMethods?.emailLink !== false;
+  const board = t.labels.board.toLowerCase();
+  const member = t.labels.member.toLowerCase();
+
+  /** Um caminho por cartão: uma pergunta clara, uma resposta grande */
+  const Choice = ({ title, text, onClick, to, strong }: { title: string; text: string; onClick?: () => void; to?: string; strong?: boolean }) => {
+    const body = (
+      <span className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left w-full ${strong ? 'border-accent/70 hover:border-accent' : 'border-line hover:border-muted'}`}>
+        <span className="flex-1">
+          <span className="block text-lg font-bold">{title}</span>
+          <span className="block text-sm text-muted mt-0.5">{text}</span>
+        </span>
+        <ChevronRight className="w-6 h-6 text-muted shrink-0" aria-hidden />
+      </span>
+    );
+    return to ? (
+      <Link to={to} className="block">
+        {body}
+      </Link>
+    ) : (
+      <button type="button" onClick={onClick} disabled={g.busy} className="block w-full cursor-pointer disabled:opacity-60">
+        {body}
+      </button>
+    );
+  };
+
+  const BackLink = () => (
+    <button type="button" onClick={() => { setHow(null); setError(''); }} className="flex items-center gap-1 text-sm text-accent underline cursor-pointer">
+      <ChevronLeft className="w-4 h-4" aria-hidden /> Voltar e escolher outro jeito
+    </button>
+  );
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
-      <Card className="w-full max-w-sm space-y-5 p-6">
+      <Card className="w-full max-w-md space-y-5 p-6">
         <div className="text-center space-y-2">
           <div className="w-14 h-14 rounded-2xl bg-brand text-on-brand mx-auto flex items-center justify-center">
             <AssociationLogo logoKeyOrUrl={t.tenant.branding.logoUrl} className="w-8 h-8" />
           </div>
-          <h1 className="text-lg font-bold">{t.tenant.name}</h1>
-          <p className="text-sm text-muted">Entre para ver sua {t.labels.card.toLowerCase()} e o portal.</p>
+          <h1 className="text-xl font-bold">{t.tenant.name}</h1>
+          <p className="text-base text-muted">
+            {how === 'senha' ? 'Entrar com CPF e senha' : how === 'email' ? 'Receber um link no e-mail' : `Entre para ver sua ${t.labels.card.toLowerCase()} e o portal.`}
+          </p>
         </div>
         {(error || g.error) && <Notice tone="bad">{error || g.error}</Notice>}
         {g.slow && <Notice tone="warn">{g.slowText}</Notice>}
-        <Button className="w-full" variant="secondary" loading={g.busy} disabled={busy} onClick={g.start}>
-          Continuar com a Conta Google
-        </Button>
-        <RememberMe />
-        {t.tenant.loginMethods?.cpfPassword !== false && (
-          <>
-            <div className="text-center text-xs text-muted">ou entre com CPF e senha</div>
-            <CpfLoginForm back={back.startsWith('/') ? back : t.to('inicio')} />
-          </>
+
+        {how === null && (
+          <div className="space-y-4">
+            <section className="space-y-3">
+              <h2 className="text-base font-semibold">Já sou {member}</h2>
+              {cpfOn && <Choice strong title="Tenho senha" text="Entro com o meu CPF e a senha que eu criei." onClick={() => setHow('senha')} />}
+              {cpfOn && <Choice title={`Recebi um código da ${board}`} text="É o meu primeiro acesso (ou esqueci a senha). Uso o telefone e o código." to={t.to('primeiro-acesso')} />}
+              <Choice title="Uso a conta Google (Gmail)" text="Entro com a conta Google, sem senha nova." onClick={g.start} />
+              {emailOn && (
+                <button type="button" onClick={() => setHow('email')} className="text-sm text-accent underline cursor-pointer">
+                  Prefiro receber um link no e-mail
+                </button>
+              )}
+            </section>
+            <section className="space-y-3 pt-2 border-t border-line">
+              <h2 className="text-base font-semibold pt-3">Ainda não sou {member}</h2>
+              <Choice title="Quero me cadastrar" text="Preencho a ficha e a diretoria confere." to={t.to('cadastro')} />
+            </section>
+            <RememberMe />
+          </div>
         )}
-        {t.tenant.loginMethods?.emailLink !== false && (
-          <>
-            <div className="text-center text-xs text-muted">ou receba um link no e-mail</div>
+
+        {how === 'senha' && (
+          <div className="space-y-4">
+            <CpfLoginForm back={target} />
+            <RememberMe />
+            <BackLink />
+          </div>
+        )}
+
+        {how === 'email' && (
+          <div className="space-y-4">
             {sentTo ? (
               <div className="space-y-2">
                 <Notice tone="ok">
@@ -76,7 +136,7 @@ export default function LoginPage() {
                 </p>
                 {/@(gmail|googlemail)\.com$/i.test(sentTo) && (
                   <p className="text-xs">
-                    Este e-mail é do Gmail: é mais rápido tocar em <strong>Continuar com a Conta Google</strong>, sem esperar e-mail.
+                    Este e-mail é do Gmail: é mais rápido voltar e tocar em <strong>Uso a conta Google</strong>, sem esperar e-mail.
                   </p>
                 )}
                 <button type="button" className="text-xs text-accent underline cursor-pointer" onClick={() => setSentTo('')}>
@@ -88,16 +148,14 @@ export default function LoginPage() {
                 <Field label="Seu e-mail">
                   {id => <Input id={id} type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu.email@exemplo.com" />}
                 </Field>
-                <Button type="submit" className="w-full" loading={busy} disabled={g.busy} icon={<Mail className="w-4 h-4" />}>
+                <Button type="submit" className="w-full" loading={busy} icon={<Mail className="w-4 h-4" />}>
                   Enviar link de acesso
                 </Button>
               </form>
             )}
-          </>
+            <BackLink />
+          </div>
         )}
-        <p className="text-center text-xs text-muted">
-          Ainda não é {t.labels.member.toLowerCase()}? <Link className="text-accent" to={t.to('cadastro')}>Faça sua proposta</Link>
-        </p>
       </Card>
     </div>
   );

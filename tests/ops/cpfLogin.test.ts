@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeTestTenant } from '../helpers/env.ts';
 import { P } from '../../src/shared/paths.ts';
-import type { MemberDoc, MembershipDoc } from '../../src/shared/types.ts';
+import type { MemberDoc, MemberPiiDoc, MembershipDoc } from '../../src/shared/types.ts';
 import { weakPassword } from '../../src/shared/passwordHash.ts';
 
 const CPF = '529.982.247-25'; // o do makeMember
@@ -80,7 +80,7 @@ describe('entrada por CPF e senha', () => {
       { tenantId: t, data: { fullName: 'Sem Documento Silva', categoryId: 'efetivo' }, consents: { cadastro: true, imagem: false, comunicacao: false, marketing: false }, approve: true },
       h.actors.secretario
     );
-    await expect(h.call('access.createCode', { tenantId: t, memberId: semCpf }, h.actors.secretario)).rejects.toThrow(/não tem CPF/);
+    await expect(h.call('access.createCode', { tenantId: t, memberId: semCpf }, h.actors.secretario)).rejects.toThrow(/não tem telefone nem CPF/);
   });
 
   it('senha fácil é recusada com o motivo', () => {
@@ -135,5 +135,53 @@ describe('vários códigos e ficha sem conta Google', () => {
     await h.call('tenant.update', { tenantId: t, loginMethods: { google: true, emailLink: true, cpfPassword: false } }, h.actors.presidente);
     expect((await h.call<{ enabled: boolean }>('members.openFormOptions', { tenantId: t }, null)).enabled).toBe(false);
     await denied(h.call('members.applyOpen', { tenantId: t, data: { fullName: 'Fulano de Tal', cpf: CPF, birthDate: '1950-01-01', categoryId: 'efetivo' }, consents: { cadastro: true, imagem: false, comunicacao: false, marketing: false }, password: 'Jardim48' }, null), 'failed-precondition');
+  });
+});
+
+describe('pré-cadastro só com nome e telefone', () => {
+  const consents = { cadastro: true, imagem: true, comunicacao: true, marketing: false };
+  it('a diretoria cria com nome e telefone; a pessoa entra com telefone e código, completa CPF, nascimento e aceites e depois entra com CPF e senha', async () => {
+    const h = await makeTestTenant();
+    const t = h.tenantId;
+    const pre = await h.call<{ memberId: string; code: string; byPhone: boolean }>('members.preRegister', { tenantId: t, fullName: 'Seu Arno Schmitt', phone: '(47) 99235-1234', categoryId: 'efetivo', approve: true }, h.actors.presidente);
+    expect(pre.byPhone).toBe(true);
+    expect((await h.store.get<MemberDoc>(P.member(t, pre.memberId)))!).toMatchObject({ preCadastro: true });
+    // Com +55 e sem o 9 da frente também acha
+    const need = await h.call<{ firstName: string; needCpf: boolean; needBirthDate: boolean; needConsents: boolean }>('access.check', { tenantId: t, login: '+55 47 9235-1234', code: pre.code }, null);
+    expect(need).toMatchObject({ firstName: 'Seu', needCpf: true, needBirthDate: true, needConsents: true });
+    // Sem o aceite não passa (e o código continua valendo)
+    await denied(h.call('access.redeem', { tenantId: t, login: '47992351234', code: pre.code, password: 'Jardim48', data: { cpf: CPF, birthDate: '1948-03-10' } }, null), 'invalid-argument');
+    const r = await h.call<{ email: string; memberId: string }>('access.redeem', { tenantId: t, login: '47992351234', code: pre.code, password: 'Jardim48', data: { cpf: CPF, birthDate: '1948-03-10' }, consents }, null);
+    expect(r.memberId).toBe(pre.memberId);
+    const m = (await h.store.get<MemberDoc>(P.member(t, pre.memberId)))!;
+    expect(m.preCadastro).toBeUndefined();
+    expect(m.uid).toBeTruthy();
+    expect(m.birthMonthDay).toBe('03-10');
+    const pii = (await h.store.get<MemberPiiDoc>(P.memberPii(t, pre.memberId)))!;
+    expect(pii.cpfMasked).toBeTruthy();
+    expect(pii.consents.find(c => c.purpose === 'imagem')?.granted).toBe(true);
+    expect((await h.call<{ email: string }>('access.login', { cpf: CPF, password: 'Jardim48' }, null)).email).toBe(r.email);
+  });
+
+  it('casal com o mesmo telefone: cada código acha o seu cadastro; código errado não entra', async () => {
+    const h = await makeTestTenant();
+    const t = h.tenantId;
+    const a = await h.call<{ memberId: string; code: string }>('members.preRegister', { tenantId: t, requestId: 'pa', fullName: 'Arno Schmitt', phone: '47 99235-1234', categoryId: 'efetivo' }, h.actors.presidente);
+    const b = await h.call<{ memberId: string; code: string }>('members.preRegister', { tenantId: t, requestId: 'pb', fullName: 'Hilda Schmitt', phone: '47 99235-1234', categoryId: 'efetivo' }, h.actors.presidente);
+    expect((await h.call<{ firstName: string }>('access.check', { tenantId: t, login: '(47) 99235-1234', code: b.code }, null)).firstName).toBe('Hilda');
+    expect((await h.call<{ firstName: string }>('access.check', { tenantId: t, login: '(47) 99235-1234', code: a.code }, null)).firstName).toBe('Arno');
+    const bad = ['000000', '111111'].find(c => c !== a.code && c !== b.code)!;
+    await denied(h.call('access.check', { tenantId: t, login: '(47) 99235-1234', code: bad }, null), 'permission-denied');
+    await denied(h.call('access.check', { tenantId: t, login: '(48) 91111-2222', code: a.code }, null), 'permission-denied');
+  });
+
+  it('não deixa usar no primeiro acesso o CPF de quem já tem senha no portal', async () => {
+    const { h } = await setup();
+    const t = h.tenantId;
+    const { memberId } = await h.call<{ memberId: string }>('members.create', { tenantId: t, data: { fullName: 'Seu Arno Schmitt', cpf: '111.444.777-35', birthDate: '1948-03-10', categoryId: 'efetivo' }, consents: { cadastro: true, imagem: false, comunicacao: false, marketing: false }, approve: true }, h.actors.secretario);
+    const c = await h.call<{ code: string }>('access.createCode', { tenantId: t, memberId }, h.actors.secretario);
+    await h.call('access.redeem', { tenantId: t, cpf: '111.444.777-35', code: c.code, password: 'Jardim48' }, null);
+    const pre = await h.call<{ code: string }>('members.preRegister', { tenantId: t, fullName: 'Fulano Esperto', phone: '(47) 98888-0000', categoryId: 'efetivo' }, h.actors.presidente);
+    await expect(h.call('access.redeem', { tenantId: t, login: '47988880000', code: pre.code, password: 'Outra1234', data: { cpf: '111.444.777-35', birthDate: '1970-01-01' }, consents }, null)).rejects.toThrow(/já tem senha/);
   });
 });

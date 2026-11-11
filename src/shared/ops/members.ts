@@ -52,7 +52,7 @@ function today(ctx: OpContext): string {
   return localDateKey(ctx.now(), ctx.tenant?.timezone);
 }
 
-function buildConsents(ctx: OpContext, c: z.infer<typeof zConsents>): ConsentRecord[] {
+export function buildConsents(ctx: OpContext, c: z.infer<typeof zConsents>): ConsentRecord[] {
   const at = ctx.nowIso;
   return [
     { purpose: 'cadastro', legalBasis: 'execucao_contrato', granted: true, termsVersion: TERMS_VERSION, at },
@@ -62,7 +62,7 @@ function buildConsents(ctx: OpContext, c: z.infer<typeof zConsents>): ConsentRec
   ];
 }
 
-async function cpfFields(ctx: OpContext, cpfRaw: string | undefined, memberId: string, allowDup = false) {
+export async function cpfFields(ctx: OpContext, cpfRaw: string | undefined, memberId: string, allowDup = false) {
   if (!cpfRaw) return {};
   const cpf = cleanCPF(cpfRaw);
   if (!validateCPF(cpf)) fail('invalid-argument', 'CPF inválido.');
@@ -72,7 +72,7 @@ async function cpfFields(ctx: OpContext, cpfRaw: string | undefined, memberId: s
   return { cpfEnc: await ctx.crypto.encrypt(cpf), cpfHmac: hmac, cpfMasked: maskCPF(cpf) };
 }
 
-async function writeCpfIndex(ctx: OpContext, hmac: string | undefined, memberId: string, oldHmac?: string) {
+export async function writeCpfIndex(ctx: OpContext, hmac: string | undefined, memberId: string, oldHmac?: string) {
   if (oldHmac && oldHmac !== hmac) await ctx.store.delete(P.cpfIndex(tid(ctx), oldHmac));
   if (hmac) await ctx.store.set(P.cpfIndex(tid(ctx), hmac), { memberId });
 }
@@ -103,6 +103,8 @@ interface CreateArgs {
   dependentOf?: string;
   memberId?: string;
   duplicateOf?: { id: string; by: 'cpf' | 'nome' }; // mesma pessoa já cadastrada (dependente incluído pelos dois pais)
+  /** Pré-cadastro da diretoria (só nome e telefone): a própria pessoa completa e dá os aceites no primeiro acesso */
+  pre?: boolean;
 }
 
 export async function createMemberCore(ctx: OpContext, a: CreateArgs): Promise<string> {
@@ -112,7 +114,7 @@ export async function createMemberCore(ctx: OpContext, a: CreateArgs): Promise<s
   const memberId = a.memberId || ctx.store.newId();
   const isMinor = validateMinor(ctx, a.data.birthDate, a.data.guardian);
   // Campos extras obrigatórios valem para o titular; o dependente responde pelo cadastro dele
-  for (const f of a.dependentOf ? [] : settings.customFields) {
+  for (const f of a.dependentOf || a.pre ? [] : settings.customFields) {
     if (f.required && !a.data.custom?.[f.id]) fail('invalid-argument', `Preencha o campo "${f.label}".`);
   }
   const cpf = await cpfFields(ctx, a.data.cpf, memberId, !!a.duplicateOf);
@@ -130,6 +132,7 @@ export async function createMemberCore(ctx: OpContext, a: CreateArgs): Promise<s
     ...(a.data.memberSinceYear ? { memberSinceYear: a.data.memberSinceYear } : {}),
     ...(a.dependentOf ? { dependentOf: a.dependentOf } : {}),
     ...(a.duplicateOf ? { duplicateOf: a.duplicateOf.id, duplicateBy: a.duplicateOf.by } : {}),
+    ...(a.pre ? { preCadastro: true } : {}),
     groups: [],
     custom: a.data.custom || {},
     createdAt: ctx.nowIso,
@@ -153,7 +156,8 @@ export async function createMemberCore(ctx: OpContext, a: CreateArgs): Promise<s
           },
         }
       : {}),
-    consents: buildConsents(ctx, a.consents),
+    // No pré-cadastro os aceites ficam para a própria pessoa dar no primeiro acesso
+    consents: a.pre ? [] : buildConsents(ctx, a.consents),
     updatedAt: ctx.nowIso,
   };
   await ctx.store.set(P.member(t, memberId), member as unknown as Record<string, unknown>);

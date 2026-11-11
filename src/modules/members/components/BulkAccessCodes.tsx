@@ -11,7 +11,7 @@ import type { MemberDoc } from '../../../shared/types.ts';
 import { Button, Loading, Modal, Notice, Toggle, useToast } from '../../../ui/index.tsx';
 import { printAccessSheets } from './AccessCodeBlock.tsx';
 
-type Done = { memberId: string; name: string; code: string; expiresAt: string; link: string };
+type Done = { memberId: string; name: string; code: string; expiresAt: string; link: string; byPhone?: boolean };
 
 export function BulkAccessCodes({ onClose }: { onClose: () => void }) {
   const t = useTenant();
@@ -85,7 +85,7 @@ export function BulkAccessCodes({ onClose }: { onClose: () => void }) {
         <Loading />
       ) : (
         <div className="space-y-3">
-          <p className="text-sm text-muted">Marque quem vai receber o código (até 60 por vez). Bom para entregar em mãos num evento ou na secretaria. Quem não tem CPF no cadastro fica de fora, com o aviso.</p>
+          <p className="text-sm text-muted">Marque quem vai receber o código (até 60 por vez). Bom para entregar em mãos num evento ou na secretaria. Quem não tem telefone nem CPF no cadastro fica de fora, com o aviso.</p>
           <Toggle checked={onlyNew} onChange={setOnlyNew} label="Só quem ainda não entra no portal" />
           <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
             <input type="checkbox" className="w-5 h-5" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(rows.slice(0, 60).map(m => m.id)))} />
@@ -97,6 +97,7 @@ export function BulkAccessCodes({ onClose }: { onClose: () => void }) {
                 <label className="flex items-center gap-3 px-3 py-2.5 text-sm cursor-pointer">
                   <input type="checkbox" className="w-5 h-5" checked={sel.has(m.id)} onChange={() => toggle(m.id)} />
                   <span className="flex-1 truncate">{m.fullName}</span>
+                  {m.preCadastro && <span className="text-xs text-muted">pré-cadastro</span>}
                   {m.dependentOf && <span className="text-xs text-muted">dependente</span>}
                   {m.uid && <span className="text-xs text-muted">já entra</span>}
                 </label>

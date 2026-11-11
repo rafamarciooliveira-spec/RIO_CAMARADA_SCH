@@ -8,14 +8,15 @@ import { P } from '../../shared/paths.ts';
 import { formatDate } from '../../shared/dates.ts';
 import type { QuerySpec } from '../../shared/core/store.ts';
 import { MEMBER_STATUSES, MEMBER_STATUS_LABEL, type MemberDoc, type MemberStatus } from '../../shared/types.ts';
-import { Badge, Button, EmptyState, ErrorState, LoadMore, Loading, Modal, Notice, PageHeader, SearchBox, Select, Table, Toggle, type Column } from '../../ui/index.tsx';
+import { Badge, Button, EmptyState, ErrorState, Field, Input, LoadMore, Loading, Modal, Notice, PageHeader, SearchBox, Select, Table, Toggle, type Column } from '../../ui/index.tsx';
+import { phoneDigits } from '../../shared/phone.ts';
 import { MemberDetail } from './components/MemberDetail.tsx';
 import { ExportModal, ImportModal } from './components/ImportExport.tsx';
 import { emptyMemberForm, MemberForm, toPayload, validateMemberForm, type MemberFormValue } from './components/MemberForm.tsx';
 import { statusTone } from './statusTone.ts';
 import { SignupLinkModal } from './components/SignupLinkModal.tsx';
 import { DuplicatesFinder } from './components/Duplicates.tsx';
-import { AccessCodeBlock } from './components/AccessCodeBlock.tsx';
+import { AccessCodeBlock, type AccessCodeResult } from './components/AccessCodeBlock.tsx';
 import { BulkAccessCodes } from './components/BulkAccessCodes.tsx';
 import { TransfersSection } from './components/Transfers.tsx';
 
@@ -255,8 +256,29 @@ function NewMemberModal({ onClose, onCreated }: { onClose: () => void; onCreated
   const [approve, setApprove] = useState(false);
   const [invite, setInvite] = useState(false);
   const [inviteLink, setInviteLink] = useState('');
-  const [created, setCreated] = useState<{ id: string; fullName: string } | null>(null);
+  const [created, setCreated] = useState<{ id: string; fullName: string; code?: AccessCodeResult } | null>(null);
   const [requestId] = useState(() => `novo_${Date.now()}`);
+  // Pré-cadastro rápido: só nome e telefone; a pessoa completa CPF, nascimento e aceites no primeiro acesso
+  const quickOk = t.tenant.loginMethods?.cpfPassword !== false && t.can('socios', 'editar');
+  const [mode, setMode] = useState<'rapido' | 'completo'>(quickOk ? 'rapido' : 'completo');
+  const [quick, setQuick] = useState({ fullName: '', phone: '', categoryId: s?.categories.find(c => c.id !== 'dependente')?.id || s?.categories[0]?.id || '' });
+  const [quickApprove, setQuickApprove] = useState(() => t.can('socios', 'aprovar'));
+
+  const saveQuick = async () => {
+    const errs: Record<string, string> = {};
+    if (quick.fullName.trim().split(/\s+/).length < 2) errs.qName = 'Escreva o nome completo (nome e sobrenome).';
+    const d = phoneDigits(quick.phone);
+    if (d.length < 10 || d.length > 11) errs.qPhone = 'Telefone com DDD, por exemplo (47) 99999-9999.';
+    if (!quick.categoryId) errs.qCat = 'Escolha a categoria.';
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+    const r = await run<{ memberId: string } & AccessCodeResult>(
+      'members.preRegister',
+      { tenantId: t.tenantId, requestId: `${requestId}_pre`, fullName: quick.fullName.trim(), phone: quick.phone.trim(), categoryId: quick.categoryId, approve: quickApprove },
+      { success: 'Pré-cadastro criado.' }
+    );
+    if (r) setCreated({ id: r.memberId, fullName: quick.fullName.trim(), code: r });
+  };
 
   const save = async () => {
     const errs = validateMemberForm(v, s?.customFields || [], { requireConsent: true, tz: t.tenant.timezone });
@@ -295,8 +317,8 @@ function NewMemberModal({ onClose, onCreated }: { onClose: () => void; onCreated
             <Button variant="secondary" onClick={onClose}>
               Cancelar
             </Button>
-            <Button loading={busy} onClick={save}>
-              Salvar cadastro
+            <Button loading={busy} onClick={mode === 'rapido' ? saveQuick : save}>
+              {mode === 'rapido' ? 'Salvar e gerar o código' : 'Salvar cadastro'}
             </Button>
           </>
         )
@@ -304,8 +326,10 @@ function NewMemberModal({ onClose, onCreated }: { onClose: () => void; onCreated
     >
       {created ? (
         <div className="space-y-3">
-          <Notice tone="ok">Cadastro de {created.fullName} criado.</Notice>
-          <AccessCodeBlock m={{ id: created.id, fullName: created.fullName }} />
+          <Notice tone="ok">
+            {created.code ? `Pré-cadastro de ${created.fullName} criado. Mande o código: no primeiro acesso a pessoa digita o telefone e o código, completa CPF, nascimento e foto, aceita os termos e cria a senha.` : `Cadastro de ${created.fullName} criado.`}
+          </Notice>
+          <AccessCodeBlock m={{ id: created.id, fullName: created.fullName }} initial={created.code} />
         </div>
       ) : inviteLink ? (
         <Notice tone="warn">
@@ -315,12 +339,51 @@ function NewMemberModal({ onClose, onCreated }: { onClose: () => void; onCreated
         <Loading />
       ) : (
         <>
+          {quickOk && (
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Tipo de cadastro">
+              {(
+                [
+                  ['rapido', 'Pré-cadastro rápido', 'Só nome e telefone. A pessoa completa o resto e aceita os termos no primeiro acesso.'],
+                  ['completo', 'Cadastro completo', 'A diretoria preenche todos os dados agora.'],
+                ] as const
+              ).map(([k, title, text]) => (
+                <button key={k} type="button" role="radio" aria-checked={mode === k} onClick={() => { setMode(k); setErrors({}); }} className={`text-left rounded-xl border p-3 cursor-pointer ${mode === k ? 'border-accent bg-accent/10' : 'border-line hover:bg-surface-2'}`}>
+                  <div className="font-semibold text-sm">{title}</div>
+                  <div className="text-xs text-muted mt-0.5">{text}</div>
+                </button>
+              ))}
+            </div>
+          )}
+          {mode === 'rapido' ? (
+            <div className="space-y-3">
+              <Field label="Nome completo" required error={errors.qName}>
+                {id => <Input id={id} value={quick.fullName} maxLength={150} autoComplete="off" onChange={e => setQuick({ ...quick, fullName: e.target.value })} />}
+              </Field>
+              <Field label="Telefone ou WhatsApp (com DDD)" required error={errors.qPhone} hint="É com este número e o código que a pessoa faz o primeiro acesso.">
+                {id => <Input id={id} inputMode="tel" value={quick.phone} maxLength={30} placeholder="(47) 99999-9999" onChange={e => setQuick({ ...quick, phone: e.target.value })} />}
+              </Field>
+              {s.categories.filter(c => c.id !== 'dependente').length > 1 && (
+                <Field label={`Categoria de ${t.labels.member.toLowerCase()}`} required error={errors.qCat}>
+                  {id => (
+                    <Select id={id} value={quick.categoryId} onChange={e => setQuick({ ...quick, categoryId: e.target.value })}>
+                      {s.categories.filter(c => c.id !== 'dependente').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </Select>
+                  )}
+                </Field>
+              )}
+              {t.can('socios', 'aprovar') && <Toggle checked={quickApprove} onChange={setQuickApprove} label="Já aprovar (já é sócio: gera matrícula e validade)" />}
+              {Object.keys(errors).length > 0 && <Notice tone="bad">Confira os campos destacados.</Notice>}
+            </div>
+          ) : (
+          <>
           <MemberForm value={v} onChange={setV} categories={s.categories} customFields={s.customFields || []} errors={errors} tz={t.tenant.timezone} tenantName={t.tenant.name} selfService={false} memberLabel={t.labels.member} />
           <div className="space-y-2">
             {t.can('socios', 'aprovar') && <Toggle checked={approve} onChange={setApprove} label="Já aprovar (gera matrícula e validade)" />}
             <Toggle checked={invite} onChange={setInvite} label="Enviar convite de acesso ao portal pelo e-mail informado" disabled={!v.email.trim()} />
           </div>
           {Object.keys(errors).length > 0 && <Notice tone="bad">Confira os campos destacados.</Notice>}
+          </>
+          )}
         </>
       )}
     </Modal>
