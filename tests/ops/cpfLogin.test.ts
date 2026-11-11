@@ -185,3 +185,25 @@ describe('pré-cadastro só com nome e telefone', () => {
     await expect(h.call('access.redeem', { tenantId: t, login: '47988880000', code: pre.code, password: 'Outra1234', data: { cpf: '111.444.777-35', birthDate: '1970-01-01' }, consents }, null)).rejects.toThrow(/já tem senha/);
   });
 });
+
+describe('excluir cadastro feito por engano', () => {
+  it('exclui o pré-cadastro (some o código e o cadastro); sócio comum não exclui', async () => {
+    const h = await makeTestTenant();
+    const t = h.tenantId;
+    const pre = await h.call<{ memberId: string; code: string }>('members.preRegister', { tenantId: t, fullName: 'Nelson Engano', phone: '(47) 99111-2222', categoryId: 'efetivo', approve: true }, h.actors.presidente);
+    await denied(h.call('members.delete', { tenantId: t, memberId: pre.memberId }, h.actors.tesoureiro), 'permission-denied');
+    await h.call('members.delete', { tenantId: t, memberId: pre.memberId }, h.actors.presidente);
+    expect(await h.store.get(P.member(t, pre.memberId))).toBeNull();
+    expect(await h.store.get(P.memberPii(t, pre.memberId))).toBeNull();
+    expect(await h.store.get(P.accessCode(t, pre.memberId))).toBeNull();
+    await denied(h.call('access.check', { tenantId: t, login: '47991112222', code: pre.code }, null), 'permission-denied');
+  });
+
+  it('com dependente não exclui (avisa o motivo)', async () => {
+    const h = await makeTestTenant();
+    const t = h.tenantId;
+    const { memberId } = await h.call<{ memberId: string }>('members.create', { tenantId: t, data: { fullName: 'Titular Com Filho', categoryId: 'efetivo' }, consents: { cadastro: true, imagem: false, comunicacao: false, marketing: false }, approve: true }, h.actors.presidente);
+    await h.call('members.addDependent', { tenantId: t, holderId: memberId, data: { fullName: 'Filho Do Titular', categoryId: 'dependente' }, consents: { cadastro: true, imagem: false, comunicacao: false, marketing: false } }, h.actors.presidente);
+    await expect(h.call('members.delete', { tenantId: t, memberId }, h.actors.presidente)).rejects.toThrow(/dependentes/);
+  });
+});

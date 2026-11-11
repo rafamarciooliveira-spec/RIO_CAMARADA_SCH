@@ -962,7 +962,50 @@ export const anonymizeMember = defineOp({
   },
 });
 
+/**
+ * Excluir de vez um cadastro feito por engano (nome errado, repetido, teste). Só quando o cadastro não tem
+ * cobrança, lançamento no caixa nem dependente: com histórico financeiro, o caminho é desligar ou anonimizar.
+ */
+export const deleteMember = defineOp({
+  name: 'members.delete',
+  input: zTenant.extend({ memberId: zId }),
+  auth: 'user',
+  tenant: { perm: ['socios', 'aprovar'] },
+  async run(ctx, input) {
+    const t = tid(ctx);
+    const m = await ctx.store.get<MemberDoc>(P.member(t, input.memberId));
+    if (!m) fail('not-found', 'Cadastro não encontrado.');
+    const keep = 'Use "Desligar" ou "Anonimizar": o histórico precisa ficar guardado.';
+    if ((await ctx.store.count(P.charges(t), { where: [['memberId', '==', input.memberId]] })) > 0) fail('failed-precondition', `${m!.fullName} já tem cobranças. ${keep}`);
+    if ((await ctx.store.count(P.ledger(t), { where: [['memberId', '==', input.memberId]] })) > 0) fail('failed-precondition', `${m!.fullName} já tem lançamentos no caixa. ${keep}`);
+    const deps = (await ctx.store.count(P.members(t), { where: [['dependentOf', '==', input.memberId]] })) + (await ctx.store.count(P.members(t), { where: [['guardianIds', 'array-contains', input.memberId]] }));
+    if (deps > 0) fail('failed-precondition', `${m!.fullName} tem dependentes ligados a este cadastro. Exclua ou mude os dependentes antes.`);
+    if (m!.uid) {
+      const ms = await ctx.store.get<MembershipDoc>(P.membership(t, m!.uid));
+      if (ms?.board) fail('failed-precondition', `${m!.fullName} faz parte da diretoria. Tire do cargo antes de excluir.`);
+      if (m!.uid === ctx.actor?.uid) fail('failed-precondition', 'Você não pode excluir o seu próprio cadastro por aqui.');
+      if (ms) await ctx.store.delete(P.membership(t, m!.uid));
+    }
+    const pii = await ctx.store.get<MemberPiiDoc>(P.memberPii(t, input.memberId));
+    if (pii?.cpfHmac) {
+      const idx = await ctx.store.get<{ memberId: string }>(P.cpfIndex(t, pii.cpfHmac));
+      if (idx?.memberId === input.memberId) await ctx.store.delete(P.cpfIndex(t, pii.cpfHmac));
+    }
+    for (const path of [m!.photoPath, m!.joinProof?.path]) if (path) await ctx.files.remove(path).catch(() => undefined);
+    for (const col of [P.memberHistory(t, input.memberId), P.memberChanges(t, input.memberId)]) {
+      for (const d of await ctx.store.query(col, { limit: 500 })) await ctx.store.delete(d.path);
+    }
+    await ctx.store.delete(P.accessCode(t, input.memberId));
+    await ctx.store.delete(P.memberPii(t, input.memberId));
+    await ctx.store.delete(P.member(t, input.memberId));
+    await bumpMemberStats(ctx, m!.status, null);
+    await ctx.audit('members.deleted', input.memberId, { name: shortName(m!.fullName) });
+    return { ok: true };
+  },
+});
+
 export const memberOps = [
+  deleteMember,
   mergeDuplicate,
   notDuplicate,
   findDuplicates,

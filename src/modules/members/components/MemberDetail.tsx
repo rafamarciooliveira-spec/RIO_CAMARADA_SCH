@@ -1,6 +1,6 @@
 /** Detalhe do sócio para a secretaria: dados, histórico e ações (aprovar, ajuste, situação, renovar, CPF, convite, anonimizar). */
 import { useEffect, useState } from 'react';
-import { Eye, FileText, Mail, Pencil, RefreshCw, ShieldOff, UserCheck } from 'lucide-react';
+import { Eye, FileText, Mail, Pencil, RefreshCw, ShieldOff, Trash2, UserCheck } from 'lucide-react';
 import { useDoc, useFileUrl, useList, useOp } from '../../../app/DataContext.tsx';
 import { useTenant } from '../../../app/TenantContext.tsx';
 import { usePeopleNames } from '../../../app/usePeopleNames.ts';
@@ -391,6 +391,23 @@ function Actions({ m, cats, canApprove, anonymized, onDone }: { m: MemberDoc & {
           )}
         </section>
       )}
+      <section className="space-y-2 p-3 rounded-xl border border-bad/40">
+        <h3 className="font-semibold text-sm">Excluir cadastro</h3>
+        <p className="text-xs text-muted">Para cadastro feito por engano (nome errado, repetido, teste). Apaga tudo deste cadastro. Só funciona se ainda não tem cobrança, lançamento no caixa nem dependente; nesses casos use Desligar ou Anonimizar.</p>
+        <Button
+          variant="danger"
+          icon={<Trash2 className="w-4 h-4" />}
+          loading={busy}
+          onClick={async () => {
+            const ok = await confirm({ title: 'Excluir cadastro', text: `O cadastro de ${m.fullName} será apagado de vez. Não dá para desfazer.`, confirmLabel: 'Excluir', danger: true, requireText: 'EXCLUIR' });
+            if (!ok) return;
+            const r = await run('members.delete', { tenantId: t.tenantId, memberId: m.id }, { success: 'Cadastro excluído.' });
+            if (r) onDone();
+          }}
+        >
+          Excluir cadastro
+        </Button>
+      </section>
       <section className="space-y-2 p-3 rounded-xl border border-bad/40">
         <h3 className="font-semibold text-sm">Desligar e anonimizar</h3>
         <p className="text-xs text-muted">Apaga CPF, contato, endereço e foto. Ficam só identificadores nos registros financeiros e atas, pelo prazo legal. Não dá para desfazer.</p>
