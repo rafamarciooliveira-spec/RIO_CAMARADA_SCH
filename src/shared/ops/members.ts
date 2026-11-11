@@ -32,7 +32,7 @@ const zGuardian = z
 
 const zSocials = z.object({ instagram: zText(120).optional(), facebook: zText(200).optional() }).optional();
 
-const zPersonal = z.object({
+export const zPersonal = z.object({
   fullName: zText(150).min(3),
   socials: zSocials,
   memberSinceYear: z.number().int().min(1850).max(2100).optional(),
@@ -46,7 +46,7 @@ const zPersonal = z.object({
   custom: z.record(zId, zText(300)).optional(),
 });
 
-const zConsents = z.object({ cadastro: z.literal(true), imagem: z.boolean(), comunicacao: z.boolean(), marketing: z.boolean() });
+export const zConsents = z.object({ cadastro: z.literal(true), imagem: z.boolean(), comunicacao: z.boolean(), marketing: z.boolean() });
 
 function today(ctx: OpContext): string {
   return localDateKey(ctx.now(), ctx.tenant?.timezone);

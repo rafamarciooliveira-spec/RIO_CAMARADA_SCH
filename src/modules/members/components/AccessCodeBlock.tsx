@@ -11,7 +11,7 @@ import { formatDateTime } from '../../../shared/dates.ts';
 import type { MemberDoc } from '../../../shared/types.ts';
 import { Button, Notice, useToast } from '../../../ui/index.tsx';
 
-export function AccessCodeBlock({ m }: { m: MemberDoc & { id: string } }) {
+export function AccessCodeBlock({ m }: { m: Pick<MemberDoc, 'fullName' | 'uid'> & { id: string } }) {
   const t = useTenant();
   const toast = useToast();
   const { run, busy } = useOp();
@@ -33,23 +33,9 @@ export function AccessCodeBlock({ m }: { m: MemberDoc & { id: string } }) {
       toast.show('Não foi possível copiar. Selecione o texto e copie à mão.', 'erro');
     }
   };
-  /** Papel para entregar em mãos: letras grandes, QR do link e o código */
   const print = async () => {
     if (!res) return;
-    const qr = await QRCode.toDataURL(res.link, { width: 360, margin: 1 }).catch(() => '');
-    const w = window.open('', '_blank');
-    if (!w) return toast.show('O navegador bloqueou a janela de impressão.', 'erro');
-    const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
-    w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Primeiro acesso</title>
-<style>body{font-family:Arial,sans-serif;max-width:640px;margin:32px auto;padding:0 16px;color:#111}h1{font-size:28px}p,li{font-size:20px;line-height:1.5}.code{font-size:56px;letter-spacing:12px;font-weight:bold;font-family:monospace;border:3px solid #111;border-radius:12px;padding:12px 20px;display:inline-block}</style></head><body>
-<h1>${esc(t.tenant.name)}</h1><p>Olá, <b>${esc(m.fullName)}</b>. Para entrar no portal com CPF e senha:</p>
-<ol><li>Aponte a câmera do celular para o QR abaixo (ou abra <b>${esc(res.link)}</b>).</li><li>Digite o seu CPF e este código:</li></ol>
-<div class="code">${res.code}</div>
-<ol start="3"><li>Escolha uma senha fácil de lembrar e toque em <b>Criar senha e entrar</b>.</li></ol>
-${qr ? `<p><img src="${qr}" alt="QR do primeiro acesso" width="220" height="220"></p>` : ''}
-<p>O código vale até <b>${esc(formatDateTime(res.expiresAt, t.tenant.timezone))}</b> e só funciona uma vez.</p>
-<script>window.onload=()=>window.print()</script></body></html>`);
-    w.document.close();
+    if (!(await printAccessSheets([{ name: m.fullName, ...res }], t.tenant.name, t.tenant.timezone))) toast.show('O navegador bloqueou a janela de impressão.', 'erro');
   };
   return (
     <section className="space-y-2 p-3 rounded-xl border border-line">
@@ -82,4 +68,30 @@ ${qr ? `<p><img src="${qr}" alt="QR do primeiro acesso" width="220" height="220"
       )}
     </section>
   );
+}
+
+/**
+ * Folhas para entregar em mãos (uma por pessoa): letras grandes, o código, o QR do link e o passo a passo.
+ * Abre a janela de impressão; devolve false se o navegador bloquear a janela.
+ */
+export async function printAccessSheets(list: { name: string; code: string; link: string; expiresAt: string }[], society: string, tz: string): Promise<boolean> {
+  const w = window.open('', '_blank');
+  if (!w) return false;
+  const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+  const qr = list.length ? await QRCode.toDataURL(list[0].link, { width: 360, margin: 1 }).catch(() => '') : '';
+  const pages = list
+    .map(
+      x => `<section><h1>${esc(society)}</h1><p>Olá, <b>${esc(x.name)}</b>. Para entrar no portal com CPF e senha:</p>
+<ol><li>Aponte a câmera do celular para o QR abaixo (ou abra <b>${esc(x.link)}</b>).</li><li>Digite o seu CPF e este código:</li></ol>
+<div class="code">${esc(x.code)}</div>
+<ol start="3"><li>Escolha uma senha fácil de lembrar e toque em <b>Criar senha e entrar</b>.</li></ol>
+${qr ? `<p><img src="${qr}" alt="QR do primeiro acesso" width="200" height="200"></p>` : ''}
+<p>O código vale até <b>${esc(formatDateTime(x.expiresAt, tz))}</b> e só funciona uma vez. Guarde a sua senha.</p></section>`
+    )
+    .join('');
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Primeiro acesso</title>
+<style>body{font-family:Arial,sans-serif;color:#111;margin:0}section{max-width:640px;margin:24px auto;padding:0 16px;page-break-after:always}section:last-child{page-break-after:auto}h1{font-size:28px}p,li{font-size:20px;line-height:1.5}.code{font-size:56px;letter-spacing:12px;font-weight:bold;font-family:monospace;border:3px solid #111;border-radius:12px;padding:12px 20px;display:inline-block}</style></head><body>${pages}
+<script>window.onload=()=>window.print()</script></body></html>`);
+  w.document.close();
+  return true;
 }

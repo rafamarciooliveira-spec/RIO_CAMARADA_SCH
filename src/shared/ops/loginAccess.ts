@@ -14,8 +14,9 @@ import { defineOp, fail, zId, zTenant, type OpContext } from '../core/ops.ts';
 import { P } from '../paths.ts';
 import { cleanCPF, validateCPF } from '../cpf.ts';
 import { hashPassword, verifyPassword, weakPassword } from '../passwordHash.ts';
-import type { MemberDoc, MemberPiiDoc, TenantDoc } from '../types.ts';
-import { shortName, tid } from './helpers.ts';
+import type { MemberDoc, MemberPiiDoc, TenantDoc, TenantSettings } from '../types.ts';
+import { boardUids, getSettings, notify, shortName, tid } from './helpers.ts';
+import { approveCore, createMemberCore, zConsents, zPersonal } from './members.ts';
 import { upsertMembership } from './access.ts';
 
 const CODE_HOURS = 72;
@@ -65,6 +66,14 @@ export const createAccessCode = defineOp({
   rateLimit: { per: 'uid', max: 60, windowSec: 3600 },
   async run(ctx, input) {
     if (!ctx.authAdmin) fail('failed-precondition', 'A entrada por CPF e senha não está disponível neste servidor.');
+    return issueCode(ctx, input.memberId);
+  },
+});
+
+/** Gera o código de um sócio (usado por um e por vários) */
+async function issueCode(ctx: OpContext, memberId: string) {
+  const input = { memberId };
+  {
     const t = tid(ctx);
     const m = await ctx.store.get<MemberDoc>(P.member(t, input.memberId));
     if (!m) fail('not-found', 'Cadastro não encontrado.');
@@ -77,6 +86,30 @@ export const createAccessCode = defineOp({
     await ctx.store.set(P.accessCode(t, input.memberId), doc as unknown as Record<string, unknown>);
     await ctx.audit('access.code_created', input.memberId);
     return { code, expiresAt, link: `${ctx.appUrl}/${ctx.tenant!.slug}/primeiro-acesso`, hasLogin: !!m!.uid };
+  }
+}
+
+/** Códigos para vários sócios de uma vez (folhas impressas para entregar em evento ou na secretaria) */
+export const createAccessCodes = defineOp({
+  name: 'access.createCodes',
+  input: zTenant.extend({ memberIds: z.array(zId).min(1).max(60) }),
+  auth: 'user',
+  tenant: { perm: ['socios', 'editar'] },
+  rateLimit: { per: 'uid', max: 20, windowSec: 3600 },
+  async run(ctx, input) {
+    if (!ctx.authAdmin) fail('failed-precondition', 'A entrada por CPF e senha não está disponível neste servidor.');
+    const done: { memberId: string; name: string; code: string; expiresAt: string; link: string }[] = [];
+    const skipped: { memberId: string; name: string; reason: string }[] = [];
+    for (const id of [...new Set(input.memberIds)]) {
+      const m = await ctx.store.get<MemberDoc>(P.member(tid(ctx), id));
+      try {
+        const r = await issueCode(ctx, id);
+        done.push({ memberId: id, name: m?.fullName || '', code: r.code, expiresAt: r.expiresAt, link: r.link });
+      } catch (e) {
+        skipped.push({ memberId: id, name: m?.fullName || '', reason: (e as Error).message });
+      }
+    }
+    return { done, skipped };
   },
 });
 
@@ -152,4 +185,69 @@ export const loginWithCpf = defineOp({
   },
 });
 
-export const loginAccessOps = [createAccessCode, redeemAccessCode, loginWithCpf];
+/** Opções da ficha sem conta Google (quem ainda não tem login nenhum): só o necessário para preencher */
+export const openFormOptions = defineOp({
+  name: 'members.openFormOptions',
+  input: z.object({ tenantId: zId }),
+  auth: 'public',
+  rateLimit: { per: 'ip', max: 120, windowSec: 3600 },
+  async run(ctx, input) {
+    const tenant = await ctx.store.get<TenantDoc>(P.tenant(input.tenantId));
+    if (!tenant || tenant.status !== 'ativa') fail('not-found', 'Sociedade não encontrada.');
+    if (tenant!.loginMethods?.cpfPassword === false || !ctx.authAdmin) return { enabled: false, categories: [], customFields: [], requirePhoto: true, approvalRequired: true };
+    const s = await ctx.store.get<TenantSettings>(P.settings(input.tenantId));
+    return {
+      enabled: true,
+      categories: (s?.categories || []).filter(c => c.id !== 'dependente').map(c => ({ id: c.id, name: c.name, feeCents: c.feeCents, period: c.period, allowsDependents: c.allowsDependents })),
+      // Só os campos obrigatórios: a ficha é curta (o resto a pessoa completa depois no perfil)
+      customFields: (s?.customFields || []).filter(f => f.required).map(f => ({ id: f.id, label: f.label, type: f.type, options: f.options || [], required: true, sensitive: f.sensitive })),
+      requirePhoto: s?.cardRequiresPhoto !== false,
+      approvalRequired: s?.approvalRequired ?? true,
+    };
+  },
+});
+
+/**
+ * Ficha sem conta Google: a própria pessoa faz o cadastro e já cria a senha (entra depois com CPF e senha).
+ * O cadastro entra para aprovação da diretoria, como a ficha comum.
+ */
+export const applyOpen = defineOp({
+  name: 'members.applyOpen',
+  input: z.object({ tenantId: zId, data: zPersonal, consents: zConsents, password: z.string().min(1).max(64) }),
+  auth: 'public',
+  rateLimit: { per: 'ip', max: 6, windowSec: 3600 },
+  async run(ctx, input) {
+    if (!ctx.authAdmin) fail('failed-precondition', 'A entrada por CPF e senha não está disponível neste servidor.');
+    const t = input.tenantId;
+    const tenant = await ctx.store.get<TenantDoc>(P.tenant(t));
+    if (!tenant || tenant.status !== 'ativa') fail('not-found', 'Sociedade não encontrada.');
+    if (tenant!.loginMethods?.cpfPassword === false) fail('failed-precondition', 'Esta sociedade não usa cadastro com CPF e senha. Use a conta Google.');
+    const cpf = cleanCPF(input.data.cpf || '');
+    if (!validateCPF(cpf)) fail('invalid-argument', 'Confira o CPF: os números não batem.');
+    if (!input.data.birthDate) fail('invalid-argument', 'Informe a data de nascimento.');
+    if (await ctx.store.get(P.cpfIndex(t, await ctx.crypto.hmacHex(`${t}:${cpf}`)))) {
+      fail('already-exists', 'Já existe um cadastro com este CPF nesta sociedade. Peça à diretoria o código de acesso para criar a sua senha.');
+    }
+    const hash = await loginHash(ctx, cpf);
+    if (await ctx.store.get(P.loginIndex(hash))) {
+      fail('already-exists', 'Você já tem senha no portal (de outra sociedade). Entre com CPF e senha e depois toque em "Quero ser sócio".');
+    }
+    const weak = weakPassword(input.password, cpf);
+    if (weak) fail('invalid-argument', weak);
+    // Contexto da sociedade para o cadastro (a operação é pública: não há vínculo ainda)
+    ctx.tenantId = t;
+    ctx.tenant = tenant!;
+    const acc = await ctx.authAdmin!.setPassword({ email: internalEmail(hash), password: input.password, displayName: input.data.fullName });
+    ctx.actor = { uid: acc.uid, email: acc.email, emailVerified: true, displayName: input.data.fullName, master: false, mfa: false };
+    const memberId = await createMemberCore(ctx, { data: { ...input.data, cpf }, consents: input.consents, status: 'pendente', uid: acc.uid });
+    await ctx.store.set(P.loginIndex(hash), { uid: acc.uid, email: acc.email, pwHash: await hashPassword(input.password), fails: 0, updatedAt: ctx.nowIso });
+    await upsertMembership(ctx, tenant!, { uid: acc.uid, email: acc.email, displayName: input.data.fullName }, ['socio'], memberId);
+    const settings = await getSettings(ctx);
+    if (!settings.approvalRequired) await approveCore(ctx, memberId, {});
+    else for (const uid of await boardUids(ctx)) await notify(ctx, uid, 'Novo cadastro para aprovar', `${shortName(input.data.fullName)} (ficha sem conta Google)`, 'socios');
+    await ctx.audit('members.applied_open', memberId);
+    return { email: acc.email, memberId };
+  },
+});
+
+export const loginAccessOps = [createAccessCode, createAccessCodes, redeemAccessCode, loginWithCpf, openFormOptions, applyOpen];

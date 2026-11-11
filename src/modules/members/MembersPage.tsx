@@ -1,7 +1,7 @@
 /** Sócios: lista paginada, busca, filtros, pendentes primeiro, detalhe, cadastro, importação e exportação. */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronRight, Copy, CornerDownRight, Download, Link2, Megaphone, Upload, UserPlus, Users } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, CornerDownRight, KeySquare, Download, Link2, Megaphone, Upload, UserPlus, Users } from 'lucide-react';
 import { useData, useList, useOp } from '../../app/DataContext.tsx';
 import { useTenant } from '../../app/TenantContext.tsx';
 import { P } from '../../shared/paths.ts';
@@ -15,6 +15,8 @@ import { emptyMemberForm, MemberForm, toPayload, validateMemberForm, type Member
 import { statusTone } from './statusTone.ts';
 import { SignupLinkModal } from './components/SignupLinkModal.tsx';
 import { DuplicatesFinder } from './components/Duplicates.tsx';
+import { AccessCodeBlock } from './components/AccessCodeBlock.tsx';
+import { BulkAccessCodes } from './components/BulkAccessCodes.tsx';
 import { TransfersSection } from './components/Transfers.tsx';
 
 const PAGE = 50;
@@ -27,7 +29,7 @@ export default function MembersPage() {
   const [search, setSearch] = useState('');
   const [limit, setLimit] = useState(PAGE);
   const [openId, setOpenId] = useState('');
-  const [modal, setModal] = useState<'' | 'novo' | 'importar' | 'exportar' | 'link' | 'repetidos'>('');
+  const [modal, setModal] = useState<'' | 'novo' | 'importar' | 'exportar' | 'link' | 'repetidos' | 'codigos'>('');
 
   const q = useMemo<QuerySpec>(() => {
     const where: QuerySpec['where'] = [];
@@ -158,6 +160,11 @@ export default function MembersPage() {
                 </Button>
               </>
             )}
+            {t.can('socios', 'editar') && t.tenant.loginMethods?.cpfPassword !== false && (
+              <Button size="sm" variant="secondary" icon={<KeySquare className="w-4 h-4" />} onClick={() => setModal('codigos')}>
+                Códigos de acesso
+              </Button>
+            )}
             {t.can('socios', 'editar') && (
               <Button size="sm" variant="secondary" icon={<Copy className="w-4 h-4" />} onClick={() => setModal('repetidos')}>
                 Repetidos
@@ -233,6 +240,7 @@ export default function MembersPage() {
       <ExportModal open={modal === 'exportar'} onClose={() => setModal('')} />
       {modal === 'link' && <SignupLinkModal onClose={() => setModal('')} />}
       {modal === 'repetidos' && <DuplicatesFinder onClose={() => setModal('')} />}
+      {modal === 'codigos' && <BulkAccessCodes onClose={() => setModal('')} />}
       {modal === 'novo' && <NewMemberModal onClose={() => setModal('')} onCreated={id => (setModal(''), setOpenId(id))} />}
     </div>
   );
@@ -247,6 +255,7 @@ function NewMemberModal({ onClose, onCreated }: { onClose: () => void; onCreated
   const [approve, setApprove] = useState(false);
   const [invite, setInvite] = useState(false);
   const [inviteLink, setInviteLink] = useState('');
+  const [created, setCreated] = useState<{ id: string; fullName: string } | null>(null);
   const [requestId] = useState(() => `novo_${Date.now()}`);
 
   const save = async () => {
@@ -260,6 +269,8 @@ function NewMemberModal({ onClose, onCreated }: { onClose: () => void; onCreated
     );
     if (!r) return;
     if (r.inviteLink) setInviteLink(r.inviteLink);
+    // Com CPF e a entrada por CPF ligada: a tela já oferece o código de primeiro acesso (sem abrir o cadastro depois)
+    else if (v.cpf.trim() && t.tenant.loginMethods?.cpfPassword !== false) setCreated({ id: r.memberId, fullName: v.fullName.trim() });
     else onCreated(r.memberId);
   };
 
@@ -272,6 +283,13 @@ function NewMemberModal({ onClose, onCreated }: { onClose: () => void; onCreated
       footer={
         inviteLink ? (
           <Button onClick={onClose}>Fechar</Button>
+        ) : created ? (
+          <>
+            <Button variant="secondary" onClick={() => onCreated(created.id)}>
+              Abrir o cadastro
+            </Button>
+            <Button onClick={onClose}>Fechar</Button>
+          </>
         ) : (
           <>
             <Button variant="secondary" onClick={onClose}>
@@ -284,7 +302,12 @@ function NewMemberModal({ onClose, onCreated }: { onClose: () => void; onCreated
         )
       }
     >
-      {inviteLink ? (
+      {created ? (
+        <div className="space-y-3">
+          <Notice tone="ok">Cadastro de {created.fullName} criado.</Notice>
+          <AccessCodeBlock m={{ id: created.id, fullName: created.fullName }} />
+        </div>
+      ) : inviteLink ? (
         <Notice tone="warn">
           Cadastro criado. O e-mail do convite não saiu de verdade neste ambiente; envie este link para a pessoa: <span className="font-mono text-xs break-all">{inviteLink}</span>
         </Notice>

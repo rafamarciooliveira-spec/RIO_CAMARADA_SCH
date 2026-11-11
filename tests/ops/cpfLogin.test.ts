@@ -91,3 +91,49 @@ describe('entrada por CPF e senha', () => {
     expect(weakPassword('Jardim48', '52998224725')).toBeNull();
   });
 });
+
+describe('vários códigos e ficha sem conta Google', () => {
+  it('códigos para vários: quem tem CPF recebe, quem não tem fica de fora com o motivo', async () => {
+    const { h, memberId } = await setup();
+    const t = h.tenantId;
+    const { memberId: semCpf } = await h.call<{ memberId: string }>(
+      'members.create',
+      { tenantId: t, data: { fullName: 'Dona Hilda Sem Documento', categoryId: 'efetivo' }, consents: { cadastro: true, imagem: false, comunicacao: false, marketing: false }, approve: true },
+      h.actors.secretario
+    );
+    const r = await h.call<{ done: { memberId: string; code: string }[]; skipped: { name: string; reason: string }[] }>('access.createCodes', { tenantId: t, memberIds: [memberId, semCpf] }, h.actors.secretario);
+    expect(r.done.map(d => d.memberId)).toEqual([memberId]);
+    expect(r.skipped[0]).toMatchObject({ name: 'Dona Hilda Sem Documento' });
+    expect(r.skipped[0].reason).toMatch(/CPF/);
+    await h.call('access.redeem', { tenantId: t, cpf: CPF, code: r.done[0].code, password: 'Jardim48' }, null);
+  });
+
+  it('a própria pessoa se cadastra com CPF e senha, entra para aprovação e já entra com CPF e senha', async () => {
+    const h = await makeTestTenant();
+    const t = h.tenantId;
+    const opts = await h.call<{ enabled: boolean; categories: { id: string }[] }>('members.openFormOptions', { tenantId: t }, null);
+    expect(opts.enabled).toBe(true);
+    expect(opts.categories.length).toBeGreaterThan(0);
+    const data = { fullName: 'Seu Arno Schmitt', cpf: CPF, birthDate: '1948-03-10', categoryId: 'efetivo', phone: '(47) 98888-7777' };
+    const consents = { cadastro: true, imagem: false, comunicacao: true, marketing: false };
+    await denied(h.call('members.applyOpen', { tenantId: t, data, consents, password: '123456' }, null), 'invalid-argument');
+    const r = await h.call<{ email: string; memberId: string }>('members.applyOpen', { tenantId: t, data, consents, password: 'Jardim48' }, null);
+    const m = (await h.store.get<MemberDoc>(P.member(t, r.memberId)))!;
+    expect(m).toMatchObject({ status: 'pendente', fullName: 'Seu Arno Schmitt' });
+    expect(m.uid).toBeTruthy();
+    expect((await h.store.get<MembershipDoc>(P.membership(t, m.uid!)))!.memberId).toBe(r.memberId);
+    expect((await h.call<{ email: string }>('access.login', { cpf: CPF, password: 'Jardim48' }, null)).email).toBe(r.email);
+    // O mesmo CPF não faz outra ficha
+    await expect(h.call('members.applyOpen', { tenantId: t, data, consents, password: 'OutraSenha9' }, null, { ip: '10.9.9.9' })).rejects.toThrow(/Já existe um cadastro com este CPF/);
+    // A diretoria aprova normalmente
+    await h.call('members.approve', { tenantId: t, memberId: r.memberId }, h.actors.presidente);
+  });
+
+  it('sociedade que desligou o CPF e senha não aceita a ficha sem Google', async () => {
+    const h = await makeTestTenant();
+    const t = h.tenantId;
+    await h.call('tenant.update', { tenantId: t, loginMethods: { google: true, emailLink: true, cpfPassword: false } }, h.actors.presidente);
+    expect((await h.call<{ enabled: boolean }>('members.openFormOptions', { tenantId: t }, null)).enabled).toBe(false);
+    await denied(h.call('members.applyOpen', { tenantId: t, data: { fullName: 'Fulano de Tal', cpf: CPF, birthDate: '1950-01-01', categoryId: 'efetivo' }, consents: { cadastro: true, imagem: false, comunicacao: false, marketing: false }, password: 'Jardim48' }, null), 'failed-precondition');
+  });
+});

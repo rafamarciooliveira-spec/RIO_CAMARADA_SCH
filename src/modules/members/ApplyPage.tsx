@@ -18,6 +18,7 @@ import { AssociationLogo } from '../../components/AssociationLogos.tsx';
 import { emptyMemberForm, MemberForm, toPayload, validateMemberForm, type MemberFormValue } from './components/MemberForm.tsx';
 import { DependentsBlock, dependentsPayload, validateDependents, type DependentValue } from './components/DependentsBlock.tsx';
 import { PhotoPick, sendPickedPhoto } from '../member-area/PhotoPick.tsx';
+import { SimpleApply } from './SimpleApply.tsx';
 import { PhotoUpload } from '../member-area/PhotoUpload.tsx';
 import { formatBRL } from '../../shared/money.ts';
 import { buildPixPayload } from '../../shared/core/sandboxPayments.ts';
@@ -69,7 +70,20 @@ export default function ApplyPage({ join = false }: { join?: boolean }) {
   }, [session.user, v.email]);
 
   if (session.loading) return <Loading />;
-  if (!session.user && !demo) return <Navigate to={t.to(`entrar?volta=${encodeURIComponent(location.pathname)}`)} replace />;
+  // Sem login: a pessoa escolhe entre a conta Google e a ficha simples com CPF e senha (sem e-mail nem Google)
+  const noGoogle = new URLSearchParams(location.search).has('sem-google');
+  const cpfOn = t.tenant.loginMethods?.cpfPassword !== false;
+  if ((!session.user && !demo) || (preview && noGoogle)) {
+    if (!cpfOn) return <Navigate to={t.to(`entrar?volta=${encodeURIComponent(location.pathname)}`)} replace />;
+    return (
+      <ChooseHow
+        noGoogle={noGoogle}
+        preview={preview}
+        loginTo={t.to(`entrar?volta=${encodeURIComponent(location.pathname)}`)}
+        simpleTo={`${location.pathname}?sem-google=1${preview ? '&previa=1' : ''}`}
+      />
+    );
+  }
 
   const shell = (children: React.ReactNode) => (
     <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-5">
@@ -369,6 +383,48 @@ function PaymentStep({
           Continuar para a ficha
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** Como fazer o cadastro: conta Google ou ficha simples com CPF e senha (botões grandes, uma decisão só) */
+function ChooseHow({ noGoogle, preview, loginTo, simpleTo }: { noGoogle: boolean; preview: boolean; loginTo: string; simpleTo: string }) {
+  const t = useTenant();
+  return (
+    <div className="max-w-xl mx-auto p-4 sm:p-6 space-y-5">
+      <header className="flex items-center gap-3">
+        <span className="w-12 h-12 rounded-xl bg-brand text-on-brand flex items-center justify-center shrink-0">
+          <AssociationLogo logoKeyOrUrl={t.tenant.branding.logoUrl} className="w-7 h-7" />
+        </span>
+        <div>
+          <div className="text-sm text-muted">{t.tenant.name}</div>
+          <h1 className="text-2xl font-bold">Quero ser {t.labels.member.toLowerCase()}</h1>
+        </div>
+      </header>
+      {preview && <Notice tone="warn">Prévia da diretoria: é assim que a pessoa vê. Nada é enviado daqui.</Notice>}
+      {noGoogle ? (
+        <SimpleApply preview={preview} />
+      ) : (
+        <div className="space-y-3">
+          <p className="text-base">Como você prefere fazer o cadastro?</p>
+          <Link to={simpleTo} className="block">
+            <Card className="p-5! border-2 border-accent/60 hover:border-accent">
+              <div className="text-lg font-bold">Não tenho conta Google</div>
+              <p className="text-sm text-muted mt-1">Preencho uma ficha curta e crio uma senha. Depois entro com o meu CPF e a senha. O mais simples.</p>
+            </Card>
+          </Link>
+          <Link to={loginTo} className="block">
+            <Card className="p-5! hover:border-muted">
+              <div className="text-lg font-bold">Tenho conta Google (Gmail)</div>
+              <p className="text-sm text-muted mt-1">Entro com a conta Google e preencho a ficha completa.</p>
+            </Card>
+          </Link>
+          <p className="text-sm text-muted">
+            Já é {t.labels.member.toLowerCase()} e recebeu um código da {t.labels.board.toLowerCase()}?{' '}
+            <Link to={t.to('primeiro-acesso')} className="text-accent underline">Criar a minha senha</Link>
+          </p>
+        </div>
+      )}
     </div>
   );
 }

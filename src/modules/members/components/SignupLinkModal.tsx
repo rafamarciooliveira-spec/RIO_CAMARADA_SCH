@@ -14,7 +14,10 @@ export function SignupLinkModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     QRCode.toDataURL(url, { width: 480, margin: 1, errorCorrectionLevel: 'M' }).then(setQr).catch(() => setQr(''));
   }, [url]);
-  const message = `Olá! Para fazer o seu cadastro na ${t.tenant.name}, entre com a sua conta Google neste link e preencha a ficha. A ${t.labels.board.toLowerCase()} aprova e a sua carteirinha fica no celular: ${url}`;
+  const cpfOn = t.tenant.loginMethods?.cpfPassword !== false;
+  const message = cpfOn
+    ? `Olá! Para fazer o seu cadastro na ${t.tenant.name}, abra este link e preencha a ficha. Não precisa de conta Google: você cria uma senha e entra com o seu CPF. A ${t.labels.board.toLowerCase()} aprova e a sua carteirinha fica no celular: ${url}`
+    : `Olá! Para fazer o seu cadastro na ${t.tenant.name}, entre com a sua conta Google neste link e preencha a ficha. A ${t.labels.board.toLowerCase()} aprova e a sua carteirinha fica no celular: ${url}`;
   const copy = async (text: string, ok: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -28,7 +31,7 @@ export function SignupLinkModal({ onClose }: { onClose: () => void }) {
       <div className="space-y-4">
         <p className="text-sm text-muted">
           {join && <>Link de <strong>adesão</strong>: a pessoa vê a taxa e a anuidade, paga pelo Pix e anexa o comprovante antes da ficha. A ficha sem pagamento continua em {location.origin}{t.to('cadastro')}. </>}
-          Mande este link para quem vai se associar. A pessoa entra com a conta Google, preenche a ficha (com os dependentes) e o cadastro aparece aqui em <strong>Aguardando aprovação</strong>.
+          Mande este link para quem vai se associar. A pessoa escolhe: ficha curta com CPF e senha (sem conta Google, boa para quem tem mais idade) ou a conta Google com a ficha completa (com os dependentes) e o cadastro aparece aqui em <strong>Aguardando aprovação</strong>.
         </p>
         <div className="p-3 rounded-xl bg-surface-2 font-mono text-xs break-all select-all">{url}</div>
         <div className="flex flex-wrap gap-2">
@@ -56,6 +59,11 @@ export function SignupLinkModal({ onClose }: { onClose: () => void }) {
               </a>
             </div>
           </div>
+        )}
+        {cpfOn && (
+          <a href={`${t.to('cadastro')}?sem-google=1&previa=1`} target="_blank" rel="noopener noreferrer" className="text-sm text-accent underline">
+            Ver a ficha sem conta Google como a pessoa vê
+          </a>
         )}
         {!t.settings?.approvalRequired && <Notice tone="warn">A aprovação está desligada nas configurações: quem preencher a ficha entra aprovado na hora.</Notice>}
       </div>
